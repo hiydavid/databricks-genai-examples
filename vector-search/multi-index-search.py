@@ -18,14 +18,14 @@ class VectorSearchPyfuncModel(mlflow.pyfunc.PythonModel):
       dicts (the search hits).
     """
 
-    # config
-    _endpoint_name = "one-env-shared-endpoint-0"
+    # config - replace with your actual endpoint and index names
+    _endpoint_name = "your-vector-search-endpoint"
     _index_names = [
-        "main.demo.parsed_emails_split_1_vsindex",
-        "main.demo.parsed_emails_split_2_vsindex",
-        "main.demo.parsed_emails_split_3_vsindex",
-        "main.demo.parsed_emails_split_4_vsindex",
-        "main.demo.parsed_emails_split_5_vsindex",
+        "catalog.schema.index_shard_1",
+        "catalog.schema.index_shard_2",
+        "catalog.schema.index_shard_3",
+        "catalog.schema.index_shard_4",
+        "catalog.schema.index_shard_5",
     ]
     _result_columns = [
         "message_id",
@@ -123,10 +123,11 @@ class VectorSearchPyfuncModel(mlflow.pyfunc.PythonModel):
         hits = [r for sub in rows if sub for r in sub]
 
         if not hits:
-            return pd.DataFrame(columns=columns + ["score"])
+            empty_columns = columns + ["score"]
+            return pd.DataFrame(columns=pd.Index(empty_columns))
 
         df = (
-            pd.DataFrame(hits, columns=columns + ["score"])
+            pd.DataFrame(hits, columns=pd.Index(columns + ["score"]))
             .astype(
                 {
                     "message_id": str,
@@ -148,6 +149,10 @@ class VectorSearchPyfuncModel(mlflow.pyfunc.PythonModel):
     @staticmethod
     def _row_to_kwargs(row: pd.Series) -> Dict[str, Any]:
         """Translate one request row to kwargs for `_perform_vector_search`."""
+        num_results_value = row.get("num_results", 10)
+        if num_results_value is None:
+            num_results_value = 10
+
         return {
             "query_text": row["query_text"],
             "folder": row.get("folder"),
@@ -155,7 +160,7 @@ class VectorSearchPyfuncModel(mlflow.pyfunc.PythonModel):
             "from_emails": row.get("from_emails"),
             "start_date": row.get("start_date"),
             "end_date": row.get("end_date"),
-            "num_results": int(row.get("num_results", 10)),
+            "num_results": int(num_results_value),
         }
 
     def _run_single_row(self, row: pd.Series) -> List[Dict[str, Any]]:
