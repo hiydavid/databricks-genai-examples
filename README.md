@@ -10,4 +10,6 @@
 * Multi-Index Vector Search
 
 ## Agent
-* Multi-Agent System with LangGraph (WIP)
+* Multi-Agent System with LangGraph 
+* Multi-Agent Genie with LangGraph
+
