@@ -1,4 +1,3 @@
-# Databricks notebook source
 import functools
 import os
 import uuid
@@ -28,39 +27,46 @@ from mlflow.types.agent import (
 )
 from pydantic import BaseModel
 
+
+###################################################
+## Load variables from the config file
+###################################################
+
+# TODO make sure you update the config file
+configs = mlflow.models.ModelConfig(development_config="./configs.yaml")
+agent_configs = configs.get("agent_configs")
+
+LLM_ENDPOINT_NAME = agent_configs.get("llm_endpoint_name")
+GENIE_SPACE_ID = agent_configs.get("genie_agent").get("space_id")
+GENIE_DESCRIPTION = agent_configs.get("genie_agent").get("description")
+CODE_AGENT_DESCRIPTION = agent_configs.get("code_agent").get("description")
+RESEARCH_PLANNING_DESCRIPTION = agent_configs.get("research_planning_agent").get(
+    "description"
+)
+
+MAX_ITERATIONS = agent_configs.get("supervisor_agent").get("max_iterations")
+
+SYSTEM_PROMPT = agent_configs.get("supervisor_agent").get("system_prompt")
+RESEARCH_PROMPT = agent_configs.get("supervisor_agent").get("research_prompt")
+FINAL_ANSWER_PROMPT = agent_configs.get("supervisor_agent").get("final_answer_prompt")
+
 ###################################################
 ## Create a GenieAgent with access to a Genie Space
 ###################################################
 
-# TODO add GENIE_SPACE_ID and a description for this space
-# You can find the ID in the URL of the genie room /genie/rooms/<GENIE_SPACE_ID>
-# Example description: This Genie agent can answer questions based on a database containing tables related to enterprise software sales, including accounts, opportunities, opportunity history, fiscal periods, quotas, targets, teams, and users. Use Genie to fetch and analyze data from these tables by specifying the relevant columns and filters. Genie can execute SQL queries to provide precise data insights based on your questions.
-GENIE_SPACE_ID = "01f0627099691651968d0a92a26b06e9"
-genie_agent_description = (
-    "This genie agent can answer financial metric questions relevant to "
-    "SEC 10k filing Income Statement and Balance Sheet "
-    "for Apple Inc. (AAPL), Bank of America Corp (BAC), and American Express (AXP)."
-)
-
 genie_agent = GenieAgent(
     genie_space_id=GENIE_SPACE_ID,
     genie_agent_name="Genie",
-    description=genie_agent_description,
+    description=GENIE_DESCRIPTION,
     client=WorkspaceClient(
         host=os.getenv("DB_MODEL_SERVING_HOST_URL"),
         token=os.getenv("DATABRICKS_GENIE_PAT"),
     ),
 )
 
-
 ############################################
 # Define your LLM endpoint and system prompt
 ############################################
-
-# TODO: Replace with your model serving endpoint
-# multi-agent Genie works best with claude 3.7 or gpt 4o models.
-# LLM_ENDPOINT_NAME = "databricks-claude-3-7-sonnet"
-LLM_ENDPOINT_NAME = "databricks-claude-sonnet-4"
 llm = ChatDatabricks(endpoint=LLM_ENDPOINT_NAME)
 
 
@@ -74,56 +80,22 @@ tools = []
 uc_tool_names = ["system.ai.*"]
 uc_toolkit = UCFunctionToolkit(function_names=uc_tool_names)
 tools.extend(uc_toolkit.tools)
-code_agent_description = (
-    "The Coder agent specializes in solving programming challenges, generating code snippets, debugging issues, and explaining complex coding concepts.",
-)
+code_agent_description = CODE_AGENT_DESCRIPTION
 code_agent = create_react_agent(llm, tools=tools)
 
 #############################
 # Define the supervisor agent with research planning capabilities
 #############################
 
-research_planner_description = "Plans and executes parallel research queries using the Genie agent to gather comprehensive information for complex questions."
-
-# TODO update the max number of iterations between supervisor and worker nodes before returning to the user
-MAX_ITERATIONS = 3
-
 worker_descriptions = {
-    "Genie": genie_agent_description,
-    "Coder": code_agent_description,
-    "ResearchPlanner": research_planner_description,
+    "Genie": GENIE_DESCRIPTION,
+    "Coder": CODE_AGENT_DESCRIPTION,
+    "ResearchPlanner": RESEARCH_PLANNING_DESCRIPTION,
 }
 
 formatted_descriptions = "\n".join(
     f"- {name}: {desc}" for name, desc in worker_descriptions.items()
 )
-
-# Enhanced supervisor prompt with research planning capabilities
-system_prompt = f"""
-You are a supervisor managing a multi-agent system for complex business analysis with advanced research planning capabilities.
-
-For complex questions, you have multiple strategies:
-
-1. **Simple Routing**: For straightforward questions, route directly to the appropriate agent
-2. **Research Planning**: For complex questions requiring multiple data points, use the ResearchPlanner to:
-   - Break down the question into multiple specific research queries
-   - Execute parallel searches via Genie agent
-   - Gather comprehensive data from different angles
-3. **Code Analysis**: Route to Coder for programming-related tasks
-
-Available agents:
-{formatted_descriptions}
-
-**Decision Logic**:
-- Use ResearchPlanner for complex analytical questions that would benefit from multiple parallel data queries
-- Use Genie directly for single, focused financial/data questions
-- Use Coder for programming/technical implementation questions
-- Use FINISH when you have sufficient information to provide a comprehensive answer
-
-When using ResearchPlanner, the system will automatically handle parallel execution and result synthesis.
-
-Always provide comprehensive, well-structured responses that synthesize insights from multiple data sources when available.
-"""
 
 options = ["FINISH"] + list(worker_descriptions.keys())
 FINISH = {"next_node": "FINISH"}
@@ -151,20 +123,13 @@ def supervisor_agent(state):
 
     # Check if we should plan research or route normally
     preprocessor = RunnableLambda(
-        lambda state: [{"role": "system", "content": system_prompt}] + state["messages"]
+        lambda state: [{"role": "system", "content": SYSTEM_PROMPT}] + state["messages"]
     )
 
     # First, determine if we need research planning
-    research_prompt = (
-        "Analyze the user's question. Should this be handled with parallel research queries via ResearchPlanner? "
-        "Respond with should_plan_research=True if the question is complex and would benefit from multiple parallel data queries. "
-        "If planning research, provide 2-4 specific, focused queries that will gather comprehensive information. "
-        "Otherwise, route to the appropriate single agent."
-    )
-
     enhanced_preprocessor = RunnableLambda(
         lambda state: [
-            {"role": "system", "content": system_prompt + "\n\n" + research_prompt}
+            {"role": "system", "content": SYSTEM_PROMPT + "\n\n" + RESEARCH_PROMPT}
         ]
         + state["messages"]
     )
@@ -234,7 +199,7 @@ def research_planner_node(state):
 
     # Execute queries in parallel
     results = []
-    with ThreadPoolExecutor(max_workers=min(len(queries), 4)) as executor:
+    with ThreadPoolExecutor(max_workers=min(len(queries), 3)) as executor:
         # Submit all queries
         future_to_query = {
             executor.submit(execute_genie_query, query): query for query in queries
@@ -298,9 +263,9 @@ def agent_node(state, agent, name):
 
 
 def final_answer(state):
-    prompt = "Using only the content in the messages, respond to the previous user question using the answer given by the other assistant messages. Provide a comprehensive, well-structured response that synthesizes all available information."
     preprocessor = RunnableLambda(
-        lambda state: state["messages"] + [{"role": "user", "content": prompt}]
+        lambda state: state["messages"]
+        + [{"role": "user", "content": FINAL_ANSWER_PROMPT}]
     )
     final_answer_chain = preprocessor | llm
     return {"messages": [final_answer_chain.invoke(state)]}

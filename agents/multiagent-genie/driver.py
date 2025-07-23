@@ -10,18 +10,18 @@
 # MAGIC 1. Manually test the multi-agent system's output.
 # MAGIC 1. Log and deploy the multi-agent system.
 # MAGIC
-# MAGIC ## Why use a Genie agent?
-# MAGIC
-# MAGIC Multi-agent systems consist of multiple AI agents working together, each with specialized capabilities. As one of those agents, Genie allows users to interact with their structured data using natural language.
-# MAGIC
-# MAGIC Unlike SQL functions which can only run pre-defined queries, Genie has the flexibility to create novel queries to answer user questions.
-# MAGIC
-# MAGIC **In addition to using Genie, we've also added a research planning agent that is able to make paralle Genie calls in order to answer the user's complex multi-step reasoning questions.**
-# MAGIC
 # MAGIC ## Prerequisites
 # MAGIC
 # MAGIC - Address all `TODO`s in this notebook.
 # MAGIC - Create a Genie Space, see Databricks documentation ([AWS](https://docs.databricks.com/aws/genie/set-up) | [Azure](https://learn.microsoft.com/azure/databricks/genie/set-up)).
+# MAGIC - Create a Personal Access Token (PAT) as a Databricks secret
+# MAGIC   - This can either be your own PAT or that of a System Principal ([AWS](https://docs.databricks.com/aws/en/dev-tools/auth/oauth-m2m) | [Azure](https://learn.microsoft.com/en-us/azure/databricks/dev-tools/auth/oauth-m2m)). You will have to rotate this token yourself upon expiry.
+# MAGIC   - Add secrets-based environment variables to a model serving endpoint ([AWS](https://docs.databricks.com/aws/en/machine-learning/model-serving/store-env-variable-model-serving#add-secrets-based-environment-variables) | [Azure](https://learn.microsoft.com/en-us/azure/databricks/machine-learning/model-serving/store-env-variable-model-serving#add-secrets-based-environment-variables)).
+# MAGIC   - You can reference the table in the deploy docs for the right permissions level for each resource: ([AWS](https://docs.databricks.com/aws/en/generative-ai/agent-framework/deploy-agent#automatic-authentication-passthrough) | [Azure](https://learn.microsoft.com/en-us/azure/databricks/generative-ai/agent-framework/deploy-agent#automatic-authentication-passthrough)).
+# MAGIC     - Provision with `CAN RUN` on the Genie Space
+# MAGIC     - Provision with `CAN USE` on the SQL Warehouse powering the Genie Space
+# MAGIC     - Provision with `SELECT` on underlying Unity Catalog Tables 
+# MAGIC     - Provision with `EXECUTE` on underyling Unity Catalog Functions 
 
 # COMMAND ----------
 
@@ -39,14 +39,45 @@ dbutils.library.restartPython()
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Set MLflow Experiment
+# MAGIC ## Set variables and configuration
 
 # COMMAND ----------
 
 import os
 import mlflow
 
-MLFLOW_EXPERIMENT_NAME = "dhuang_multiagent_genie"
+# TODO make sure you update the config file before this
+
+configs = mlflow.models.ModelConfig(development_config="./configs.yaml")
+databricks_configs = configs.get("databricks_configs")
+agent_configs = configs.get("agent_configs")
+
+CATALOG = databricks_configs.get("catalog")
+SCHEMA = databricks_configs.get("schema")
+UC_MODEL = databricks_configs.get("model")
+MLFLOW_EXPERIMENT_NAME = databricks_configs.get("mlflow_experiment_name")
+WORKSPACE_URL = databricks_configs.get("workspace_url")
+SQL_WAREHOUSE_ID = databricks_configs.get("sql_warehouse_id")
+TABLES = databricks_configs.get("tables")
+AGENT_NAME = agent_configs.get("agent_name")
+
+SECRET_SCOPE_NAME = databricks_configs.get("databricks_pat").get("secret_scope_name")
+SECRET_KEY_NAME = databricks_configs.get("databricks_pat").get("secret_key_name")
+
+os.environ["DB_MODEL_SERVING_HOST_URL"] = WORKSPACE_URL
+os.environ["DATABRICKS_GENIE_PAT"] = dbutils.secrets.get(
+    scope=SECRET_SCOPE_NAME, key=SECRET_KEY_NAME
+)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Set MLflow Experiment
+
+# COMMAND ----------
+
+import os
+import mlflow
 
 experiment_fqdn = (
     f"{os.getcwd()}/{MLFLOW_EXPERIMENT_NAME}"
@@ -68,7 +99,7 @@ mlflow.set_experiment(experiment_fqdn)
 
 # MAGIC %md 
 # MAGIC
-# MAGIC ## Create and Load `Agent.py` Code
+# MAGIC ## Load the `parallel-genie-multiagent` notebook
 # MAGIC
 # MAGIC Create a multi-agent system in LangGraph using a supervisor agent node directing the following agent nodes:
 # MAGIC - **GenieAgent**: The Genie agent that queries and reasons over structured data.
@@ -102,41 +133,6 @@ display(Image(AGENT.agent.get_graph().draw_mermaid_png()))
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Create a Personal Access Token (PAT) as a Databricks secret
-# MAGIC In order to access the Genie Space and its underlying resources, we need to create a PAT
-# MAGIC - This can either be your own PAT or that of a System Principal ([AWS](https://docs.databricks.com/aws/en/dev-tools/auth/oauth-m2m) | [Azure](https://learn.microsoft.com/en-us/azure/databricks/dev-tools/auth/oauth-m2m)). You will have to rotate this token yourself upon expiry.
-# MAGIC - Add secrets-based environment variables to a model serving endpoint ([AWS](https://docs.databricks.com/aws/en/machine-learning/model-serving/store-env-variable-model-serving#add-secrets-based-environment-variables) | [Azure](https://learn.microsoft.com/en-us/azure/databricks/machine-learning/model-serving/store-env-variable-model-serving#add-secrets-based-environment-variables)).
-# MAGIC - You can reference the table in the deploy docs for the right permissions level for each resource: ([AWS](https://docs.databricks.com/aws/en/generative-ai/agent-framework/deploy-agent#automatic-authentication-passthrough) | [Azure](https://learn.microsoft.com/en-us/azure/databricks/generative-ai/agent-framework/deploy-agent#automatic-authentication-passthrough)).
-# MAGIC   - Provision with `CAN RUN` on the Genie Space
-# MAGIC   - Provision with `CAN USE` on the SQL Warehouse powering the Genie Space
-# MAGIC   - Provision with `SELECT` on underlying Unity Catalog Tables 
-# MAGIC   - Provision with `EXECUTE` on underyling Unity Catalog Functions 
-
-# COMMAND ----------
-
-import os
-from dbruntime.databricks_repl_context import get_context
-
-WORKSPACE_URL = "https://e2-demo-field-eng.cloud.databricks.com/"
-
-os.environ["DB_MODEL_SERVING_HOST_URL"] = WORKSPACE_URL
-assert os.environ["DB_MODEL_SERVING_HOST_URL"] is not None
-
-# COMMAND ----------
-
-secret_scope_name = "dhuang"
-secret_key_name = "dbx-token"
-
-os.environ["DATABRICKS_GENIE_PAT"] = dbutils.secrets.get(
-    scope=secret_scope_name, key=secret_key_name
-)
-assert (
-    os.environ["DATABRICKS_GENIE_PAT"] is not None
-), "The DATABRICKS_GENIE_PAT was not properly set to the PAT secret"
-
-# COMMAND ----------
-
-# MAGIC %md
 # MAGIC ## Test the agent
 # MAGIC
 # MAGIC Interact with the agent to test its output. Since this notebook called `mlflow.langchain.autolog()` you can view the trace for each step the agent takes.
@@ -155,7 +151,7 @@ input_example = {
     "messages": [
         {
             "role": "user",
-            "content": sample_questions[2],
+            "content": sample_questions[0],
         }
     ]
 }
@@ -192,17 +188,6 @@ print(response.messages[-1].content)
 
 # COMMAND ----------
 
-# TODO: Get the SQL warehouse ID
-SQL_WAREHOUSE_ID = "862f1d757f0424f7"
-
-# TODO: Get the table names
-tables = [
-    "users.david_huang.genie_balance_sheet",
-    "users.david_huang.genie_income_statement"
-]
-
-# COMMAND ----------
-
 # Determine Databricks resources to specify for automatic auth passthrough at deployment time
 import mlflow
 from databricks_langchain import UnityCatalogTool, VectorSearchRetrieverTool
@@ -220,8 +205,12 @@ resources = [
     DatabricksSQLWarehouse(warehouse_id=SQL_WAREHOUSE_ID),
 ]
 
-for table in tables:
-    resources.append(DatabricksTable(table_name=table))
+for table in TABLES:
+    resources.append(
+        DatabricksTable(
+            table_name=f"{CATALOG}.{SCHEMA}.{table}",
+        )
+    )
 
 for tool in tools:
     if isinstance(tool, VectorSearchRetrieverTool):
@@ -237,8 +226,9 @@ from pkg_resources import get_distribution
 
 with mlflow.start_run():
     logged_agent_info = mlflow.pyfunc.log_model(
-        name="genie-reasoning-agent",
-        python_model="parallel-genie-multiagent", # point to the agent code
+        name=AGENT_NAME,
+        python_model=os.path.join(os.getcwd(), "parallel-genie-multiagent"), # point to the agent code
+        model_config=os.path.join(os.getcwd(), "configs.yaml"), # point to the config file
         input_example=input_example,
         resources=resources,
         pip_requirements=[
@@ -258,7 +248,7 @@ with mlflow.start_run():
 # COMMAND ----------
 
 mlflow.models.predict(
-    model_uri=f"runs:/{logged_agent_info.run_id}/genie-reasoning-agent",
+    model_uri=f"runs:/{logged_agent_info.run_id}/{AGENT_NAME}",
     input_data=input_example,
     env_manager="uv",
 )
@@ -273,12 +263,7 @@ mlflow.models.predict(
 # COMMAND ----------
 
 mlflow.set_registry_uri("databricks-uc")
-
-# TODO: define the catalog, schema, and model name for your UC model
-catalog = "users"
-schema = "david_huang"
-model_name = "multiagent_genie"
-UC_MODEL_NAME = f"{catalog}.{schema}.{model_name}"
+UC_MODEL_NAME = f"{CATALOG}.{SCHEMA}.{UC_MODEL}"
 
 # register the model to UC
 uc_registered_model_info = mlflow.register_model(
@@ -299,7 +284,7 @@ agents.deploy(
     uc_registered_model_info.version,
     tags={"endpointSource": "docs"},
     environment_vars={
-        "DATABRICKS_GENIE_PAT": f"{{{{secrets/{secret_scope_name}/{secret_key_name}}}}}"
+        "DATABRICKS_GENIE_PAT": f"{{{{secrets/{SECRET_SCOPE_NAME}/{SECRET_KEY_NAME}}}}}"
     },
 )
 

@@ -1,0 +1,68 @@
+databricks_configs:
+  catalog: # TODO: add catalog
+  schema: # TODO: add schema
+  model: # TODO: add UC model name
+  workspace_url: # TODO: add workspace url
+  sql_warehouse_id: # TODO: add sql warehouse id
+  databricks_pat:
+    secret_scope_name: # TODO: add secret scope name
+    secret_key_name: # TODO: add secret key name
+  mlflow_experiment_name: # TODO: add mlflow experiment name
+  tables: [] # TODO: add tables
+
+agent_configs:
+  agent_name: genie-reasoning-agent
+  # llm_endpoint_name: "databricks-claude-sonnet-4"
+  llm_endpoint_name: "databricks-claude-3-7-sonnet"
+  genie_agent:
+    space_id: # TODO: add Genie space id
+    description: |
+      This genie agent can answer financial metric questions relevant to SEC 10k filing Income Statement and Balance Sheet for Apple Inc. (AAPL), Bank of America Corp (BAC), and American Express (AXP).
+  code_agent:
+    description: |
+      The Coder agent specializes in solving programming challenges, generating code snippets, debugging issues, and explaining complex coding concepts.
+  research_planning_agent:
+    description: |
+      Plans and executes parallel research queries using the Genie agent to gather comprehensive information for complex questions.
+  supervisor_agent:
+    max_iterations: 3
+    system_prompt: |
+      You are a supervisor managing a multi-agent system for complex business analysis with advanced research planning capabilities.
+
+      For complex questions, you have multiple strategies:
+
+      1. **Simple Routing**: For straightforward questions, route directly to the appropriate agent
+      2. **Research Planning**: For complex questions requiring multiple data points, use the ResearchPlanner to:
+        - Break down the question into multiple specific research queries
+        - Execute parallel searches via Genie agent
+        - Gather comprehensive data from different angles
+      3. **Code Analysis**: Route to Coder for programming-related tasks
+
+      Available agents:
+      {formatted_descriptions}
+
+      **Decision Logic**:
+      - Use ResearchPlanner for complex analytical questions that would benefit from multiple parallel data queries
+      - Use Genie directly for single, focused financial/data questions
+      - Use Coder for programming/technical implementation questions
+      - Use FINISH when you have sufficient information to provide a comprehensive answer
+
+      When using ResearchPlanner, the system will automatically handle parallel execution and result synthesis.
+
+      Always provide comprehensive, well-structured responses that synthesize insights from multiple data sources when available.
+    
+    research_prompt: |
+      Analyze the user's question. Should this be handled with parallel research queries via ResearchPlanner? Respond with should_plan_research=True if the question is complex and would benefit from multiple parallel data queries.
+      
+      If planning research, provide 2-4 specific, focused queries that will gather comprehensive information. "
+      
+      Otherwise, route to the appropriate single agent.
+    
+    final_answer_prompt: |
+      Using only the content in the messages, respond to the previous user question using the answer given by the other assistant messages. Provide a comprehensive, well-structured response that synthesizes all available information.
+    
+
+
+
+
+
