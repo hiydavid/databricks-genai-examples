@@ -59,9 +59,3 @@ agent_configs:
     
     final_answer_prompt: |
       Using only the content in the messages, respond to the previous user question using the answer given by the other assistant messages. Provide a comprehensive, well-structured response that synthesizes all available information.
-    
-
-
-
-
-
