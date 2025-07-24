@@ -28,9 +28,9 @@ from mlflow.types.agent import (
 from pydantic import BaseModel
 
 
-###################################################
+######################################
 ## Load variables from the config file
-###################################################
+######################################
 
 # TODO make sure you update the config file
 configs = mlflow.models.ModelConfig(development_config="./configs.yaml")
@@ -83,9 +83,9 @@ tools.extend(uc_toolkit.tools)
 code_agent_description = CODE_AGENT_DESCRIPTION
 code_agent = create_react_agent(llm, tools=tools)
 
-#############################
+#################################################################
 # Define the supervisor agent with research planning capabilities
-#############################
+#################################################################
 
 worker_descriptions = {
     "Genie": GENIE_DESCRIPTION,
@@ -155,9 +155,9 @@ def supervisor_agent(state):
     return result
 
 
-#######################################
+##############################################
 # Research Planner Node for Parallel Execution
-#######################################
+##############################################
 
 
 def research_planner_node(state):
@@ -384,8 +384,7 @@ class LangGraphChatAgent(ChatAgent):
                     yield ChatAgentChunk(**{"delta": msg_dict})
 
 
-# Create the agent object, and specify it as the agent object to use when
-# loading the agent back for inference via mlflow.models.set_model()
+# Create the agent object
 mlflow.langchain.autolog()
 AGENT = LangGraphChatAgent(multi_agent)
 mlflow.models.set_model(AGENT)
