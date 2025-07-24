@@ -12,17 +12,16 @@ databricks_configs:
 
 agent_configs:
   agent_name: genie-reasoning-agent
-  # llm_endpoint_name: "databricks-claude-sonnet-4"
-  llm_endpoint_name: "databricks-claude-3-7-sonnet"
+  llm_endpoint_name: "databricks-claude-3-7-sonnet" # TODO: or use "databricks-claude-sonnet-4"
   genie_agent:
     space_id: # TODO: add Genie space id
-    description: |
+    description: | # TODO: add your Genie agent description
       This genie agent can answer financial metric questions relevant to SEC 10k filing Income Statement and Balance Sheet for Apple Inc. (AAPL), Bank of America Corp (BAC), and American Express (AXP).
   code_agent:
-    description: |
+    description: | # TODO: add your Coder agent description
       The Coder agent specializes in solving programming challenges, generating code snippets, debugging issues, and explaining complex coding concepts.
   research_planning_agent:
-    description: |
+    description: | # TODO: add your ResearchPlanning agent description
       Plans and executes parallel research queries using the Genie agent to gather comprehensive information for complex questions.
   supervisor_agent:
     max_iterations: 3
