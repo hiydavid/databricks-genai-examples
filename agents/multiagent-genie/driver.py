@@ -20,8 +20,8 @@
 # MAGIC   - You can reference the table in the deploy docs for the right permissions level for each resource: ([AWS](https://docs.databricks.com/aws/en/generative-ai/agent-framework/deploy-agent#automatic-authentication-passthrough) | [Azure](https://learn.microsoft.com/en-us/azure/databricks/generative-ai/agent-framework/deploy-agent#automatic-authentication-passthrough)).
 # MAGIC     - Provision with `CAN RUN` on the Genie Space
 # MAGIC     - Provision with `CAN USE` on the SQL Warehouse powering the Genie Space
-# MAGIC     - Provision with `SELECT` on underlying Unity Catalog Tables 
-# MAGIC     - Provision with `EXECUTE` on underyling Unity Catalog Functions 
+# MAGIC     - Provision with `SELECT` on underlying Unity Catalog Tables
+# MAGIC     - Provision with `EXECUTE` on underyling Unity Catalog Functions
 
 # COMMAND ----------
 
@@ -40,6 +40,7 @@ dbutils.library.restartPython()
 
 # MAGIC %md
 # MAGIC ## Set variables and configuration
+# MAGIC Be sure to go to the `configs.yaml` file and input your resource variables and configuration.
 
 # COMMAND ----------
 
@@ -79,9 +80,7 @@ os.environ["DATABRICKS_GENIE_PAT"] = dbutils.secrets.get(
 import os
 import mlflow
 
-experiment_fqdn = (
-    f"{os.getcwd()}/{MLFLOW_EXPERIMENT_NAME}"
-)
+experiment_fqdn = f"{os.getcwd()}/{MLFLOW_EXPERIMENT_NAME}"
 
 # Check if the experiment exists
 experiment = mlflow.get_experiment_by_name(experiment_fqdn)
@@ -97,7 +96,7 @@ mlflow.set_experiment(experiment_fqdn)
 
 # COMMAND ----------
 
-# MAGIC %md 
+# MAGIC %md
 # MAGIC
 # MAGIC ## Load the `parallel-genie-multiagent` notebook
 # MAGIC
@@ -112,7 +111,7 @@ mlflow.set_experiment(experiment_fqdn)
 # MAGIC
 # MAGIC #### Wrap the LangGraph agent using the `ChatAgent` interface
 # MAGIC
-# MAGIC Databricks recommends using `ChatAgent` to ensure compatibility with Databricks AI features and to simplify authoring multi-turn conversational agents using an open source standard. 
+# MAGIC Databricks recommends using `ChatAgent` to ensure compatibility with Databricks AI features and to simplify authoring multi-turn conversational agents using an open source standard.
 # MAGIC
 # MAGIC The `LangGraphChatAgent` class implements the `ChatAgent` interface to wrap the LangGraph agent.
 # MAGIC
@@ -144,7 +143,7 @@ display(Image(AGENT.agent.get_graph().draw_mermaid_png()))
 sample_questions = [
     "What's the debt-to-asset ratio for American Express from 2012 to 2021, compare to that of Bank of America?",
     "Give me an executive summary comparing year-on-year revenue growth from 2012 to 2021 between the AAPL and BAC?",
-    "Why is BAC's revenue growth so volatile between the years 2012 to 2021?"
+    "Why is BAC's revenue growth so volatile between the years 2012 to 2021?",
 ]
 
 input_example = {
@@ -173,7 +172,7 @@ print(response.messages[-1].content)
 
 # COMMAND ----------
 
-# MAGIC %md 
+# MAGIC %md
 # MAGIC ## Log the agent as an MLflow model
 # MAGIC
 # MAGIC Log the agent as code from the `agent.py` file. See [MLflow - Models from Code](https://mlflow.org/docs/latest/models.html#models-from-code).
@@ -227,8 +226,12 @@ from pkg_resources import get_distribution
 with mlflow.start_run():
     logged_agent_info = mlflow.pyfunc.log_model(
         name=AGENT_NAME,
-        python_model=os.path.join(os.getcwd(), "parallel-genie-multiagent"), # point to the agent code
-        model_config=os.path.join(os.getcwd(), "configs.yaml"), # point to the config file
+        python_model=os.path.join(
+            os.getcwd(), "parallel-genie-multiagent"
+        ),  # point to the agent code
+        model_config=os.path.join(
+            os.getcwd(), "configs.yaml"
+        ),  # point to the config file
         input_example=input_example,
         resources=resources,
         pip_requirements=[
@@ -241,7 +244,7 @@ with mlflow.start_run():
 
 # COMMAND ----------
 
-# MAGIC %md 
+# MAGIC %md
 # MAGIC ## Pre-deployment agent validation
 # MAGIC Before registering and deploying the agent, perform pre-deployment checks using the [mlflow.models.predict()](https://mlflow.org/docs/latest/python_api/mlflow.models.html#mlflow.models.predict) API. See Databricks documentation ([AWS](https://docs.databricks.com/en/machine-learning/model-serving/model-serving-debug.html#validate-inputs) | [Azure](https://learn.microsoft.com/en-us/azure/databricks/machine-learning/model-serving/model-serving-debug#before-model-deployment-validation-checks)).
 
