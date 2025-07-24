@@ -1,7 +1,8 @@
 # Databricks Tutorials
 
 ## Batch Inference
-* Batch Inference with CPU Model Serving Endpoints
+* CPU Model Serving Endpoint Batch Inference
+* Provisioned Throughput Endpoint Batch Inference with `AI_Query`
 
 ## Fine-Tuning
 * Structured Extraction with LLM
