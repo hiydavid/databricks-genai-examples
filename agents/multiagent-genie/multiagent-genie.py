@@ -8,10 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import mlflow
 from databricks.sdk import WorkspaceClient
-from databricks_langchain import (
-    ChatDatabricks,
-    UCFunctionToolkit,
-)
+from databricks_langchain import ChatDatabricks
 from databricks_langchain.genie import GenieAgent
 from langchain_core.runnables import RunnableLambda
 from langgraph.graph import END, StateGraph, add_messages
@@ -39,7 +36,6 @@ agent_configs = configs.get("agent_configs")
 LLM_ENDPOINT_NAME = agent_configs.get("llm_endpoint_name")
 GENIE_SPACE_ID = agent_configs.get("genie_agent").get("space_id")
 GENIE_DESCRIPTION = agent_configs.get("genie_agent").get("description")
-CODE_AGENT_DESCRIPTION = agent_configs.get("code_agent").get("description")
 RESEARCH_PLANNING_DESCRIPTION = agent_configs.get("research_planning_agent").get(
     "description"
 )
@@ -70,26 +66,12 @@ genie_agent = GenieAgent(
 llm = ChatDatabricks(endpoint=LLM_ENDPOINT_NAME)
 
 
-############################################################
-# Create a code agent
-# You can also create agents with access to additional tools
-############################################################
-tools = []
-
-# TODO if desired, add additional tools and update the description of this agent
-uc_tool_names = ["system.ai.*"]
-uc_toolkit = UCFunctionToolkit(function_names=uc_tool_names)
-tools.extend(uc_toolkit.tools)
-code_agent_description = CODE_AGENT_DESCRIPTION
-code_agent = create_react_agent(llm, tools=tools)
-
 #################################################################
 # Define the supervisor agent with research planning capabilities
 #################################################################
 
 worker_descriptions = {
     "Genie": GENIE_DESCRIPTION,
-    "Coder": CODE_AGENT_DESCRIPTION,
     "ResearchPlanner": RESEARCH_PLANNING_DESCRIPTION,
 }
 
@@ -116,6 +98,7 @@ class ResearchPlanOutput(BaseModel):
     next_node: Literal[tuple(options)]
 
 
+@mlflow.trace(span_type=SpanType.AGENT, name="supervisor_agent")
 def supervisor_agent(state):
     count = state.get("iteration_count", 0) + 1
     if count > MAX_ITERATIONS:
@@ -160,6 +143,7 @@ def supervisor_agent(state):
 ##############################################
 
 
+@mlflow.trace(span_type=SpanType.AGENT, name="research_planner")
 def research_planner_node(state):
     """Execute multiple Genie queries in parallel based on the research plan."""
     research_plan = state.get("research_plan")
@@ -178,6 +162,7 @@ def research_planner_node(state):
     queries = research_plan["queries"]
     rationale = research_plan.get("rationale", "")
 
+    @mlflow.trace(span_type=SpanType.AGENT, name="execute_genie_query")
     def execute_genie_query(query: str) -> Dict[str, Any]:
         """Execute a single Genie query."""
         try:
@@ -230,7 +215,7 @@ def research_planner_node(state):
         f"\n\nSynthesis: The parallel research has gathered comprehensive data from {len(queries)} different angles. This information can now be used to provide a complete answer to the original question."
     )
 
-    consolidated_response = "\n".join(response_parts)
+    consolidated_response = "\n\n".join(response_parts)
 
     return {
         "messages": [
@@ -249,6 +234,7 @@ def research_planner_node(state):
 #######################################
 
 
+@mlflow.trace(span_type=SpanType.AGENT)
 def agent_node(state, agent, name):
     result = agent.invoke(state)
     return {
@@ -262,6 +248,7 @@ def agent_node(state, agent, name):
     }
 
 
+@mlflow.trace(span_type=SpanType.AGENT, name="final_answer")
 def final_answer(state):
     preprocessor = RunnableLambda(
         lambda state: state["messages"]
@@ -279,26 +266,24 @@ class AgentState(TypedDict):
     research_results: Optional[List[Dict[str, Any]]]
 
 
-code_node = functools.partial(agent_node, agent=code_agent, name="Coder")
 genie_node = functools.partial(agent_node, agent=genie_agent, name="Genie")
 
 workflow = StateGraph(AgentState)
 workflow.add_node("Genie", genie_node)
-workflow.add_node("Coder", code_node)
 workflow.add_node("ResearchPlanner", research_planner_node)
 workflow.add_node("supervisor", supervisor_agent)
 workflow.add_node("final_answer", final_answer)
 
 workflow.set_entry_point("supervisor")
 # We want our workers to ALWAYS "report back" to the supervisor when done
-for worker in ["Genie", "Coder", "ResearchPlanner"]:
+for worker in ["Genie", "ResearchPlanner"]:
     workflow.add_edge(worker, "supervisor")
 
 # Let the supervisor decide which next node to go
 workflow.add_conditional_edges(
     "supervisor",
     lambda x: x["next_node"],
-    {**{k: k for k in ["Genie", "Coder", "ResearchPlanner"]}, "FINISH": "final_answer"},
+    {**{k: k for k in ["Genie", "ResearchPlanner"]}, "FINISH": "final_answer"},
 )
 workflow.add_edge("final_answer", END)
 multi_agent = workflow.compile()
@@ -384,7 +369,8 @@ class LangGraphChatAgent(ChatAgent):
                     yield ChatAgentChunk(**{"delta": msg_dict})
 
 
-# Create the agent object
+# Create the agent object, and specify it as the agent object to use when
+# loading the agent back for inference via mlflow.models.set_model()
 mlflow.langchain.autolog()
 AGENT = LangGraphChatAgent(multi_agent)
 mlflow.models.set_model(AGENT)

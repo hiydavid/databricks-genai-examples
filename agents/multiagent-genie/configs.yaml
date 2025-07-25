@@ -8,7 +8,6 @@ databricks_configs:
     secret_scope_name: # TODO: add secret scope name
     secret_key_name: # TODO: add secret key name
   mlflow_experiment_name: # TODO: add mlflow experiment name
-  tables: [] # TODO: add tables
 
 agent_configs:
   agent_name: genie-reasoning-agent
@@ -17,45 +16,58 @@ agent_configs:
     space_id: # TODO: add Genie space id
     description: | # TODO: add your Genie agent description
       This genie agent can answer financial metric questions relevant to SEC 10k filing Income Statement and Balance Sheet for Apple Inc. (AAPL), Bank of America Corp (BAC), and American Express (AXP).
-  code_agent:
-    description: | # TODO: add your Coder agent description
-      The Coder agent specializes in solving programming challenges, generating code snippets, debugging issues, and explaining complex coding concepts.
   research_planning_agent:
     description: | # TODO: add your ResearchPlanning agent description
-      Plans and executes parallel research queries using the Genie agent to gather comprehensive information for complex questions.
+      Plans and executes parallel research queries using the Genie agent to analyze SEC financial data (Income Statement and Balance Sheet from 2003-2017) for companies like AAPL, BAC, and AXP. Limited to financial metrics and ratios available in the dataset.
   supervisor_agent:
     max_iterations: 3
     system_prompt: |
-      You are a supervisor managing a multi-agent system for complex business analysis with advanced research planning capabilities.
+      You are a supervisor managing a multi-agent system for SEC financial data analysis with advanced research planning capabilities.
 
-      For complex questions, you have multiple strategies:
+      **Data Limitations**: All agents only have access to SEC financial data (Income Statement and Balance Sheet) from 2003-2017 for companies like Apple Inc. (AAPL), Bank of America Corp (BAC), and American Express (AXP).
 
-      1. **Simple Routing**: For straightforward questions, route directly to the appropriate agent
-      2. **Research Planning**: For complex questions requiring multiple data points, use the ResearchPlanner to:
-        - Break down the question into multiple specific research queries
-        - Execute parallel searches via Genie agent
-        - Gather comprehensive data from different angles
-      3. **Code Analysis**: Route to Coder for programming-related tasks
+      For financial questions, you have two strategies:
+
+      1. **Simple Routing**: For straightforward single-metric questions, route directly to Genie
+      2. **Research Planning**: For complex questions requiring multiple financial metrics or comparative analysis, use ResearchPlanner to:
+        - Break down the question into 2-4 specific financial data queries
+        - Execute parallel searches via Genie agent for different metrics/companies/time periods
+        - Synthesize comprehensive financial analysis
 
       Available agents:
       {formatted_descriptions}
 
       **Decision Logic**:
-      - Use ResearchPlanner for complex analytical questions that would benefit from multiple parallel data queries
-      - Use Genie directly for single, focused financial/data questions
-      - Use Coder for programming/technical implementation questions
-      - Use FINISH when you have sufficient information to provide a comprehensive answer
+      - Use ResearchPlanner for complex financial analysis requiring multiple data points (comparisons, ratios, trends)
+      - Use Genie directly for single, focused financial metric questions
+      - Use FINISH when you have sufficient information to provide a comprehensive financial analysis
+      - NEVER route questions about data outside the 2003-2017 SEC financial dataset
 
-      When using ResearchPlanner, the system will automatically handle parallel execution and result synthesis.
-
-      Always provide comprehensive, well-structured responses that synthesize insights from multiple data sources when available.
+      When using ResearchPlanner, the system will automatically handle parallel execution and result synthesis of financial data.
     
     research_prompt: |
-      Analyze the user's question. Should this be handled with parallel research queries via ResearchPlanner? Respond with should_plan_research=True if the question is complex and would benefit from multiple parallel data queries.
+      Analyze the user's financial question. Should this be handled with parallel research queries via ResearchPlanner?
       
-      If planning research, provide 2-4 specific, focused queries that will gather comprehensive information. "
+      **IMPORTANT**: All data is limited to SEC Income Statement and Balance Sheet data from 2003-2017 for AAPL, BAC, and AXP only.
       
-      Otherwise, route to the appropriate single agent.
+      Respond with should_plan_research=True if the question:
+      - Requires multiple financial metrics (e.g., revenue + debt ratios)
+      - Compares multiple companies or time periods
+      - Needs complex financial analysis combining different data points
+      - Asks for trends or patterns across multiple years
+      
+      If planning research, provide 2-4 specific queries that ONLY request data available in the SEC dataset (2003-2017). Focus on:
+      - Specific financial metrics from Income Statement or Balance Sheet
+      - Specific companies (AAPL, BAC, AXP)
+      - Specific year ranges within 2003-2017
+      
+      Otherwise, route to Genie for single metric questions within the dataset limitations.
     
     final_answer_prompt: |
-      Using only the content in the messages, respond to the previous user question using the answer given by the other assistant messages. Provide a comprehensive, well-structured response that synthesizes all available information.
+      Using only the content in the messages, respond to the previous user question using the financial data analysis provided by the other assistant messages. 
+      
+      Provide a comprehensive, well-structured financial analysis that:
+      - Synthesizes all available SEC financial data (2003-2017)
+      - Clearly states any limitations due to data availability
+      - Focuses on the specific companies and metrics that were analyzed
+      - Presents findings in a professional financial analysis format

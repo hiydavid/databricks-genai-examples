@@ -59,7 +59,6 @@ UC_MODEL = databricks_configs.get("model")
 MLFLOW_EXPERIMENT_NAME = databricks_configs.get("mlflow_experiment_name")
 WORKSPACE_URL = databricks_configs.get("workspace_url")
 SQL_WAREHOUSE_ID = databricks_configs.get("sql_warehouse_id")
-TABLES = databricks_configs.get("tables")
 AGENT_NAME = agent_configs.get("agent_name")
 
 SECRET_SCOPE_NAME = databricks_configs.get("databricks_pat").get("secret_scope_name")
@@ -98,11 +97,10 @@ mlflow.set_experiment(experiment_fqdn)
 
 # MAGIC %md
 # MAGIC
-# MAGIC ## Load the `parallel-genie-multiagent` notebook
+# MAGIC ## Load the `multiagent-genie` notebook
 # MAGIC
 # MAGIC Create a multi-agent system in LangGraph using a supervisor agent node directing the following agent nodes:
 # MAGIC - **GenieAgent**: The Genie agent that queries and reasons over structured data.
-# MAGIC - **Tool-calling agent**: An agent that calls Unity Catalog function tools.
 # MAGIC - **Research planner agent**: An agent that can create a research plan and then make parallel calls to the GenieAgent for complex multi-step reasoning questions.
 # MAGIC
 # MAGIC In this example, the tool-calling agent uses the built-in Unity Catalog function `system.ai.python_exec` to execute Python code.
@@ -121,7 +119,7 @@ mlflow.set_experiment(experiment_fqdn)
 
 # COMMAND ----------
 
-# MAGIC %run ./parallel-genie-multiagent
+# MAGIC %run ./multiagent-genie
 
 # COMMAND ----------
 
@@ -175,7 +173,7 @@ print(response.messages[-1].content)
 # MAGIC %md
 # MAGIC ## Log the agent as an MLflow model
 # MAGIC
-# MAGIC Log the agent as code from the `agent.py` file. See [MLflow - Models from Code](https://mlflow.org/docs/latest/models.html#models-from-code).
+# MAGIC Log the agent as code from the `multiagent-genie.py` file. See [MLflow - Models from Code](https://mlflow.org/docs/latest/models.html#models-from-code).
 # MAGIC
 # MAGIC ### Enable automatic authentication for Databricks resources
 # MAGIC For the most common Databricks resource types, Databricks supports and recommends declaring resource dependencies for the agent upfront during logging. This enables automatic authentication passthrough when you deploy the agent. With automatic authentication passthrough, Databricks automatically provisions, rotates, and manages short-lived credentials to securely access these resource dependencies from within the agent endpoint.
@@ -189,13 +187,10 @@ print(response.messages[-1].content)
 
 # Determine Databricks resources to specify for automatic auth passthrough at deployment time
 import mlflow
-from databricks_langchain import UnityCatalogTool, VectorSearchRetrieverTool
 from mlflow.models.resources import (
-    DatabricksFunction,
     DatabricksGenieSpace,
     DatabricksServingEndpoint,
     DatabricksSQLWarehouse,
-    DatabricksTable,
 )
 
 resources = [
@@ -203,19 +198,6 @@ resources = [
     DatabricksGenieSpace(genie_space_id=GENIE_SPACE_ID),
     DatabricksSQLWarehouse(warehouse_id=SQL_WAREHOUSE_ID),
 ]
-
-for table in TABLES:
-    resources.append(
-        DatabricksTable(
-            table_name=f"{CATALOG}.{SCHEMA}.{table}",
-        )
-    )
-
-for tool in tools:
-    if isinstance(tool, VectorSearchRetrieverTool):
-        resources.extend(tool.resources)
-    elif isinstance(tool, UnityCatalogTool):
-        resources.append(DatabricksFunction(function_name=tool.uc_function_name))
 
 print(resources)
 
@@ -227,7 +209,7 @@ with mlflow.start_run():
     logged_agent_info = mlflow.pyfunc.log_model(
         name=AGENT_NAME,
         python_model=os.path.join(
-            os.getcwd(), "parallel-genie-multiagent"
+            os.getcwd(), "multiagent-genie"
         ),  # point to the agent code
         model_config=os.path.join(
             os.getcwd(), "configs.yaml"
