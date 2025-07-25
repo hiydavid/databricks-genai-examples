@@ -1,19 +1,13 @@
 # Databricks notebook source
 # DBTITLE 1,Load libraries
 # Standard library imports
-from typing import Any, Callable, Dict, Generator, List, Optional, Annotated
-from operator import itemgetter
+from typing import Any, Dict, Generator, List, Optional
 import os
 
-# Third-party imports
-from pydantic import BaseModel, Field
-
 # Databricks imports
-from databricks.vector_search.client import VectorSearchClient
 from databricks_langchain import (
     ChatDatabricks,
     UCFunctionToolkit,
-    VectorSearchRetrieverTool,
     DatabricksVectorSearch,
 )
 
@@ -29,33 +23,21 @@ from mlflow.types.agent import (
 )
 
 # LangChain core imports
-from langchain_core.runnables import RunnableLambda, RunnablePassthrough, RunnableBranch
-from langchain_core.output_parsers import StrOutputParser, BaseOutputParser
-from langchain_core.prompts import (
-    PromptTemplate,
-    ChatPromptTemplate,
-    MessagesPlaceholder,
-)
-from langchain_core.messages import HumanMessage, AIMessage
-from langchain_core.tools import tool, InjectedToolCallId
+from langchain_core.tools import tool
 
 # LangChain community imports
-from langchain.chat_models import init_chat_model
-from langchain.retrievers.multi_query import MultiQueryRetriever
 from langchain.chains.query_constructor.schema import AttributeInfo
 from langchain.retrievers.self_query.base import SelfQueryRetriever
 from langchain_community.query_constructors.databricks_vector_search import (
     DatabricksVectorSearchTranslator,
 )
 from langchain.chains.query_constructor.base import (
-    get_query_constructor_prompt,
     load_query_constructor_runnable,
 )
 
 # LangGraph imports
-from langgraph.prebuilt import InjectedState, create_react_agent
+from langgraph.prebuilt import create_react_agent
 from langgraph.graph import StateGraph, START, MessagesState, END
-from langgraph.types import Command
 
 # COMMAND ----------
 
@@ -75,21 +57,8 @@ def create_handoff_tool(*, agent_name: str, description: str | None = None):
     description = description or f"Ask {agent_name} for help."
 
     @tool(name, description=description)
-    def handoff_tool(
-        state: Annotated[MessagesState, InjectedState],
-        tool_call_id: Annotated[str, InjectedToolCallId],
-    ) -> Command:
-        tool_message = {
-            "role": "tool",
-            "content": f"Successfully transferred to {agent_name}",
-            "name": name,
-            "tool_call_id": tool_call_id,
-        }
-        return Command(
-            goto=agent_name,
-            update={**state, "messages": state["messages"] + [tool_message]},
-            graph=Command.PARENT,
-        )
+    def handoff_tool() -> str:
+        return f"Successfully transferred to {agent_name}"
 
     return handoff_tool
 
@@ -382,6 +351,40 @@ supervisor_agent = create_react_agent(
 # COMMAND ----------
 
 # DBTITLE 1,Define multi-agent graph
+def route_after_agent(state):
+    """Route to the next agent based on handoff tool messages"""
+    # Look through the last few messages to find handoff tool calls or tool messages
+    messages = state["messages"]
+    
+    for message in reversed(messages[-5:]):  # Check last 5 messages
+        # Check for AI messages with handoff tool calls
+        if hasattr(message, 'tool_calls') and message.tool_calls:
+            for tool_call in message.tool_calls:
+                if tool_call["name"] == "transfer_to_planner_agent":
+                    print("DEBUG: Routing to planner_agent via tool_call")
+                    return "planner_agent"
+                elif tool_call["name"] == "transfer_to_document_retrieval_agent":
+                    print("DEBUG: Routing to document_retrieval_agent via tool_call")
+                    return "document_retrieval_agent" 
+                elif tool_call["name"] == "transfer_to_supervisor_agent":
+                    print("DEBUG: Routing to supervisor_agent via tool_call")
+                    return "supervisor_agent"
+        
+        # Also check for ToolMessages from handoff tools
+        if hasattr(message, 'name') and hasattr(message, 'role') and message.role == "tool":
+            if message.name == "transfer_to_planner_agent":
+                print("DEBUG: Routing to planner_agent via tool_message")
+                return "planner_agent"
+            elif message.name == "transfer_to_document_retrieval_agent":
+                print("DEBUG: Routing to document_retrieval_agent via tool_message")
+                return "document_retrieval_agent"
+            elif message.name == "transfer_to_supervisor_agent": 
+                print("DEBUG: Routing to supervisor_agent via tool_message")
+                return "supervisor_agent"
+    
+    print("DEBUG: No handoff detected, routing to END")            
+    return END
+
 # Define the multi-agent supervisor graph
 multi_agent_graph = (
     StateGraph(MessagesState)
@@ -390,13 +393,12 @@ multi_agent_graph = (
     .add_node("planner_agent", planner_agent)
     .add_node("supervisor_agent", supervisor_agent)
     .add_node("document_retrieval_agent", document_retrieval_agent)
-    # define the flow - only direct edges for entry and exit points
+    # define the flow
     .add_edge(START, "validator_agent")  # entry point
+    .add_conditional_edges("validator_agent", route_after_agent)
+    .add_conditional_edges("planner_agent", route_after_agent)
+    .add_conditional_edges("document_retrieval_agent", route_after_agent)
     .add_edge("supervisor_agent", END)  # exit point - supervisor provides final response
-    # All other transitions handled by handoff tools:
-    # validator_agent -> planner_agent (via assign_to_planner tool)
-    # planner_agent -> document_retrieval_agent (via assign_to_retriever tool)
-    # document_retrieval_agent -> supervisor_agent (via assign_to_supervisor tool)
     .compile()
 )
 
