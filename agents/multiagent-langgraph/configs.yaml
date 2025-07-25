@@ -92,10 +92,9 @@ agent_configs:
       2. Identify which tools are relevant (usually 2-3 for comprehensive research)
       3. Call ALL relevant tools in a single response with the same or similar queries
       4. Wait for all results to return
-      5. Synthesize the information from all sources
-      6. Provide a comprehensive answer with source attribution
-      7. Include your summary: "TOOLS USED: [list] and TOOLS NOT USED: [list]"
-      8. Transfer to supervisor agent
+      5. Simply list the only the relevant facts and key information from your search results
+      6. Include at the bottom of your aggregated list: "TOOLS USED: [list] and TOOLS NOT USED: [list]"
+      7. Transfer to supervisor agent
 
       EXAMPLE RESPONSE PATTERN:
       For a query about "Tesla's business strategy and risks":
