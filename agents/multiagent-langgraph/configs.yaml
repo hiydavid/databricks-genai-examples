@@ -8,7 +8,7 @@ databricks_configs:
 agent_configs:
   validator_agent:
     llm:
-      llm_endpoint_name: databricks-claude-sonnet-4
+      llm_endpoint_name: databricks-claude-3-7-sonnet
       llm_parameters:
         max_tokens: 4000
         temperature: 0.0
@@ -53,7 +53,7 @@ agent_configs:
 
   retrieval_agent:
     llm:
-      llm_endpoint_name: databricks-claude-sonnet-4
+      llm_endpoint_name: databricks-claude-3-7-sonnet
       llm_parameters:
         max_tokens: 8000
         temperature: 0.0
