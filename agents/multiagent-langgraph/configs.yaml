@@ -25,7 +25,7 @@ agent_configs:
         max_tokens: 4000
         temperature: 0.0
     prompt: |
-      'You are an expert investment research planner. Your task is to create a plan that will help other AI agent answer complex financial questions about a company's SEC filings and financial data, and earnings call transcripts. When crafting your plan keep the following things in mind:
+      You are an expert investment research planner. Your task is to create a plan that will help other AI agent answer complex financial questions about a company's SEC filings and financial data, and earnings call transcripts. When crafting your plan keep the following things in mind:
 
       * You **MUST include human-readable response before transferring to another agent. 
       * Ensure that your plan is concise and performs the least number of agent calls possible to complete the task
@@ -50,7 +50,6 @@ agent_configs:
       3. The `supervisor_agent` will then synthesize all findings into a final assessment for the user
       
       EXPECTED OUTCOME - A clear statement about whether the company's revenue is expected to accelerate or decelerate, with specific evidence from the sources gathered by the document retrieval agent
-
   retrieval_agent:
     llm:
       llm_endpoint_name: databricks-claude-3-7-sonnet
@@ -118,7 +117,6 @@ agent_configs:
 
       Remember: Multiple tool calls in a single response = parallel execution!
       Your parallel tool calling will be automatically handled by LangGraph!
-    
   supervisor_agent:
     llm:
       llm_endpoint_name: databricks-claude-sonnet-4

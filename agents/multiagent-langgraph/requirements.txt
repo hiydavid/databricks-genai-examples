@@ -1,5 +1,5 @@
 mlflow[databricks]==3.1.1
 databricks-langchain==0.6.0
 databricks-agents==1.1.0
-langgraph==0.3.4
+langgraph>=0.5.4
 lark==1.2.2

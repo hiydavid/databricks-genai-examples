@@ -1,5 +1,3 @@
-# Databricks notebook source
-# DBTITLE 1,Load libraries
 # Standard library imports
 from typing import Any, Dict, Generator, List, Optional
 import os
@@ -39,9 +37,8 @@ from langchain.chains.query_constructor.base import (
 from langgraph.prebuilt import create_react_agent
 from langgraph.graph import StateGraph, START, MessagesState, END
 
-# COMMAND ----------
 
-# DBTITLE 1,Create util functions
+# Create util functions
 def create_handoff_tool(*, agent_name: str, description: str | None = None):
     """
     Create a handoff tool for transferring control between agents in a LangGraph.
@@ -61,6 +58,7 @@ def create_handoff_tool(*, agent_name: str, description: str | None = None):
         return f"Successfully transferred to {agent_name}"
 
     return handoff_tool
+
 
 def load_self_querying_retriever(
     model, endpoint_name: str, index_name: str, vs_schema: dict
@@ -153,6 +151,7 @@ def load_self_querying_retriever(
 
     return self_query_retriever
 
+
 def create_named_retrieval_tools(retriever, tool_name, tool_description):
     named_tool = retriever.as_tool()
     named_tool.name = tool_name
@@ -160,197 +159,6 @@ def create_named_retrieval_tools(retriever, tool_name, tool_description):
     return named_tool
 
 
-# COMMAND ----------
-
-# DBTITLE 1,Set MLflow auto-logging
-mlflow.set_tracking_uri("databricks")
-mlflow.langchain.autolog()
-
-# COMMAND ----------
-
-# DBTITLE 1,Load main configs
-configs = mlflow.models.ModelConfig(development_config="./configs.yaml")
-
-databricks_configs = configs.get("databricks_configs")
-agent_configs = configs.get("agent_configs")
-tool_configs = configs.get("tool_configs")
-
-# COMMAND ----------
-
-# DBTITLE 1,Load agent configs
-# Get UC configs
-catalog = databricks_configs.get("catalog")
-schema = databricks_configs.get("schema")
-
-# Get retriever configs
-retriever_configs = tool_configs.get("retrievers")
-vector_search_endpoint = retriever_configs.get("endpoint_name")
-vector_search_schema = retriever_configs.get("schema")
-vector_search_indexes = retriever_configs.get("indexes")
-
-# Get handoff configs
-handoff_configs = tool_configs.get("handoffs")
-
-# Get UC tool configs
-uc_tool_configs = tool_configs.get("uc_tools")
-
-# Get all agent configs
-validator_agent_configs = agent_configs.get("validator_agent")
-planning_agent_configs = agent_configs.get("planning_agent")
-retrieval_agent_configs = agent_configs.get("retrieval_agent")
-supervisor_agent_configs = agent_configs.get("supervisor_agent")
-
-# COMMAND ----------
-
-# DBTITLE 1,Set models for agents
-validator_agent_model = ChatDatabricks(
-    endpoint=validator_agent_configs.get("llm").get("llm_endpoint_name"),
-    extra_params=validator_agent_configs.get("llm").get("llm_parameters"),
-)
-
-planning_agent_model = ChatDatabricks(
-    endpoint=planning_agent_configs.get("llm").get("llm_endpoint_name"),
-    extra_params=planning_agent_configs.get("llm").get("llm_parameters"),
-)
-
-retrieval_agent_model = ChatDatabricks(
-    endpoint=retrieval_agent_configs.get("llm").get("llm_endpoint_name"),
-    extra_params=retrieval_agent_configs.get("llm").get("llm_parameters"),
-)
-
-supervisor_agent_model = ChatDatabricks(
-    endpoint=supervisor_agent_configs.get("llm").get("llm_endpoint_name"),
-    extra_params=supervisor_agent_configs.get("llm").get("llm_parameters"),
-)
-
-
-# COMMAND ----------
-
-# DBTITLE 1,Create handoff tools
-# handoff tools
-assign_to_planner = create_handoff_tool(
-    agent_name=handoff_configs.get("to_planner").get("name"),
-    description=handoff_configs.get("to_planner").get("description")
-)
-
-assign_to_supervisor = create_handoff_tool(
-    agent_name=handoff_configs.get("to_supervisor").get("name"),
-    description=handoff_configs.get("to_supervisor").get("description")
-)
-
-assign_to_retriever = create_handoff_tool(
-    agent_name=handoff_configs.get("to_retriever").get("name"),
-    description=handoff_configs.get("to_retriever").get("description")
-)
-
-planner_agent_tools = [assign_to_retriever]
-supervisor_agent_tools = []
-
-# COMMAND ----------
-
-# DBTITLE 1,Create validation tools
-validator_agent_tool_names = [
-    f"{catalog}.{schema}.{uc_tool_configs.get("validator").get("by_name")}",
-    f"{catalog}.{schema}.{uc_tool_configs.get("validator").get("by_ticker")}",
-]
-validator_agent_toolkit = UCFunctionToolkit(function_names=validator_agent_tool_names)
-validator_agent_tools = validator_agent_toolkit.tools
-validator_agent_tools.append(assign_to_planner)
-
-# COMMAND ----------
-
-# DBTITLE 1,Create retrievers
-# retrieval tools
-sec_10k_business_retriever = load_self_querying_retriever(
-    model=retrieval_agent_model,
-    endpoint_name=retriever_configs.get("endpoint_name"),
-    index_name=(
-        f"{catalog}.{schema}.{vector_search_indexes.get("sec_10k_business").get("index_name")}"
-    ),
-    vs_schema=vector_search_schema,
-)
-
-sec_10k_others_retriever = load_self_querying_retriever(
-    model=retrieval_agent_model,
-    endpoint_name=retriever_configs.get("endpoint_name"),
-    index_name=(
-        f"{catalog}.{schema}.{vector_search_indexes.get("sec_10k_others").get("index_name")}"
-    ),
-    vs_schema=vector_search_schema,
-)
-
-earnings_call_retriever = load_self_querying_retriever(
-    model=retrieval_agent_model,
-    endpoint_name=retriever_configs.get("endpoint_name"),
-    index_name=(
-        f"{catalog}.{schema}.{vector_search_indexes.get("earnings_call").get("index_name")}"
-    ),
-    vs_schema=vector_search_schema,
-)
-
-# COMMAND ----------
-
-# DBTITLE 1,Create retriever tools
-# Create named tools with clear descriptions
-sec_business_tool = create_named_retrieval_tools(
-    retriever=sec_10k_business_retriever,
-    tool_name=vector_search_indexes.get("sec_10k_business").get("tool_name"),
-    tool_description=vector_search_indexes.get("sec_10k_business").get("tool_description")
-)
-
-sec_others_tool = create_named_retrieval_tools(
-    retriever=sec_10k_others_retriever,
-    tool_name=vector_search_indexes.get("sec_10k_others").get("tool_name"),
-    tool_description=vector_search_indexes.get("sec_10k_others").get("tool_description")
-)
-
-earnings_tool = create_named_retrieval_tools(
-    retriever=earnings_call_retriever,
-    tool_name=vector_search_indexes.get("earnings_call").get("tool_name"),
-    tool_description=vector_search_indexes.get("earnings_call").get("tool_description")
-)
-
-document_retrieval_agent_tools = [
-    sec_business_tool,
-    sec_others_tool,
-    earnings_tool,
-    assign_to_supervisor,
-]
-
-# COMMAND ----------
-
-# DBTITLE 1,Create agents
-validator_agent = create_react_agent(
-    model=validator_agent_model,
-    tools=validator_agent_tools,
-    prompt=validator_agent_configs.get("prompt"),
-    name="validator_agent",
-)
-
-planner_agent = create_react_agent(
-    model=planning_agent_model,
-    tools=planner_agent_tools,
-    prompt=planning_agent_configs.get("prompt"),
-    name="planner_agent",
-)
-
-document_retrieval_agent = create_react_agent(
-    model=retrieval_agent_model,
-    tools=document_retrieval_agent_tools,
-    prompt=retrieval_agent_configs.get("prompt"),
-    name="document_retrieval_agent",
-)
-
-supervisor_agent = create_react_agent(
-    model=supervisor_agent_model,
-    tools=supervisor_agent_tools,
-    prompt=supervisor_agent_configs.get("prompt"),
-    name="supervisor_agent",
-)
-
-# COMMAND ----------
-
-# DBTITLE 1,Define multi-agent graph
 def route_after_agent(state):
     """Route to the next agent based on handoff tool messages"""
     # Look through the last few messages to find handoff tool calls or tool messages
@@ -385,7 +193,182 @@ def route_after_agent(state):
     print("DEBUG: No handoff detected, routing to END")            
     return END
 
-# Define the multi-agent supervisor graph
+
+# Set MLflow auto-logging
+mlflow.set_tracking_uri("databricks")
+mlflow.langchain.autolog()
+
+
+# Load main configs
+configs = mlflow.models.ModelConfig(development_config="./configs.yaml")
+
+databricks_configs = configs.get("databricks_configs")
+agent_configs = configs.get("agent_configs")
+tool_configs = configs.get("tool_configs")
+
+
+# Load agent configs
+# Get UC configs
+catalog = databricks_configs.get("catalog")
+schema = databricks_configs.get("schema")
+
+# Get retriever configs
+retriever_configs = tool_configs.get("retrievers")
+vector_search_endpoint = retriever_configs.get("endpoint_name")
+vector_search_schema = retriever_configs.get("schema")
+vector_search_indexes = retriever_configs.get("indexes")
+
+# Get handoff configs
+handoff_configs = tool_configs.get("handoffs")
+
+# Get UC tool configs
+uc_tool_configs = tool_configs.get("uc_tools")
+
+# Get all agent configs
+validator_agent_configs = agent_configs.get("validator_agent")
+planning_agent_configs = agent_configs.get("planning_agent")
+retrieval_agent_configs = agent_configs.get("retrieval_agent")
+supervisor_agent_configs = agent_configs.get("supervisor_agent")
+
+
+# Set models for agents
+validator_agent_model = ChatDatabricks(
+    endpoint=validator_agent_configs.get("llm").get("llm_endpoint_name"),
+    extra_params=validator_agent_configs.get("llm").get("llm_parameters"),
+)
+
+planning_agent_model = ChatDatabricks(
+    endpoint=planning_agent_configs.get("llm").get("llm_endpoint_name"),
+    extra_params=planning_agent_configs.get("llm").get("llm_parameters"),
+)
+
+retrieval_agent_model = ChatDatabricks(
+    endpoint=retrieval_agent_configs.get("llm").get("llm_endpoint_name"),
+    extra_params=retrieval_agent_configs.get("llm").get("llm_parameters"),
+)
+
+supervisor_agent_model = ChatDatabricks(
+    endpoint=supervisor_agent_configs.get("llm").get("llm_endpoint_name"),
+    extra_params=supervisor_agent_configs.get("llm").get("llm_parameters"),
+)
+
+
+# Create handoff tools
+assign_to_planner = create_handoff_tool(
+    agent_name=handoff_configs.get("to_planner").get("name"),
+    description=handoff_configs.get("to_planner").get("description")
+)
+
+assign_to_supervisor = create_handoff_tool(
+    agent_name=handoff_configs.get("to_supervisor").get("name"),
+    description=handoff_configs.get("to_supervisor").get("description")
+)
+
+assign_to_retriever = create_handoff_tool(
+    agent_name=handoff_configs.get("to_retriever").get("name"),
+    description=handoff_configs.get("to_retriever").get("description")
+)
+
+planner_agent_tools = [assign_to_retriever]
+supervisor_agent_tools = []
+
+
+# Create validation tools
+validator_agent_tool_names = [
+    f"{catalog}.{schema}.{uc_tool_configs.get("validator").get("by_name")}",
+    f"{catalog}.{schema}.{uc_tool_configs.get("validator").get("by_ticker")}",
+]
+validator_agent_toolkit = UCFunctionToolkit(function_names=validator_agent_tool_names)
+validator_agent_tools = validator_agent_toolkit.tools
+validator_agent_tools.append(assign_to_planner)
+
+
+# Create retrievers
+sec_10k_business_retriever = load_self_querying_retriever(
+    model=retrieval_agent_model,
+    endpoint_name=retriever_configs.get("endpoint_name"),
+    index_name=(
+        f"{catalog}.{schema}.{vector_search_indexes.get("sec_10k_business").get("index_name")}"
+    ),
+    vs_schema=vector_search_schema,
+)
+
+sec_10k_others_retriever = load_self_querying_retriever(
+    model=retrieval_agent_model,
+    endpoint_name=retriever_configs.get("endpoint_name"),
+    index_name=(
+        f"{catalog}.{schema}.{vector_search_indexes.get("sec_10k_others").get("index_name")}"
+    ),
+    vs_schema=vector_search_schema,
+)
+
+earnings_call_retriever = load_self_querying_retriever(
+    model=retrieval_agent_model,
+    endpoint_name=retriever_configs.get("endpoint_name"),
+    index_name=(
+        f"{catalog}.{schema}.{vector_search_indexes.get("earnings_call").get("index_name")}"
+    ),
+    vs_schema=vector_search_schema,
+)
+
+# Create retriever tools
+sec_business_tool = create_named_retrieval_tools(
+    retriever=sec_10k_business_retriever,
+    tool_name=vector_search_indexes.get("sec_10k_business").get("tool_name"),
+    tool_description=vector_search_indexes.get("sec_10k_business").get("tool_description")
+)
+
+sec_others_tool = create_named_retrieval_tools(
+    retriever=sec_10k_others_retriever,
+    tool_name=vector_search_indexes.get("sec_10k_others").get("tool_name"),
+    tool_description=vector_search_indexes.get("sec_10k_others").get("tool_description")
+)
+
+earnings_tool = create_named_retrieval_tools(
+    retriever=earnings_call_retriever,
+    tool_name=vector_search_indexes.get("earnings_call").get("tool_name"),
+    tool_description=vector_search_indexes.get("earnings_call").get("tool_description")
+)
+
+document_retrieval_agent_tools = [
+    sec_business_tool,
+    sec_others_tool,
+    earnings_tool,
+    assign_to_supervisor,
+]
+
+
+# Create agents
+validator_agent = create_react_agent(
+    model=validator_agent_model,
+    tools=validator_agent_tools,
+    prompt=validator_agent_configs.get("prompt"),
+    name="validator_agent",
+)
+
+planner_agent = create_react_agent(
+    model=planning_agent_model,
+    tools=planner_agent_tools,
+    prompt=planning_agent_configs.get("prompt"),
+    name="planner_agent",
+)
+
+document_retrieval_agent = create_react_agent(
+    model=retrieval_agent_model,
+    tools=document_retrieval_agent_tools,
+    prompt=retrieval_agent_configs.get("prompt"),
+    name="document_retrieval_agent",
+)
+
+supervisor_agent = create_react_agent(
+    model=supervisor_agent_model,
+    tools=supervisor_agent_tools,
+    prompt=supervisor_agent_configs.get("prompt"),
+    name="supervisor_agent",
+)
+
+
+# Define multi-agent graph
 multi_agent_graph = (
     StateGraph(MessagesState)
     # add agent nodes
@@ -402,9 +385,8 @@ multi_agent_graph = (
     .compile()
 )
 
-# COMMAND ----------
 
-# DBTITLE 1,Wrap in MLflow ChatAgent
+# Wrap in MLflow ChatAgent
 class MultiAgentResearchAssistant(ChatAgent):
     def __init__(self, agent):
         self.agent = agent
@@ -479,9 +461,8 @@ class MultiAgentResearchAssistant(ChatAgent):
                                 )
                             )
 
-# COMMAND ----------
 
-# DBTITLE 1,Set ChatAgent model
+# Set ChatAgent model
 mlflow.langchain.autolog()
 AGENT = MultiAgentResearchAssistant(multi_agent_graph)
 mlflow.models.set_model(AGENT)

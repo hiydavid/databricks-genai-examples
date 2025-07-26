@@ -50,7 +50,7 @@ from mlflow.utils.databricks_utils import get_databricks_host_creds
 
 HOSTNAME = get_context().browserHostName
 USERNAME = get_context().user
-TOKEN = get_databricks_host_creds("databricks").token # TODO: replace with service principal for prod
+TOKEN = dbutils.secrets.get("secret-scope", "secret-key") # TODO: Replace with your own token
 
 os.environ['DATABRICKS_TOKEN'] = TOKEN
 os.environ['DATABRICKS_URL'] = get_context().apiUrl
@@ -58,10 +58,9 @@ os.environ['DATABRICKS_URL'] = get_context().apiUrl
 # COMMAND ----------
 
 import mlflow
-from dbruntime.databricks_repl_context import get_context
 
 experiment_fqdn = (
-    f"/Workspace/Users/david.huang@databricks.com/client_demos/agents/langgraph/{mlflow_experiment_name}"
+    f"/Workspace/Users/first.last@databricks.com/{mlflow_experiment_name}"
 )
 
 # Check if the experiment exists
@@ -220,10 +219,8 @@ uc_registered_model_info = mlflow.register_model(
 from databricks import agents
 
 agents.deploy(
-    # model_name=uc_registered_model_info.name,
-    # model_version=uc_registered_model_info.version,
-    model_name="users.david_huang.multiagent_research_assistant",
-    model_version=4,
+    model_name=uc_registered_model_info.name,
+    model_version=uc_registered_model_info.version,
     scale_to_zero=True,
     environment_vars={
         "DATABRICKS_URL": os.environ["DATABRICKS_URL"],
