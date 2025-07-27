@@ -30,7 +30,8 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install -U -qqq mlflow-skinny[databricks] langgraph==0.3.4 databricks-langchain databricks-agents uv
+# MAGIC %pip install -q -U -r requirements.txt
+# MAGIC %pip install uv --quiet
 
 # COMMAND ----------
 
@@ -45,6 +46,7 @@ dbutils.library.restartPython()
 # COMMAND ----------
 
 import os
+
 import mlflow
 
 # TODO make sure you update the config file before this
@@ -77,17 +79,15 @@ os.environ["DATABRICKS_GENIE_PAT"] = dbutils.secrets.get(
 # COMMAND ----------
 
 import os
+
 import mlflow
 
 experiment_fqdn = f"{os.getcwd()}/{MLFLOW_EXPERIMENT_NAME}"
-
-# Check if the experiment exists
 experiment = mlflow.get_experiment_by_name(experiment_fqdn)
 
 if experiment:
     experiment_id = experiment.experiment_id
 else:
-    # Create the experiment if it does not exist
     experiment_id = mlflow.create_experiment(experiment_fqdn)
 
 mlflow.set_experiment(experiment_fqdn)
@@ -216,12 +216,7 @@ with mlflow.start_run():
         ),  # point to the config file
         input_example=input_example,
         resources=resources,
-        pip_requirements=[
-            f"databricks-connect=={get_distribution('databricks-connect').version}",
-            f"mlflow=={get_distribution('mlflow').version}",
-            f"databricks-langchain=={get_distribution('databricks-langchain').version}",
-            f"langgraph=={get_distribution('langgraph').version}",
-        ],
+        pip_requirements=["-r requirements.txt"],
     )
 
 # COMMAND ----------
@@ -235,7 +230,7 @@ with mlflow.start_run():
 mlflow.models.predict(
     model_uri=f"runs:/{logged_agent_info.run_id}/{AGENT_NAME}",
     input_data=input_example,
-    env_manager="uv",
+    env_manager="local",
 )
 
 # COMMAND ----------
@@ -250,7 +245,6 @@ mlflow.models.predict(
 mlflow.set_registry_uri("databricks-uc")
 UC_MODEL_NAME = f"{CATALOG}.{SCHEMA}.{UC_MODEL}"
 
-# register the model to UC
 uc_registered_model_info = mlflow.register_model(
     model_uri=logged_agent_info.model_uri, name=UC_MODEL_NAME
 )

@@ -1,10 +1,9 @@
+import asyncio
 import functools
 import os
 import uuid
-from typing import Any, Generator, Literal, Optional, List, Dict
-from typing_extensions import TypedDict, Annotated
-import asyncio
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, Dict, Generator, List, Literal, Optional
 
 import mlflow
 from databricks.sdk import WorkspaceClient
@@ -23,7 +22,7 @@ from mlflow.types.agent import (
     ChatContext,
 )
 from pydantic import BaseModel
-
+from typing_extensions import Annotated, TypedDict
 
 ######################################
 ## Load variables from the config file
@@ -369,8 +368,7 @@ class LangGraphChatAgent(ChatAgent):
                     yield ChatAgentChunk(**{"delta": msg_dict})
 
 
-# Create the agent object, and specify it as the agent object to use when
-# loading the agent back for inference via mlflow.models.set_model()
+# Create the agent object
 mlflow.langchain.autolog()
 AGENT = LangGraphChatAgent(multi_agent)
 mlflow.models.set_model(AGENT)
