@@ -60,7 +60,7 @@ os.environ['DATABRICKS_URL'] = get_context().apiUrl
 import mlflow
 
 experiment_fqdn = (
-    f"/Workspace/Users/first.last@databricks.com/{mlflow_experiment_name}"
+    f"{os.getcwd()}/{mlflow_experiment_name}"
 )
 
 # Check if the experiment exists
