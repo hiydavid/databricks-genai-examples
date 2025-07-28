@@ -230,7 +230,7 @@ with mlflow.start_run():
 mlflow.models.predict(
     model_uri=f"runs:/{logged_agent_info.run_id}/{AGENT_NAME}",
     input_data=input_example,
-    env_manager="local",
+    env_manager="uv",
 )
 
 # COMMAND ----------
