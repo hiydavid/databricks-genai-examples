@@ -10,7 +10,7 @@
 ## Vector Search
 * Multi-Index Vector Search
 
-## Agent
+## Agents
 * Multi-Agent System with LangGraph 
 * Multi-Agent Genie with LangGraph
 
