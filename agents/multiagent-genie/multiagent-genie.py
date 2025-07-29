@@ -345,10 +345,10 @@ class LangGraphChatAgent(ChatAgent):
         request = {
             "messages": [m.model_dump_compat(exclude_none=True) for m in messages]
         }
-        
+
         # Track which nodes we've seen to provide status updates
         seen_nodes = set()
-        
+
         for event in self.agent.stream(request, stream_mode="updates"):
             for node_name, node_data in event.items():
                 # Provide status updates for intermediate nodes to prevent timeout
@@ -357,11 +357,11 @@ class LangGraphChatAgent(ChatAgent):
                     status_msg = {
                         "role": "assistant",
                         "content": f"Processing with {node_name}...",
-                        "id": str(uuid.uuid4())
+                        "id": str(uuid.uuid4()),
                     }
                     # Yield status update as a chunk but don't include in final response
                     yield ChatAgentChunk(**{"delta": status_msg})
-                
+
                 # Only include actual messages from the final_answer node
                 if node_name == "final_answer":
                     for msg in node_data.get("messages", []):
