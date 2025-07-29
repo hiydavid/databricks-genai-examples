@@ -309,28 +309,30 @@ class LangGraphChatAgent(ChatAgent):
 
         messages = []
         for event in self.agent.stream(request, stream_mode="updates"):
-            for node_data in event.values():
-                for msg in node_data.get("messages", []):
-                    # Convert message to dict if it's an AIMessage object
-                    if hasattr(msg, "model_dump_compat"):
-                        msg_dict = msg.model_dump_compat(exclude_none=True)
-                    elif isinstance(msg, dict):
-                        msg_dict = msg
-                    else:
-                        # Fallback: convert to dict manually
-                        msg_dict = {
-                            "role": getattr(msg, "role", "assistant"),
-                            "content": getattr(msg, "content", str(msg)),
-                        }
-                        # Add name if present
-                        if hasattr(msg, "name") and msg.name:
-                            msg_dict["name"] = msg.name
+            for node_name, node_data in event.items():
+                # Only include messages from the final_answer node
+                if node_name == "final_answer":
+                    for msg in node_data.get("messages", []):
+                        # Convert message to dict if it's an AIMessage object
+                        if hasattr(msg, "model_dump_compat"):
+                            msg_dict = msg.model_dump_compat(exclude_none=True)
+                        elif isinstance(msg, dict):
+                            msg_dict = msg
+                        else:
+                            # Fallback: convert to dict manually
+                            msg_dict = {
+                                "role": getattr(msg, "role", "assistant"),
+                                "content": getattr(msg, "content", str(msg)),
+                            }
+                            # Add name if present
+                            if hasattr(msg, "name") and msg.name:
+                                msg_dict["name"] = msg.name
 
-                    # Ensure message has an ID
-                    if "id" not in msg_dict or not msg_dict["id"]:
-                        msg_dict["id"] = str(uuid.uuid4())
+                        # Ensure message has an ID
+                        if "id" not in msg_dict or not msg_dict["id"]:
+                            msg_dict["id"] = str(uuid.uuid4())
 
-                    messages.append(ChatAgentMessage(**msg_dict))
+                        messages.append(ChatAgentMessage(**msg_dict))
         return ChatAgentResponse(messages=messages)
 
     @mlflow.trace(span_type=SpanType.AGENT)
@@ -343,29 +345,46 @@ class LangGraphChatAgent(ChatAgent):
         request = {
             "messages": [m.model_dump_compat(exclude_none=True) for m in messages]
         }
+        
+        # Track which nodes we've seen to provide status updates
+        seen_nodes = set()
+        
         for event in self.agent.stream(request, stream_mode="updates"):
-            for node_data in event.values():
-                for msg in node_data.get("messages", []):
-                    # Convert message to dict if it's an AIMessage object
-                    if hasattr(msg, "model_dump_compat"):
-                        msg_dict = msg.model_dump_compat(exclude_none=True)
-                    elif isinstance(msg, dict):
-                        msg_dict = msg
-                    else:
-                        # Fallback: convert to dict manually
-                        msg_dict = {
-                            "role": getattr(msg, "role", "assistant"),
-                            "content": getattr(msg, "content", str(msg)),
-                        }
-                        # Add name if present
-                        if hasattr(msg, "name") and msg.name:
-                            msg_dict["name"] = msg.name
+            for node_name, node_data in event.items():
+                # Provide status updates for intermediate nodes to prevent timeout
+                if node_name not in seen_nodes and node_name != "final_answer":
+                    seen_nodes.add(node_name)
+                    status_msg = {
+                        "role": "assistant",
+                        "content": f"Processing with {node_name}...",
+                        "id": str(uuid.uuid4())
+                    }
+                    # Yield status update as a chunk but don't include in final response
+                    yield ChatAgentChunk(**{"delta": status_msg})
+                
+                # Only include actual messages from the final_answer node
+                if node_name == "final_answer":
+                    for msg in node_data.get("messages", []):
+                        # Convert message to dict if it's an AIMessage object
+                        if hasattr(msg, "model_dump_compat"):
+                            msg_dict = msg.model_dump_compat(exclude_none=True)
+                        elif isinstance(msg, dict):
+                            msg_dict = msg
+                        else:
+                            # Fallback: convert to dict manually
+                            msg_dict = {
+                                "role": getattr(msg, "role", "assistant"),
+                                "content": getattr(msg, "content", str(msg)),
+                            }
+                            # Add name if present
+                            if hasattr(msg, "name") and msg.name:
+                                msg_dict["name"] = msg.name
 
-                    # Ensure message has an ID
-                    if "id" not in msg_dict or not msg_dict["id"]:
-                        msg_dict["id"] = str(uuid.uuid4())
+                        # Ensure message has an ID
+                        if "id" not in msg_dict or not msg_dict["id"]:
+                            msg_dict["id"] = str(uuid.uuid4())
 
-                    yield ChatAgentChunk(**{"delta": msg_dict})
+                        yield ChatAgentChunk(**{"delta": msg_dict})
 
 
 # Create the agent object

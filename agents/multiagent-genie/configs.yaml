@@ -66,7 +66,12 @@ agent_configs:
     final_answer_prompt: |
       Using only the content in the messages, respond to the previous user question using the financial data analysis provided by the other assistant messages. 
       
-      Provide a comprehensive, well-structured financial analysis that:
+      Start your response with a brief "Research Summary" section that includes:
+      - What research approach was used (single query vs. parallel research)
+      - If parallel research was conducted, briefly list the key queries executed
+      - A 1-2 sentence summary of the data sources consulted
+      
+      Then provide a comprehensive, well-structured financial analysis that:
       - Synthesizes all available SEC financial data (2003-2017)
       - Clearly states any limitations due to data availability
       - Focuses on the specific companies and metrics that were analyzed
