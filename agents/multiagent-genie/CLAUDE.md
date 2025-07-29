@@ -51,8 +51,11 @@ User Query → Supervisor → [Research Planning OR Direct Genie] → Supervisor
 - **State Management**: Uses LangGraph's `AgentState` with typed state including research plans and results
 - **MLflow Integration**: All agent calls are traced with `@mlflow.trace` decorators
 - **Chat Interface**: Wrapped in `LangGraphChatAgent` class implementing MLflow's `ChatAgent` interface
-- **Streaming Support**: Both `predict` and `predict_stream` methods available
+- **Streaming Support**: Both `predict` and `predict_stream` methods available with status updates to prevent timeouts
 - **Configuration**: Extensive YAML-based configuration for Databricks resources
+- **Parallel Execution**: Research Planner uses ThreadPoolExecutor (max 3 workers) for concurrent Genie queries
+- **Error Handling**: Comprehensive error handling in parallel query execution with graceful degradation
+- **Authentication**: Uses Databricks PAT stored in secrets for Genie space access
 
 ### Configuration Requirements
 
@@ -68,4 +71,35 @@ Before running, update `configs.yaml` with:
 - `data/genie_instruction.txt`: SQL query guidelines and supported financial metrics
 - `data/ingest-genie-data.py`: Data ingestion script
 
-The system is designed for deployment as a Databricks model serving endpoint with automatic authentication passthrough for Databricks resources.
+### Agent Decision Logic
+
+The Supervisor Agent uses structured output with the following routing strategy:
+
+1. **Simple Questions**: Route directly to Genie for single-metric queries
+2. **Complex Analysis**: Route to ResearchPlanner for:
+   - Multi-company comparisons
+   - Multiple financial metrics
+   - Year-over-year trend analysis
+   - Complex financial ratios requiring multiple data points
+
+**Iteration Limit**: Maximum 3 iterations to prevent infinite loops
+
+### Supported Financial Metrics
+
+The system supports comprehensive financial analysis including:
+- **Liquidity**: Current Ratio, Quick Ratio
+- **Solvency**: Debt-to-Equity, Interest Coverage
+- **Profitability**: Gross Margin, Net Profit Margin, ROA, ROE
+- **Efficiency**: Asset Turnover
+- **Growth**: Revenue Growth YoY
+- **Cash Flow**: Free Cash Flow
+
+See `data/genie_instruction.txt` for complete SQL formulas and implementation details.
+
+### Deployment Architecture
+
+The system is designed for deployment as a Databricks model serving endpoint with:
+- **Automatic Authentication Passthrough**: For Databricks resources (Genie spaces, SQL warehouses, UC tables)
+- **Environment Variables**: Secrets-based configuration for PAT tokens
+- **Resource Dependencies**: Declared upfront for automatic credential management
+- **MLflow Model Serving**: Compatible with Databricks model serving infrastructure
