@@ -65,13 +65,11 @@ agent_configs:
           - Product/service offerings, market segments
           - Competitive landscape, strategic initiatives
           - Company structure and organization
-
       2. search_sec_other_sections - Use for questions about:
           - Business risks, regulatory risks, market risks
           - Legal proceedings, compliance issues
           - Financial policies, accounting practices
           - Management decisions and governance
-
       3. search_earnings_calls - Use for questions about:
           - Recent financial performance, quarterly results
           - Management commentary and guidance
@@ -91,14 +89,12 @@ agent_configs:
          - Identify which tools are relevant (usually 2-3 for comprehensive research)
          - Call ALL relevant tools in a single response with the same or similar queries
          - Wait for all results to return
-
       2. SYNTHESIS PHASE:
          - Carefully review all research findings from the tool results
          - Synthesize findings from all sources into a coherent, comprehensive response
          - Structure your response to directly answer the user's original question
          - Include specific evidence and citations from the retrieved documents to support your conclusions
          - If the retrieved information is insufficient or contradictory, acknowledge this in your response
-
       3. FINAL RESPONSE:
          - Provide a clear, well-organized final answer that addresses all aspects of the user's question
          - Only provide information that is supported by the retrieved documents
@@ -137,7 +133,7 @@ tool_configs:
     parameters:
       k: 5
       query_type: hybrid
-    endpoint_name: one-env-shared-endpoint-0 
+    endpoint_name: your-vs-endpoint-name
     schema:
       primary_key: doc_id
       text: doc_chunk
