@@ -33,7 +33,7 @@ agent_configs = configs.get("agent_configs")
 catalog = databricks_configs.get("catalog")
 schema = databricks_configs.get("schema")
 mlflow_experiment_name = databricks_configs.get("mlflow_experiment_name")
-model_name = databricks_configs['agent_name']
+model_name = databricks_configs["agent_name"]
 eval_table_name = databricks_configs.get("eval_table_name")
 
 vs_indexes = tool_configs.get("retrievers").get("indexes")
@@ -45,15 +45,18 @@ embedding_model_endpoint = tool_configs.get("retrievers").get("embedding_model")
 # COMMAND ----------
 
 import os
+
 from dbruntime.databricks_repl_context import get_context
 from mlflow.utils.databricks_utils import get_databricks_host_creds
 
 HOSTNAME = get_context().browserHostName
 USERNAME = get_context().user
-TOKEN = dbutils.secrets.get("secret-scope", "secret-key") # TODO: Replace with your own token
+TOKEN = dbutils.secrets.get(
+    "secret-scope", "secret-key"
+)  # TODO: Replace with your own token
 
-os.environ['DATABRICKS_TOKEN'] = TOKEN
-os.environ['DATABRICKS_URL'] = get_context().apiUrl
+os.environ["DATABRICKS_TOKEN"] = TOKEN
+os.environ["DATABRICKS_URL"] = get_context().apiUrl
 
 # COMMAND ----------
 
@@ -92,7 +95,7 @@ test_questions = [
     "what is Meta's AI strategy?",
     "What is Exxon Mobile doing in renewables if at all?",
     "What is the TAM for robotaxis according to Tesla?",
-    "What risks does Trump's tariffs have on Home Depot?"
+    "What risks does Trump's tariffs have on Home Depot?",
 ]
 
 example_input = {
@@ -133,17 +136,15 @@ display(evals_df)
 
 # COMMAND ----------
 
+
 def predict_fn(messages):
-  return AGENT.predict(
-    messages=[ChatAgentMessage(**message) for message in messages]
-  )
+    return AGENT.predict(messages=[ChatAgentMessage(**message) for message in messages])
+
 
 # COMMAND ----------
 
 evals = evaluate(
-    data=evals_df, 
-    predict_fn=predict_fn, 
-    scorers=scorers.get_all_scorers()
+    data=evals_df, predict_fn=predict_fn, scorers=scorers.get_all_scorers()
 )
 
 # COMMAND ----------
@@ -155,28 +156,38 @@ evals = evaluate(
 
 import mlflow
 from mlflow.models.resources import (
-    DatabricksVectorSearchIndex,
+    DatabricksFunction,
     DatabricksServingEndpoint,
     DatabricksSQLWarehouse,
-    DatabricksFunction,
     DatabricksTable,
     DatabricksUCConnection,
+    DatabricksVectorSearchIndex,
 )
 
 with mlflow.start_run():
     logged_chain_info = mlflow.pyfunc.log_model(
-        name=model_name,  # Required by MLflow
+        name=model_name,
         python_model=os.path.join(os.getcwd(), "agent"),
         model_config=os.path.join(os.getcwd(), "configs.yaml"),
         input_example=example_input,
         resources=[
-            DatabricksVectorSearchIndex(index_name=f"{catalog}.{schema}.{vs_indexes.get("sec_10k_business").get("index_name")}"),
-            DatabricksVectorSearchIndex(index_name=f"{catalog}.{schema}.{vs_indexes.get("sec_10k_others").get("index_name")}"),
-            DatabricksVectorSearchIndex(index_name=f"{catalog}.{schema}.{vs_indexes.get("earnings_call").get("index_name")}"),
+            DatabricksVectorSearchIndex(
+                index_name=f"{catalog}.{schema}.{vs_indexes.get('sec_10k_business').get('index_name')}"
+            ),
+            DatabricksVectorSearchIndex(
+                index_name=f"{catalog}.{schema}.{vs_indexes.get('sec_10k_others').get('index_name')}"
+            ),
+            DatabricksVectorSearchIndex(
+                index_name=f"{catalog}.{schema}.{vs_indexes.get('earnings_call').get('index_name')}"
+            ),
             DatabricksServingEndpoint(endpoint_name=llm_endpoint),
             DatabricksServingEndpoint(endpoint_name=embedding_model_endpoint),
-            DatabricksFunction(function_name=f"{catalog}.{schema}.{uc_tools.get("validator").get("by_name")}"),
-            DatabricksFunction(function_name=f"{catalog}.{schema}.{uc_tools.get("validator").get("by_ticker")}"),
+            DatabricksFunction(
+                function_name=f"{catalog}.{schema}.{uc_tools.get('validator').get('by_name')}"
+            ),
+            DatabricksFunction(
+                function_name=f"{catalog}.{schema}.{uc_tools.get('validator').get('by_ticker')}"
+            ),
         ],
         pip_requirements=["-r requirements.txt"],
     )
@@ -200,8 +211,7 @@ with mlflow.start_run():
 mlflow.set_registry_uri("databricks-uc")
 
 uc_registered_model_info = mlflow.register_model(
-    model_uri=logged_chain_info.model_uri, 
-    name=f"{catalog}.{schema}.{model_name}"
+    model_uri=logged_chain_info.model_uri, name=f"{catalog}.{schema}.{model_name}"
 )
 
 # COMMAND ----------
