@@ -59,17 +59,12 @@ os.environ['DATABRICKS_URL'] = get_context().apiUrl
 
 import mlflow
 
-experiment_fqdn = (
-    f"{os.getcwd()}/{mlflow_experiment_name}"
-)
-
-# Check if the experiment exists
+experiment_fqdn = f"{os.getcwd()}/{mlflow_experiment_name}"
 experiment = mlflow.get_experiment_by_name(experiment_fqdn)
 
 if experiment:
     experiment_id = experiment.experiment_id
 else:
-    # Create the experiment if it does not exist
     experiment_id = mlflow.create_experiment(experiment_fqdn)
 
 mlflow.set_experiment(experiment_fqdn)
