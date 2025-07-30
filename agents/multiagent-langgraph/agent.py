@@ -1,27 +1,17 @@
 # Standard library imports
-from typing import Any, Dict, Generator, List, Optional
 import os
+from typing import Any, Dict, Generator, List, Optional
+
+# MLflow imports
+import mlflow
 
 # Databricks imports
 from databricks_langchain import (
     ChatDatabricks,
-    UCFunctionToolkit,
     DatabricksVectorSearch,
+    UCFunctionToolkit,
 )
-
-# MLflow imports
-import mlflow
-from mlflow.pyfunc import ChatAgent
-from mlflow.entities import SpanType
-from mlflow.types.agent import (
-    ChatAgentChunk,
-    ChatAgentMessage,
-    ChatAgentResponse,
-    ChatContext,
-)
-
-# LangChain core imports
-from langchain_core.tools import tool
+from langchain.chains.query_constructor.base import load_query_constructor_runnable
 
 # LangChain community imports
 from langchain.chains.query_constructor.schema import AttributeInfo
@@ -29,13 +19,21 @@ from langchain.retrievers.self_query.base import SelfQueryRetriever
 from langchain_community.query_constructors.databricks_vector_search import (
     DatabricksVectorSearchTranslator,
 )
-from langchain.chains.query_constructor.base import (
-    load_query_constructor_runnable,
-)
+
+# LangChain core imports
+from langchain_core.tools import tool
+from langgraph.graph import END, START, MessagesState, StateGraph
 
 # LangGraph imports
 from langgraph.prebuilt import create_react_agent
-from langgraph.graph import StateGraph, START, MessagesState, END
+from mlflow.entities import SpanType
+from mlflow.pyfunc import ChatAgent
+from mlflow.types.agent import (
+    ChatAgentChunk,
+    ChatAgentMessage,
+    ChatAgentResponse,
+    ChatContext,
+)
 
 
 # Create util functions
@@ -67,7 +65,7 @@ def load_self_querying_retriever(
     Load a self-querying retriever for financial documents.
 
     Args:
-        model: LLM model to use for query construction 
+        model: LLM model to use for query construction
         endpoint_name: Vector search endpoint name
         index_name: Vector search index name
         vs_schema: Vector search schema configuration
@@ -163,34 +161,32 @@ def route_after_agent(state):
     """Route to the next agent based on handoff tool messages"""
     # Look through the last few messages to find handoff tool calls or tool messages
     messages = state["messages"]
-    
+
     for message in reversed(messages[-5:]):  # Check last 5 messages
         # Check for AI messages with handoff tool calls
-        if hasattr(message, 'tool_calls') and message.tool_calls:
+        if hasattr(message, "tool_calls") and message.tool_calls:
             for tool_call in message.tool_calls:
                 if tool_call["name"] == "transfer_to_planner_agent":
                     print("DEBUG: Routing to planner_agent via tool_call")
                     return "planner_agent"
                 elif tool_call["name"] == "transfer_to_document_retrieval_agent":
                     print("DEBUG: Routing to document_retrieval_agent via tool_call")
-                    return "document_retrieval_agent" 
-                elif tool_call["name"] == "transfer_to_supervisor_agent":
-                    print("DEBUG: Routing to supervisor_agent via tool_call")
-                    return "supervisor_agent"
-        
+                    return "document_retrieval_agent"
+
         # Also check for ToolMessages from handoff tools
-        if hasattr(message, 'name') and hasattr(message, 'role') and message.role == "tool":
+        if (
+            hasattr(message, "name")
+            and hasattr(message, "role")
+            and message.role == "tool"
+        ):
             if message.name == "transfer_to_planner_agent":
                 print("DEBUG: Routing to planner_agent via tool_message")
                 return "planner_agent"
             elif message.name == "transfer_to_document_retrieval_agent":
                 print("DEBUG: Routing to document_retrieval_agent via tool_message")
                 return "document_retrieval_agent"
-            elif message.name == "transfer_to_supervisor_agent": 
-                print("DEBUG: Routing to supervisor_agent via tool_message")
-                return "supervisor_agent"
-    
-    print("DEBUG: No handoff detected, routing to END")            
+
+    print("DEBUG: No handoff detected, routing to END")
     return END
 
 
@@ -228,7 +224,6 @@ uc_tool_configs = tool_configs.get("uc_tools")
 validator_agent_configs = agent_configs.get("validator_agent")
 planning_agent_configs = agent_configs.get("planning_agent")
 retrieval_agent_configs = agent_configs.get("retrieval_agent")
-supervisor_agent_configs = agent_configs.get("supervisor_agent")
 
 
 # Set models for agents
@@ -247,36 +242,27 @@ retrieval_agent_model = ChatDatabricks(
     extra_params=retrieval_agent_configs.get("llm").get("llm_parameters"),
 )
 
-supervisor_agent_model = ChatDatabricks(
-    endpoint=supervisor_agent_configs.get("llm").get("llm_endpoint_name"),
-    extra_params=supervisor_agent_configs.get("llm").get("llm_parameters"),
-)
 
 
 # Create handoff tools
 assign_to_planner = create_handoff_tool(
     agent_name=handoff_configs.get("to_planner").get("name"),
-    description=handoff_configs.get("to_planner").get("description")
+    description=handoff_configs.get("to_planner").get("description"),
 )
 
-assign_to_supervisor = create_handoff_tool(
-    agent_name=handoff_configs.get("to_supervisor").get("name"),
-    description=handoff_configs.get("to_supervisor").get("description")
-)
 
 assign_to_retriever = create_handoff_tool(
     agent_name=handoff_configs.get("to_retriever").get("name"),
-    description=handoff_configs.get("to_retriever").get("description")
+    description=handoff_configs.get("to_retriever").get("description"),
 )
 
 planner_agent_tools = [assign_to_retriever]
-supervisor_agent_tools = []
 
 
 # Create validation tools
 validator_agent_tool_names = [
-    f"{catalog}.{schema}.{uc_tool_configs.get("validator").get("by_name")}",
-    f"{catalog}.{schema}.{uc_tool_configs.get("validator").get("by_ticker")}",
+    f"{catalog}.{schema}.{uc_tool_configs.get('validator').get('by_name')}",
+    f"{catalog}.{schema}.{uc_tool_configs.get('validator').get('by_ticker')}",
 ]
 validator_agent_toolkit = UCFunctionToolkit(function_names=validator_agent_tool_names)
 validator_agent_tools = validator_agent_toolkit.tools
@@ -288,7 +274,7 @@ sec_10k_business_retriever = load_self_querying_retriever(
     model=retrieval_agent_model,
     endpoint_name=retriever_configs.get("endpoint_name"),
     index_name=(
-        f"{catalog}.{schema}.{vector_search_indexes.get("sec_10k_business").get("index_name")}"
+        f"{catalog}.{schema}.{vector_search_indexes.get('sec_10k_business').get('index_name')}"
     ),
     vs_schema=vector_search_schema,
 )
@@ -297,7 +283,7 @@ sec_10k_others_retriever = load_self_querying_retriever(
     model=retrieval_agent_model,
     endpoint_name=retriever_configs.get("endpoint_name"),
     index_name=(
-        f"{catalog}.{schema}.{vector_search_indexes.get("sec_10k_others").get("index_name")}"
+        f"{catalog}.{schema}.{vector_search_indexes.get('sec_10k_others').get('index_name')}"
     ),
     vs_schema=vector_search_schema,
 )
@@ -306,7 +292,7 @@ earnings_call_retriever = load_self_querying_retriever(
     model=retrieval_agent_model,
     endpoint_name=retriever_configs.get("endpoint_name"),
     index_name=(
-        f"{catalog}.{schema}.{vector_search_indexes.get("earnings_call").get("index_name")}"
+        f"{catalog}.{schema}.{vector_search_indexes.get('earnings_call').get('index_name')}"
     ),
     vs_schema=vector_search_schema,
 )
@@ -315,26 +301,29 @@ earnings_call_retriever = load_self_querying_retriever(
 sec_business_tool = create_named_retrieval_tools(
     retriever=sec_10k_business_retriever,
     tool_name=vector_search_indexes.get("sec_10k_business").get("tool_name"),
-    tool_description=vector_search_indexes.get("sec_10k_business").get("tool_description")
+    tool_description=vector_search_indexes.get("sec_10k_business").get(
+        "tool_description"
+    ),
 )
 
 sec_others_tool = create_named_retrieval_tools(
     retriever=sec_10k_others_retriever,
     tool_name=vector_search_indexes.get("sec_10k_others").get("tool_name"),
-    tool_description=vector_search_indexes.get("sec_10k_others").get("tool_description")
+    tool_description=vector_search_indexes.get("sec_10k_others").get(
+        "tool_description"
+    ),
 )
 
 earnings_tool = create_named_retrieval_tools(
     retriever=earnings_call_retriever,
     tool_name=vector_search_indexes.get("earnings_call").get("tool_name"),
-    tool_description=vector_search_indexes.get("earnings_call").get("tool_description")
+    tool_description=vector_search_indexes.get("earnings_call").get("tool_description"),
 )
 
 document_retrieval_agent_tools = [
     sec_business_tool,
     sec_others_tool,
     earnings_tool,
-    assign_to_supervisor,
 ]
 
 
@@ -360,12 +349,6 @@ document_retrieval_agent = create_react_agent(
     name="document_retrieval_agent",
 )
 
-supervisor_agent = create_react_agent(
-    model=supervisor_agent_model,
-    tools=supervisor_agent_tools,
-    prompt=supervisor_agent_configs.get("prompt"),
-    name="supervisor_agent",
-)
 
 
 # Define multi-agent graph
@@ -374,14 +357,12 @@ multi_agent_graph = (
     # add agent nodes
     .add_node("validator_agent", validator_agent)
     .add_node("planner_agent", planner_agent)
-    .add_node("supervisor_agent", supervisor_agent)
     .add_node("document_retrieval_agent", document_retrieval_agent)
     # define the flow
     .add_edge(START, "validator_agent")  # entry point
     .add_conditional_edges("validator_agent", route_after_agent)
     .add_conditional_edges("planner_agent", route_after_agent)
-    .add_conditional_edges("document_retrieval_agent", route_after_agent)
-    .add_edge("supervisor_agent", END)  # exit point - supervisor provides final response
+    .add_edge("document_retrieval_agent", END)  # exit point - retrieval agent provides final response
     .compile()
 )
 
@@ -403,13 +384,15 @@ class MultiAgentResearchAssistant(ChatAgent):
         context: Optional[ChatContext] = None,
         custom_inputs: Optional[dict[str, Any]] = None,
     ) -> ChatAgentResponse:
-        
+
         if type(messages[0]) == mlflow.types.agent.ChatAgentMessage:
             request = {"messages": [m.model_dump() for m in messages]}
 
         agent_response = self.agent.invoke(request)
 
-        last_valid_agent_message = self.get_last_valid_message(agent_response["messages"])
+        last_valid_agent_message = self.get_last_valid_message(
+            agent_response["messages"]
+        )
 
         response = [
             {
@@ -445,21 +428,21 @@ class MultiAgentResearchAssistant(ChatAgent):
                         )
                     else:
                         yield ChatAgentChunk(
-                                delta=ChatAgentMessage(
-                                    content=event[agent_key][-1]["messages"][-1]["content"],
-                                    role="assistant",
-                                    id=event[agent_key][-1]["messages"][-1]["id"],
-                                )
+                            delta=ChatAgentMessage(
+                                content=event[agent_key][-1]["messages"][-1]["content"],
+                                role="assistant",
+                                id=event[agent_key][-1]["messages"][-1]["id"],
                             )
+                        )
             except:
                 if len(event[agent_key]["messages"][-1].content) > 0:
                     yield ChatAgentChunk(
-                                delta=ChatAgentMessage(
-                                    content=event[agent_key]["messages"][-1].content,
-                                    role="assistant",
-                                    id=event[agent_key]["messages"][-1].id,
-                                )
-                            )
+                        delta=ChatAgentMessage(
+                            content=event[agent_key]["messages"][-1].content,
+                            role="assistant",
+                            id=event[agent_key]["messages"][-1].id,
+                        )
+                    )
 
 
 # Set ChatAgent model
