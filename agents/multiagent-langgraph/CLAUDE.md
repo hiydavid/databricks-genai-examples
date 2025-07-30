@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a **multi-agent LangGraph system** built for Databricks that performs financial research and analysis. The system uses multiple specialized agents to validate companies, plan research tasks, retrieve documents, and synthesize final responses.
+This is a **multi-agent LangGraph system** built for Databricks that performs financial research and analysis. The system uses specialized agents to validate companies, plan research tasks, and retrieve & synthesize documents into final responses.
 
 ## Key Dependencies & Commands
 
@@ -27,28 +27,24 @@ The system is designed to run in Databricks notebooks:
 
 ## Architecture Overview
 
-### Multi-Agent Graph Flow
-The system implements a sophisticated multi-agent workflow:
+### Streamlined 3-Agent Graph Flow
+The system implements a streamlined multi-agent workflow:
 
-1. **validator_agent** (`agent.py:323-328`)
+1. **validator_agent** 
    - Validates company existence using UC functions
    - Uses `databricks-claude-3-7-sonnet` model
    - Tools: `lookup_company_info_by_name`, `lookup_company_info_by_ticker`
 
-2. **planner_agent** (`agent.py:330-335`) 
+2. **planner_agent** 
    - Decomposes user questions into actionable research plans
    - Uses `databricks-claude-sonnet-4` model
    - Creates comprehensive search strategies across multiple data sources
 
-3. **document_retrieval_agent** (`agent.py:337-342`)
+3. **document_retrieval_agent** (FINAL AGENT)
    - Executes parallel searches across SEC filings and earnings transcripts
-   - Uses `databricks-claude-3-7-sonnet` model
+   - Uses `databricks-claude-sonnet-4` model (upgraded for synthesis capabilities)
    - Tools: `search_sec_business_section`, `search_sec_other_sections`, `search_earnings_calls`
-
-4. **supervisor_agent** (`agent.py:344-349`)
-   - Synthesizes findings into final coherent responses
-   - Uses `databricks-claude-sonnet-4` model
-   - Provides final user-facing output
+   - **Synthesizes findings and provides final user response** (no handoff needed)
 
 ### Key Components
 
@@ -57,13 +53,14 @@ The system implements a sophisticated multi-agent workflow:
 - **Indexes**: `sec_10k_business_vsindex`, `sec_10k_others_vsindex`, `earnings_call_transcripts_vsindex`
 - **Embedding Model**: `databricks-gte-large-en`
 
-#### Agent Routing (`agent.py:354-386`)
+#### Agent Routing (`agent.py:160-190`)
 The `route_after_agent` function handles inter-agent transitions based on handoff tool calls:
 - Analyzes recent messages for `transfer_to_*` tool calls
-- Routes to appropriate next agent or END state
+- Routes between validator → planner → document_retrieval → END
+- **Simplified flow**: document_retrieval_agent directly routes to END (no supervisor handoff)
 - Includes debug logging for troubleshooting
 
-#### MLflow Integration (`agent.py:408-486`)
+#### MLflow Integration (`agent.py:370-430`)
 - `MultiAgentResearchAssistant` class wraps the LangGraph for MLflow deployment
 - Implements both `predict` and `predict_stream` methods
 - Handles message conversion between MLflow and LangGraph formats
@@ -76,9 +73,9 @@ The `route_after_agent` function handles inter-agent transitions based on handof
 - **tool_configs**: Retriever settings, handoff definitions, UC tools
 
 ### Key Configuration Sections
-- **LLM Endpoints**: Different Claude models for different agents
+- **LLM Endpoints**: Different Claude models for different agents (Sonnet 4 for planning/synthesis, 3.7 for validation)
 - **Vector Search**: Endpoint names, index configurations, embedding models
-- **Handoff Tools**: Agent transition definitions
+- **Handoff Tools**: Simplified agent transition definitions (no supervisor handoff)
 - **UC Functions**: Company lookup tool configurations
 
 ## Data Sources
@@ -99,9 +96,16 @@ The system searches across three main knowledge bases:
 
 ### Critical Implementation Details
 - **Parallel Tool Execution**: The retrieval agent calls multiple search tools simultaneously for comprehensive research
-- **Message Routing**: Custom routing logic handles agent handoffs based on tool call patterns
+- **Unified Retrieval & Synthesis**: Document retrieval agent now handles both data gathering AND final response synthesis (eliminated supervisor agent)
+- **Simplified Routing**: Streamlined graph flow eliminates handoff issues between retrieval and supervisor
 - **Self-Query Retrieval**: Uses structured metadata filtering for precise document retrieval
 - **MLflow Tracing**: All agent interactions are traced for monitoring and debugging
+
+### Recent Architecture Changes
+- **Merged supervisor functionality** into document_retrieval_agent for simplified workflow
+- **Upgraded retrieval agent** to Claude Sonnet 4 for better synthesis capabilities
+- **Eliminated handoff bugs** by making document_retrieval_agent the terminal node
+- **Reduced system complexity** and improved response latency
 
 ### Testing
 Use the predefined `test_questions` in `driver.py` to validate system functionality across different financial research scenarios.
