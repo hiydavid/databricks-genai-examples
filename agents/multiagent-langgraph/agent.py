@@ -243,7 +243,6 @@ retrieval_agent_model = ChatDatabricks(
 )
 
 
-
 # Create handoff tools
 assign_to_planner = create_handoff_tool(
     agent_name=handoff_configs.get("to_planner").get("name"),
@@ -350,7 +349,6 @@ document_retrieval_agent = create_react_agent(
 )
 
 
-
 # Define multi-agent graph
 multi_agent_graph = (
     StateGraph(MessagesState)
@@ -362,7 +360,7 @@ multi_agent_graph = (
     .add_edge(START, "validator_agent")  # entry point
     .add_conditional_edges("validator_agent", route_after_agent)
     .add_conditional_edges("planner_agent", route_after_agent)
-    .add_edge("document_retrieval_agent", END)  # exit point - retrieval agent provides final response
+    .add_edge("document_retrieval_agent", END)  # exit point
     .compile()
 )
 
