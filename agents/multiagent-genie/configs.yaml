@@ -51,6 +51,12 @@ agent_configs:
       - Use FINISH when you have sufficient information to provide a comprehensive financial analysis
       - NEVER route questions about data outside the 2003-2017 SEC financial dataset
 
+      **CRITICAL: Handling Genie Follow-up Questions**
+      If the most recent message from Genie contains a question or request for clarification (indicated by question marks, phrases like "Could you clarify", "Which specific", "Do you mean", etc.), you MUST:
+      1. Analyze Genie's question and provide the best possible clarification based on the original user query
+      2. Route back to Genie with your clarification to continue the conversation
+      3. Do NOT finish or route elsewhere until Genie provides a complete answer
+
       When using ResearchPlanner, the system will automatically handle parallel execution and result synthesis of financial data.
     
     research_prompt: |
