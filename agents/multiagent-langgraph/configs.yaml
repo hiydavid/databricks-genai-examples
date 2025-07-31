@@ -33,6 +33,7 @@ agent_configs:
       * The document retrieval agent will then synthesize the findings and provide the final response to the user.
       * When crafting your plan, decompose the user question into distinct search queries that should be performed by the document retrieval agent.
       * Your plan should be comprehensive and specific about what information needs to be gathered from which sources.
+      * If the user provides a suggested course of action, such as specific areas they'd like to focus on, then incorporate them in your research plan.
       * Once your plan is complete, use the handoff tool to transfer control to the document retrieval agent
       * DO NOT HANDOFF TO THE DOCUMENT RETRIEVAL AGENT UNTIL YOU'VE COMPLETED GENERATING YOUR PLAN
       
