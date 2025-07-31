@@ -37,9 +37,17 @@ agent_configs:
       Available agents:
       {formatted_descriptions}
 
-      **Decision Logic**:
-      - Use ResearchPlanner for complex financial analysis requiring multiple data points (comparisons, ratios, trends)
-      - Use Genie directly for single, focused financial metric questions
+      **Decision Logic** (Route to Genie FIRST for simple questions):
+      - Use Genie DIRECTLY for:
+        * Single financial metric queries (e.g., "What was AAPL's revenue in 2015?")
+        * Simple calculations from one data source (e.g., "Calculate AAPL's current ratio in 2016")
+        * Basic year-over-year comparisons for one metric and one company
+        * Questions asking for one specific financial statement item
+      - Use ResearchPlanner ONLY for truly complex analysis requiring:
+        * Multi-company comparative analysis (e.g., comparing AAPL vs BAC performance)
+        * Multiple interconnected financial ratios or metrics in one analysis
+        * Trend analysis across multiple years AND multiple metrics simultaneously
+        * Complex financial analysis requiring 3+ separate data queries
       - Use FINISH when you have sufficient information to provide a comprehensive financial analysis
       - NEVER route questions about data outside the 2003-2017 SEC financial dataset
 
@@ -50,29 +58,39 @@ agent_configs:
       
       **IMPORTANT**: All data is limited to SEC Income Statement and Balance Sheet data from 2003-2017 for AAPL, BAC, and AXP only.
       
-      Respond with should_plan_research=True if the question:
-      - Requires multiple financial metrics (e.g., revenue + debt ratios)
-      - Compares multiple companies or time periods
-      - Needs complex financial analysis combining different data points
-      - Asks for trends or patterns across multiple years
+      **DEFAULT TO GENIE FIRST** - Only respond with should_plan_research=True if the question CLEARLY requires multiple separate queries:
+      
+      Examples that should go to GENIE (should_plan_research=False):
+      - "What was AAPL's revenue in 2015?"
+      - "Calculate BAC's current ratio for 2014"
+      - "Show me AXP's net income from 2010 to 2012"
+      - "What is AAPL's debt-to-equity ratio in 2016?"
+      - "How did AAPL's revenue change from 2014 to 2015?"
+      
+      Only use ResearchPlanner (should_plan_research=True) if the question requires:
+      - Multi-company comparative analysis (e.g., "Compare AAPL, BAC, and AXP profitability")
+      - Multiple disconnected financial metrics in one comprehensive analysis
+      - Complex financial analysis requiring 3+ separate data queries to be executed in parallel
+      - Cross-metric trend analysis spanning multiple years AND multiple ratios
       
       If planning research, provide 2-4 specific queries that ONLY request data available in the SEC dataset (2003-2017). Focus on:
       - Specific financial metrics from Income Statement or Balance Sheet
       - Specific companies (AAPL, BAC, AXP)
       - Specific year ranges within 2003-2017
       
-      Otherwise, route to Genie for single metric questions within the dataset limitations.
+      **BIAS TOWARD GENIE**: When in doubt, route to Genie first for single-step analysis.
     
     final_answer_prompt: |
-      Using only the content in the messages, respond to the previous user question using the financial data analysis provided by the other assistant messages. 
+      Using only the content in the messages, respond to the previous user question using the financial data analysis provided by the other assistant messages.
       
-      Start your response with a brief "Research Summary" section that includes:
-      - What research approach was used (single query vs. parallel research)
-      - If parallel research was conducted, briefly list the key queries executed
-      - A 1-2 sentence summary of the data sources consulted
+      **For simple questions that went directly to Genie:**
+      - Provide a direct, concise answer to the specific question asked
+      - Include only the relevant financial data/metrics requested
+      - Keep the response brief and to the point
       
-      Then provide a comprehensive, well-structured financial analysis that:
-      - Synthesizes all available SEC financial data (2003-2017)
-      - Clearly states any limitations due to data availability
-      - Focuses on the specific companies and metrics that were analyzed
-      - Presents findings in a professional financial analysis format
+      **For complex questions that used ResearchPlanner:**
+      - Start with a brief "Research Summary" noting the parallel research approach
+      - Provide a comprehensive analysis synthesizing multiple data points
+      - Present findings in a structured financial analysis format
+      
+      Always focus on answering the specific question asked without unnecessary elaboration.

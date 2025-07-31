@@ -10,9 +10,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - No traditional build, test, or lint commands - this is a Databricks notebook-based project
 
 ### Running the Agent
-- Main entry point: `driver.py` (Databricks notebook format)
-- Core agent implementation: `multiagent-genie.py`
+- Main entry point: `driver.py` (Databricks notebook format with `# Databricks notebook source` magic commands)
+- Core agent implementation: `multiagent-genie.py` (Python module loaded via `%run ./multiagent-genie`)
 - Configuration: `configs.yaml` (requires manual setup of Databricks resources)
+- Test agent: Use sample questions in `driver.py` cells 141-145 for testing different complexity levels
+
+### Development Workflow
+1. Update `configs.yaml` with your Databricks resources (catalog, schema, workspace_url, etc.)
+2. Create Genie space and obtain space ID
+3. Set up Databricks PAT token in secrets
+4. Run cells in `driver.py` sequentially to test, log, register, and deploy the agent
 
 ## Architecture Overview
 
@@ -56,6 +63,15 @@ User Query → Supervisor → [Research Planning OR Direct Genie] → Supervisor
 - **Parallel Execution**: Research Planner uses ThreadPoolExecutor (max 3 workers) for concurrent Genie queries
 - **Error Handling**: Comprehensive error handling in parallel query execution with graceful degradation
 - **Authentication**: Uses Databricks PAT stored in secrets for Genie space access
+
+### Implementation Details
+
+- **Graph Structure**: Entry point is `supervisor` → workers (`Genie`, `ResearchPlanner`) → `supervisor` → `final_answer`
+- **State Schema**: `AgentState` includes messages, next_node, iteration_count, research_plan, and research_results
+- **LLM Configuration**: Uses ChatDatabricks with configurable endpoint (default: `databricks-claude-3-7-sonnet`)
+- **Structured Output**: Supervisor uses Pydantic models (`NextNode`, `ResearchPlanOutput`) for routing decisions
+- **Message Handling**: Only final_answer node messages are returned to prevent intermediate output noise
+- **UUID Generation**: All messages get unique IDs for proper MLflow tracing
 
 ### Configuration Requirements
 
@@ -103,3 +119,24 @@ The system is designed for deployment as a Databricks model serving endpoint wit
 - **Environment Variables**: Secrets-based configuration for PAT tokens
 - **Resource Dependencies**: Declared upfront for automatic credential management
 - **MLflow Model Serving**: Compatible with Databricks model serving infrastructure
+
+### Code Structure and Key Functions
+
+**multiagent-genie.py Functions:**
+- `supervisor_agent()` (line 100): Main routing logic with iteration limits and structured output
+- `research_planner_node()` (line 146): Parallel query execution with ThreadPoolExecutor
+- `agent_node()` (line 237): Generic wrapper for individual agents
+- `final_answer()` (line 251): Formats final response using configured prompt
+- `execute_genie_query()` (line 165): Individual Genie query execution with error handling
+
+**LangGraphChatAgent Class:**
+- `predict()` (line 300): Synchronous prediction with message filtering
+- `predict_stream()` (line 339): Streaming prediction with status updates
+
+### Financial Data Analysis Capabilities
+
+The system is specifically designed for SEC financial data analysis with predefined formulas in `data/genie_instruction.txt`:
+- **Data Coverage**: 2003-2017 SEC filings for AAPL, BAC, AXP only
+- **Table Aliases**: `bs` (balance sheet), `is` (income statement), `cf` (cash flow)
+- **Query Guidelines**: Fully qualified columns, explicit filtering, NULLIF for division safety
+- **Supported Calculations**: 15+ financial ratios including liquidity, solvency, profitability, efficiency, and growth metrics
