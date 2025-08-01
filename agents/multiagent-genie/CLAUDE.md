@@ -17,9 +17,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Development Workflow
 1. Update `configs.yaml` with your Databricks resources (catalog, schema, workspace_url, etc.)
-2. Create Genie space and obtain space ID
-3. Set up Databricks PAT token in secrets
-4. Run cells in `driver.py` sequentially to test, log, register, and deploy the agent
+2. Create Genie space and obtain space ID from Databricks workspace
+3. Set up Databricks PAT token in secrets (required for Genie space access)
+4. Load data using `data/sec/ingest-sec-data.py` if needed
+5. Run cells in `driver.py` sequentially to test, log, register, and deploy the agent
+6. Use sample questions in cells 141-145 for testing different complexity levels
+
+### Testing the Agent
+- **Simple Questions**: Test with single metric queries (e.g., "What was AAPL's revenue in 2015?")
+- **Complex Questions**: Test multi-company comparisons and trend analysis
+- **Sample Test Cases**: Use `sample_questions` array in `driver.py` cells 141-145
+- **Response Testing**: Both `predict()` and `predict_stream()` methods available
 
 ## Architecture Overview
 
@@ -83,9 +91,11 @@ Before running, update `configs.yaml` with:
 - LLM endpoint configuration
 
 ### Data Files
-- `data/balance_sheet.parquet` and `data/income_statement.parquet`: Financial datasets
-- `data/genie_instruction.txt`: SQL query guidelines and supported financial metrics
-- `data/ingest-genie-data.py`: Data ingestion script
+- `data/sec/balance_sheet.parquet` and `data/sec/income_statement.parquet`: SEC financial datasets (2003-2017)
+- `data/sec/genie_instruction.md`: SQL query guidelines and supported financial metrics for SEC data
+- `data/sec/ingest-sec-data.py`: SEC data ingestion script
+- `data/sec/agent-bricks-config.yaml`: Additional agent configuration for deployment
+- `data/cc/`: Credit card dataset (alternative dataset, less developed)
 
 ### Agent Decision Logic
 
@@ -110,7 +120,7 @@ The system supports comprehensive financial analysis including:
 - **Growth**: Revenue Growth YoY
 - **Cash Flow**: Free Cash Flow
 
-See `data/genie_instruction.txt` for complete SQL formulas and implementation details.
+See `data/sec/genie_instruction.md` for complete SQL formulas and implementation details.
 
 ### Deployment Architecture
 
@@ -135,7 +145,7 @@ The system is designed for deployment as a Databricks model serving endpoint wit
 
 ### Financial Data Analysis Capabilities
 
-The system is specifically designed for SEC financial data analysis with predefined formulas in `data/genie_instruction.txt`:
+The system is specifically designed for SEC financial data analysis with predefined formulas in `data/sec/genie_instruction.md`:
 - **Data Coverage**: 2003-2017 SEC filings for AAPL, BAC, AXP only
 - **Table Aliases**: `bs` (balance sheet), `is` (income statement), `cf` (cash flow)
 - **Query Guidelines**: Fully qualified columns, explicit filtering, NULLIF for division safety
