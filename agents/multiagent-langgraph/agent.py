@@ -166,6 +166,7 @@ def route_after_agent(state):
         # Check for AI messages with handoff tool calls
         if hasattr(message, "tool_calls") and message.tool_calls:
             for tool_call in message.tool_calls:
+                print(f"DEBUG: Found tool_call: {tool_call.get('name', 'unknown')}")
                 if tool_call["name"] == "transfer_to_planner_agent":
                     print("DEBUG: Routing to planner_agent via tool_call")
                     return "planner_agent"
@@ -204,23 +205,18 @@ tool_configs = configs.get("tool_configs")
 
 
 # Load agent configs
-# Get UC configs
 catalog = databricks_configs.get("catalog")
 schema = databricks_configs.get("schema")
 
-# Get retriever configs
 retriever_configs = tool_configs.get("retrievers")
 vector_search_endpoint = retriever_configs.get("endpoint_name")
 vector_search_schema = retriever_configs.get("schema")
 vector_search_indexes = retriever_configs.get("indexes")
 
-# Get handoff configs
 handoff_configs = tool_configs.get("handoffs")
 
-# Get UC tool configs
 uc_tool_configs = tool_configs.get("uc_tools")
 
-# Get all agent configs
 validator_agent_configs = agent_configs.get("validator_agent")
 planning_agent_configs = agent_configs.get("planning_agent")
 retrieval_agent_configs = agent_configs.get("retrieval_agent")
@@ -248,7 +244,6 @@ assign_to_planner = create_handoff_tool(
     agent_name=handoff_configs.get("to_planner").get("name"),
     description=handoff_configs.get("to_planner").get("description"),
 )
-
 
 assign_to_retriever = create_handoff_tool(
     agent_name=handoff_configs.get("to_retriever").get("name"),
