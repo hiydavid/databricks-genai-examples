@@ -60,8 +60,6 @@ os.environ["DATABRICKS_URL"] = get_context().apiUrl
 
 # COMMAND ----------
 
-import mlflow
-
 experiment_fqdn = f"{os.getcwd()}/{mlflow_experiment_name}"
 experiment = mlflow.get_experiment_by_name(experiment_fqdn)
 
@@ -194,11 +192,11 @@ with mlflow.start_run():
 
 # COMMAND ----------
 
-# mlflow.models.predict(
-#     model_uri=f"runs:/{logged_chain_info.run_id}/{model_name}",
-#     input_data=example_input,
-#     # env_manager="uv",
-# )
+mlflow.models.predict(
+    model_uri=f"runs:/{logged_chain_info.run_id}/{model_name}",
+    input_data=example_input,
+    env_manager="uv",
+)
 
 # COMMAND ----------
 
