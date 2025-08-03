@@ -1,5 +1,10 @@
 # Databricks Tutorials
 
+## Agents
+* Multi-Agent System with LangGraph 
+* Multi-Agent Genie with LangGraph
+* Multi-Agent with Agent Bricks
+
 ## Batch Inference
 * CPU Model Serving Endpoint Batch Inference
 * Provisioned Throughput Endpoint Batch Inference with `AI_Query`
@@ -10,7 +15,4 @@
 ## Vector Search
 * Multi-Index Vector Search
 
-## Agents
-* Multi-Agent System with LangGraph 
-* Multi-Agent Genie with LangGraph
 
