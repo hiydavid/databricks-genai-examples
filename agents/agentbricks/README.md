@@ -7,3 +7,6 @@ Create a multi-agent system on Databricks with Agent Bricks. You will create
 * A `Knowledge Assistant` that's connected to the Vector Search Index
 * A `Multi-Agent Supervisor` that's a coordinator between the `Genie Space` and the `Knowledge Assistant`
 
+# Get Started
+1. Upload the datasets into a Unity Catalog Volume that you have access to
+2. 
