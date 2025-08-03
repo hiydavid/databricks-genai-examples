@@ -9,7 +9,7 @@ Create a multi-agent system on Databricks with Agent Bricks. You will create
 
 # Prerequisites
 - Databricks workspace with Unity Catalog enabled
-- Cluster with ML runtime (for vector search capabilities)
+- Cluster with ML runtime (for creating Vector Search Index), preferrably Serverless Notebook Compute
 - Permissions to create schemas, tables, and vector search endpoints
 
 # Get Started
