@@ -54,7 +54,7 @@ This is a **multi-agent system** built with LangGraph for financial data analysi
 - **Time Range**: SEC financial data from 2003-2017 only
 - **Companies**: Apple Inc. (AAPL), Bank of America Corp (BAC), American Express (AXP)
 - **Data Types**: Income Statement and Balance Sheet metrics
-- **Supported Metrics**: See `data/genie_instruction.txt` for full list of financial ratios and calculations
+- **Supported Metrics**: See `data/sec/genie_instruction.md` for full list of financial ratios and calculations
 
 ### Workflow Pattern
 ```

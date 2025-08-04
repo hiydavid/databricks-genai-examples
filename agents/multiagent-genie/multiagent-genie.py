@@ -35,7 +35,7 @@ agent_configs = configs.get("agent_configs")
 LLM_ENDPOINT_NAME = agent_configs.get("llm_endpoint_name")
 GENIE_SPACE_ID = agent_configs.get("genie_agent").get("space_id")
 GENIE_DESCRIPTION = agent_configs.get("genie_agent").get("description")
-RESEARCH_PLANNING_DESCRIPTION = agent_configs.get("research_planning_agent").get(
+PARALLEL_EXECUTOR_DESCRIPTION = agent_configs.get("parallel_executor_agent").get(
     "description"
 )
 
@@ -71,7 +71,7 @@ llm = ChatDatabricks(endpoint=LLM_ENDPOINT_NAME)
 
 worker_descriptions = {
     "Genie": GENIE_DESCRIPTION,
-    "ResearchPlanner": RESEARCH_PLANNING_DESCRIPTION,
+    "ParallelExecutor": PARALLEL_EXECUTOR_DESCRIPTION,
 }
 
 formatted_descriptions = "\n".join(
@@ -153,7 +153,7 @@ def research_planner_node(state):
                 {
                     "role": "assistant",
                     "content": "No research plan found. Unable to execute parallel queries.",
-                    "name": "ResearchPlanner",
+                    "name": "ParallelExecutor",
                 }
             ]
         }
@@ -221,7 +221,7 @@ def research_planner_node(state):
             {
                 "role": "assistant",
                 "content": consolidated_response,
-                "name": "ResearchPlanner",
+                "name": "ParallelExecutor",
             }
         ],
         "research_results": ordered_results,  # Store detailed results for potential further processing
@@ -269,20 +269,20 @@ genie_node = functools.partial(agent_node, agent=genie_agent, name="Genie")
 
 workflow = StateGraph(AgentState)
 workflow.add_node("Genie", genie_node)
-workflow.add_node("ResearchPlanner", research_planner_node)
+workflow.add_node("ParallelExecutor", research_planner_node)
 workflow.add_node("supervisor", supervisor_agent)
 workflow.add_node("final_answer", final_answer)
 
 workflow.set_entry_point("supervisor")
 # We want our workers to ALWAYS "report back" to the supervisor when done
-for worker in ["Genie", "ResearchPlanner"]:
+for worker in ["Genie", "ParallelExecutor"]:
     workflow.add_edge(worker, "supervisor")
 
 # Let the supervisor decide which next node to go
 workflow.add_conditional_edges(
     "supervisor",
     lambda x: x["next_node"],
-    {**{k: k for k in ["Genie", "ResearchPlanner"]}, "FINISH": "final_answer"},
+    {**{k: k for k in ["Genie", "ParallelExecutor"]}, "FINISH": "final_answer"},
 )
 workflow.add_edge("final_answer", END)
 multi_agent = workflow.compile()

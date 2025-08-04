@@ -16,9 +16,9 @@ agent_configs:
     space_id: # TODO: add Genie space id
     description: | # TODO: add your Genie agent description
       This genie agent can answer financial metric questions relevant to SEC 10k filing Income Statement and Balance Sheet for Apple Inc. (AAPL), Bank of America Corp (BAC), and American Express (AXP).
-  research_planning_agent:
-    description: | # TODO: add your ResearchPlanning agent description
-      Plans and executes parallel research queries using the Genie agent to analyze SEC financial data (Income Statement and Balance Sheet from 2003-2017) for companies like AAPL, BAC, and AXP. Limited to financial metrics and ratios available in the dataset.
+  parallel_executor_agent:
+    description: | # TODO: add your ParallelExecutor agent description
+      Executes parallel research queries using the Genie agent to analyze SEC financial data (Income Statement and Balance Sheet from 2003-2017) for companies like AAPL, BAC, and AXP. Takes pre-planned queries from the supervisor and runs them concurrently for comprehensive financial analysis.
   supervisor_agent:
     max_iterations: 3
     system_prompt: |
@@ -29,10 +29,11 @@ agent_configs:
       For financial questions, you have two strategies:
 
       1. **Simple Routing**: For straightforward single-metric questions, route directly to Genie
-      2. **Research Planning**: For complex questions requiring multiple financial metrics or comparative analysis, use ResearchPlanner to:
-        - Break down the question into 2-4 specific financial data queries
-        - Execute parallel searches via Genie agent for different metrics/companies/time periods
-        - Synthesize comprehensive financial analysis
+      2. **Research Planning**: For complex questions requiring multiple financial metrics or comparative analysis:
+        - YOU break down the question into 2-4 specific financial data queries
+        - YOU create a research plan with these queries
+        - ParallelExecutor executes your pre-planned queries in parallel via Genie agent
+        - ParallelExecutor synthesizes results from the parallel execution
 
       Available agents:
       {formatted_descriptions}
@@ -43,7 +44,7 @@ agent_configs:
         * Simple calculations from one data source (e.g., "Calculate AAPL's current ratio in 2016")
         * Basic year-over-year comparisons for one metric and one company
         * Questions asking for one specific financial statement item
-      - Use ResearchPlanner ONLY for truly complex analysis requiring:
+      - Use ParallelExecutor ONLY for truly complex analysis requiring:
         * Multi-company comparative analysis (e.g., comparing AAPL vs BAC performance)
         * Multiple interconnected financial ratios or metrics in one analysis
         * Trend analysis across multiple years AND multiple metrics simultaneously
@@ -57,34 +58,31 @@ agent_configs:
       2. Route back to Genie with your clarification to continue the conversation
       3. Do NOT finish or route elsewhere until Genie provides a complete answer
 
-      When using ResearchPlanner, the system will automatically handle parallel execution and result synthesis of financial data.
+      When using ParallelExecutor, the system will automatically handle parallel execution and result synthesis of financial data.
     
     research_prompt: |
-      Analyze the user's financial question. Should this be handled with parallel research queries via ResearchPlanner?
+      **ROUTING DECISION CRITERIA**
+      Analyze this financial question to determine routing and research planning:
       
-      **IMPORTANT**: All data is limited to SEC Income Statement and Balance Sheet data from 2003-2017 for AAPL, BAC, and AXP only.
+      **DEFAULT TO GENIE FIRST** - Set should_plan_research=False and next_node="Genie" for:
+      - Single financial metric queries ("What was AAPL's revenue in 2015?")
+      - Simple calculations from one data source ("Calculate BAC's current ratio for 2014")
+      - Basic year-over-year comparisons for one metric/company ("How did AAPL's revenue change from 2014 to 2015?")
+      - Single company financial statement items ("Show me AXP's net income from 2010 to 2012")
       
-      **DEFAULT TO GENIE FIRST** - Only respond with should_plan_research=True if the question CLEARLY requires multiple separate queries:
-      
-      Examples that should go to GENIE (should_plan_research=False):
-      - "What was AAPL's revenue in 2015?"
-      - "Calculate BAC's current ratio for 2014"
-      - "Show me AXP's net income from 2010 to 2012"
-      - "What is AAPL's debt-to-equity ratio in 2016?"
-      - "How did AAPL's revenue change from 2014 to 2015?"
-      
-      Only use ResearchPlanner (should_plan_research=True) if the question requires:
-      - Multi-company comparative analysis (e.g., "Compare AAPL, BAC, and AXP profitability")
-      - Multiple disconnected financial metrics in one comprehensive analysis
-      - Complex financial analysis requiring 3+ separate data queries to be executed in parallel
+      **USE PARALLEL EXECUTOR** - Set should_plan_research=True and next_node="ParallelExecutor" ONLY when the question requires multiple separate parallel queries:
+      - Multi-company comparative analysis ("Compare AAPL, BAC, and AXP profitability")
+      - Multiple disconnected financial metrics requiring separate queries ("Analyze AAPL's liquidity, profitability, and solvency for 2015")
+      - Complex analysis requiring 3+ separate parallel data queries
       - Cross-metric trend analysis spanning multiple years AND multiple ratios
       
-      If planning research, provide 2-4 specific queries that ONLY request data available in the SEC dataset (2003-2017). Focus on:
-      - Specific financial metrics from Income Statement or Balance Sheet
-      - Specific companies (AAPL, BAC, AXP)
-      - Specific year ranges within 2003-2017
+      **If should_plan_research=True, create a research_plan with:**
+      - queries: 2-4 specific parallel queries for Genie (each focusing on different metrics/companies/years)
+      - rationale: Brief explanation of why parallel research is needed
       
-      **BIAS TOWARD GENIE**: When in doubt, route to Genie first for single-step analysis.
+      **Data Constraints**: All queries must use SEC data (2003-2017) for AAPL, BAC, AXP only.
+      
+      **When in doubt, bias toward Genie (should_plan_research=False).**
     
     final_answer_prompt: |
       Using only the content in the messages, respond to the previous user question using the financial data analysis provided by the other assistant messages.
@@ -94,7 +92,7 @@ agent_configs:
       - Include only the relevant financial data/metrics requested
       - Keep the response brief and to the point
       
-      **For complex questions that used ResearchPlanner:**
+      **For complex questions that used ParallelExecutor:**
       - Start with a brief "Research Summary" noting the parallel research approach
       - Provide a comprehensive analysis synthesizing multiple data points
       - Present findings in a structured financial analysis format
