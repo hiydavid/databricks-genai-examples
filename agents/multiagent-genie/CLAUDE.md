@@ -7,6 +7,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Environment Setup
 - Install dependencies: `pip install -r requirements.txt`
 - The project uses Python with Databricks-specific libraries (MLflow, LangChain, LangGraph)
+- **Key Dependencies**: 
+  - `mlflow-skinny[databricks]==3.1.1`
+  - `databricks-langchain==0.6.0`
+  - `databricks-agents==1.1.0`
+  - `langgraph==0.5.4`
+  - `pydantic<2.12.0`
 - No traditional build, test, or lint commands - this is a Databricks notebook-based project
 
 ### Running the Agent
@@ -42,23 +48,24 @@ This is a **multi-agent system** built with LangGraph for financial data analysi
 
 2. **Genie Agent** (multiagent-genie.py:52)
    - Databricks GenieAgent for SQL-based financial data queries
-   - Accesses SEC financial data (2003-2017) for AAPL, BAC, AXP
+   - Accesses SEC financial data (2003-2022) for AAPL, BAC, AXP
    - Primary data source for Income Statement and Balance Sheet metrics
 
-3. **Research Planner Agent** (`research_planner_node` function in multiagent-genie.py:146)
+3. **Parallel Executor Agent** (`research_planner_node` function in multiagent-genie.py:146)
    - Executes parallel queries for complex multi-step analysis
    - Uses ThreadPoolExecutor for concurrent Genie queries
    - Synthesizes results from multiple data sources
+   - Renamed from "Research Planner" to "Parallel Executor" for clarity
 
 ### Data Scope
-- **Time Range**: SEC financial data from 2003-2017 only
+- **Time Range**: SEC financial data from 2003-2022 (updated from original 2003-2017)
 - **Companies**: Apple Inc. (AAPL), Bank of America Corp (BAC), American Express (AXP)
 - **Data Types**: Income Statement and Balance Sheet metrics
 - **Supported Metrics**: See `data/sec/genie_instruction.md` for full list of financial ratios and calculations
 
 ### Workflow Pattern
 ```
-User Query → Supervisor → [Research Planning OR Direct Genie] → Supervisor → Final Answer
+User Query → Supervisor → [Parallel Executor OR Direct Genie] → Supervisor → Final Answer
 ```
 
 ### Key Technical Details
@@ -68,13 +75,13 @@ User Query → Supervisor → [Research Planning OR Direct Genie] → Supervisor
 - **Chat Interface**: Wrapped in `LangGraphChatAgent` class implementing MLflow's `ChatAgent` interface
 - **Streaming Support**: Both `predict` and `predict_stream` methods available with status updates to prevent timeouts
 - **Configuration**: Extensive YAML-based configuration for Databricks resources
-- **Parallel Execution**: Research Planner uses ThreadPoolExecutor (max 3 workers) for concurrent Genie queries
+- **Parallel Execution**: Parallel Executor uses ThreadPoolExecutor (max 3 workers) for concurrent Genie queries
 - **Error Handling**: Comprehensive error handling in parallel query execution with graceful degradation
 - **Authentication**: Uses Databricks PAT stored in secrets for Genie space access
 
 ### Implementation Details
 
-- **Graph Structure**: Entry point is `supervisor` → workers (`Genie`, `ResearchPlanner`) → `supervisor` → `final_answer`
+- **Graph Structure**: Entry point is `supervisor` → workers (`Genie`, `ParallelExecutor`) → `supervisor` → `final_answer`
 - **State Schema**: `AgentState` includes messages, next_node, iteration_count, research_plan, and research_results
 - **LLM Configuration**: Uses ChatDatabricks with configurable endpoint (default: `databricks-claude-3-7-sonnet`)
 - **Structured Output**: Supervisor uses Pydantic models (`NextNode`, `ResearchPlanOutput`) for routing decisions
@@ -102,7 +109,7 @@ Before running, update `configs.yaml` with:
 The Supervisor Agent uses structured output with the following routing strategy:
 
 1. **Simple Questions**: Route directly to Genie for single-metric queries
-2. **Complex Analysis**: Route to ResearchPlanner for:
+2. **Complex Analysis**: Route to ParallelExecutor for:
    - Multi-company comparisons
    - Multiple financial metrics
    - Year-over-year trend analysis
@@ -146,7 +153,30 @@ The system is designed for deployment as a Databricks model serving endpoint wit
 ### Financial Data Analysis Capabilities
 
 The system is specifically designed for SEC financial data analysis with predefined formulas in `data/sec/genie_instruction.md`:
-- **Data Coverage**: 2003-2017 SEC filings for AAPL, BAC, AXP only
+- **Data Coverage**: 2003-2022 SEC filings for AAPL, BAC, AXP only
 - **Table Aliases**: `bs` (balance sheet), `is` (income statement), `cf` (cash flow)
 - **Query Guidelines**: Fully qualified columns, explicit filtering, NULLIF for division safety
 - **Supported Calculations**: 15+ financial ratios including liquidity, solvency, profitability, efficiency, and growth metrics
+
+## Prompt Optimization
+
+The system includes comprehensive prompt optimization capabilities documented in `OPTIMIZATION_GUIDE.md`:
+
+### Key Optimization Areas
+- **Supervisor Agent System Prompt**: Controls routing logic and decision-making
+- **Research Planning Prompt**: Determines when to use parallel query execution  
+- **Final Answer Prompt**: Formats responses for simple vs. complex queries
+
+### Configuration Location
+All prompts are configured in `configs.yaml` under `agent_configs.supervisor_agent`:
+- `system_prompt`: Main supervisor routing logic
+- `research_prompt`: Parallel execution decision criteria
+- `final_answer_prompt`: Response formatting guidelines
+
+### Optimization Guidelines
+- **Bias Toward Genie**: Default to direct Genie routing for simple queries to reduce latency
+- **Clear Thresholds**: Define specific criteria for complex analysis (e.g., "3+ separate queries")
+- **Data-Aware Examples**: Use examples matching your actual dataset scope
+- **Performance Monitoring**: Use MLflow tracing to monitor routing decisions and response quality
+
+See `OPTIMIZATION_GUIDE.md` for detailed prompt customization strategies and testing approaches.
