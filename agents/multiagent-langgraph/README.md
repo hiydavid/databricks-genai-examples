@@ -1,9 +1,12 @@
 # LangGraph on Databricks
 
-## Datasets:
-* SEC 10K Business Section
-* SEC 10k Other Section
-* Earnings Call Transcript
+## Potential Datasets:
+* Unstrcutured data
+  * SEC 10K Filings
+  * Earnings Call Transcripts
+  * Sell-side research reports
+* Structured tables
+  * SEC fundamental data
 
 ## AI Models:
 * Chat and Generation: `databricks-claude-sonnet-4` and `databricks-claude-3-7-sonnet`
@@ -18,6 +21,9 @@
 * Start with a `validator_agent` that looks-up from a table to make sure that the company that the user is referring to is valid and exists
 * Then, passes to a `planner_agent` that decomposes the user question into an actionable plan with steps to take and the tools to use
 * Finally, the `document_retrieval_agent` executes parallel searches across SEC filings and earnings transcripts, then synthesizes findings and provides the final user response
+* Work-in-progress:
+  * `genie_agent`
+  * `websearch_agent`
 
 ### Agent Details:
 * **validator_agent**: Validates company existence using UC functions (uses `databricks-claude-3-7-sonnet`)
