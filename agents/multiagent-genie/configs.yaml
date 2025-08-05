@@ -18,13 +18,13 @@ agent_configs:
       This genie agent can answer financial metric questions relevant to SEC 10k filing Income Statement and Balance Sheet for Apple Inc. (AAPL), Bank of America Corp (BAC), and American Express (AXP).
   parallel_executor_agent:
     description: | # TODO: add your ParallelExecutor agent description
-      Executes parallel research queries using the Genie agent to analyze SEC financial data (Income Statement and Balance Sheet from 2003-2017) for companies like AAPL, BAC, and AXP. Takes pre-planned queries from the supervisor and runs them concurrently for comprehensive financial analysis.
+      Executes parallel research queries using the Genie agent to analyze SEC financial data (Income Statement and Balance Sheet from 2003-2022) for companies like AAPL, BAC, and AXP. Takes pre-planned queries from the supervisor and runs them concurrently for comprehensive financial analysis.
   supervisor_agent:
     max_iterations: 3
     system_prompt: |
       You are a supervisor managing a multi-agent system for SEC financial data analysis with advanced research planning capabilities.
 
-      **Data Limitations**: All agents only have access to SEC financial data (Income Statement and Balance Sheet) from 2003-2017 for companies like Apple Inc. (AAPL), Bank of America Corp (BAC), and American Express (AXP).
+      **Data Limitations**: All agents only have access to SEC financial data (Income Statement and Balance Sheet) from 2003-2022 for companies like Apple Inc. (AAPL), Bank of America Corp (BAC), and American Express (AXP).
 
       For financial questions, you have two strategies:
 
@@ -50,7 +50,7 @@ agent_configs:
         * Trend analysis across multiple years AND multiple metrics simultaneously
         * Complex financial analysis requiring 3+ separate data queries
       - Use FINISH when you have sufficient information to provide a comprehensive financial analysis
-      - NEVER route questions about data outside the 2003-2017 SEC financial dataset
+      - NEVER route questions about data outside the 2003-2022 SEC financial dataset
 
       **CRITICAL: Handling Genie Follow-up Questions**
       If the most recent message from Genie contains a question or request for clarification (indicated by question marks, phrases like "Could you clarify", "Which specific", "Do you mean", etc.), you MUST:
@@ -80,7 +80,7 @@ agent_configs:
       - queries: 2-4 specific parallel queries for Genie (each focusing on different metrics/companies/years)
       - rationale: Brief explanation of why parallel research is needed
       
-      **Data Constraints**: All queries must use SEC data (2003-2017) for AAPL, BAC, AXP only.
+      **Data Constraints**: All queries must use SEC data (2003-2022) for AAPL, BAC, AXP only.
       
       **When in doubt, bias toward Genie (should_plan_research=False).**
     
