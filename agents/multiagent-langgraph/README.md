@@ -25,7 +25,9 @@
 * **document_retrieval_agent**: Executes searches and synthesizes final response (uses `databricks-claude-sonnet-4`)
   * Tools: `search_sec_business_section`, `search_sec_other_sections`, `search_earnings_calls`
   * Handles both data retrieval AND response synthesis in a single agent
+* **genie_agent**: (work-in-progress) Execute text-to-SQL-based query (uses `databricks-claude-3-7-sonnet`)
+* **websearch_agent**: (work-in-progress) Executed searches on the web (uses `databricks-claude-3-7-sonnet`)
 
 **_Graph Visualized:_**
 
-<img src="./data/multiagent-graph.png" alt="LangGraph Multi-Agent System Visualized" width="1000">
+<img src="./data/multiagent-arch.png" alt="LangGraph Multi-Agent System Visualized" width="1000">
