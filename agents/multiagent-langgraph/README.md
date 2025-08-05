@@ -6,7 +6,7 @@
 * Earnings Call Transcript
 
 ## AI Models:
-* Chat and Generation: `databricks-claude-sonnet-4`
+* Chat and Generation: `databricks-claude-sonnet-4` and `databricks-claude-3-7-sonnet`
 * Text Embedding: `databricks-gte-large-en`
 
 ## Agent Frameworks:
