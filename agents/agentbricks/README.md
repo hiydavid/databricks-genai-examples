@@ -1,23 +1,27 @@
 # Multi-Agent System with Agent Bricks
 
-# Introduction
+## Introduction
+
 This is a tutorial on how to create your first Multi-Agent Supervisor with Databricks Agent Bricks. Most of this is done via the UI, since some of these features do not yet have API support. I will update this tutorial with API code once that is available.
 
 By the end of this, you will have created a multi-agent system on Databricks with Agent Bricks, including the following assets:
+
 - A **Genie Space** with two datasets `balance-sheet` and `income-statement`
 - A **Vector Search Index** of a chunked SEC 10K dataset `sec-10k-chunked`
 - A **Knowledge Assistant** that's connected to the Vector Search Index
 - A **Multi-Agent Supervisor** that's a coordinator between the **Genie Space** and the **Knowledge Assistant**
 
-# Prerequisites
+## Prerequisites
+
 - Databricks workspace with Unity Catalog enabled
 - Cluster with ML runtime (for creating Vector Search Index)
 - Permissions to create schemas, tables, and vector search endpoints
 - Agent Bricks (Beta) is enabled in the worksapce
 
-# Get Started
+## Get Started
 
-## Step 1: Ingest Data as Delta Tables
+### Step 1: Ingest Data as Delta Tables
+
 First, make sure the parquet files are in a Unity Catalog Volumes directory. Then, run `ingest-data` notebook to create the Delta tables.
 
 1. Update the catalog and schema names in the notebook configuration
@@ -26,16 +30,18 @@ First, make sure the parquet files are in a Unity Catalog Volumes directory. The
    - `{catalog}.{schema}.income_statement`
    - `{catalog}.{schema}.sec_10k_chunked`
 
-## Step 2: Create Vector Search Index (UI)
+### Step 2: Create Vector Search Index (UI)
+
 Create a vector search index for the SEC 10K chunked data:
 
-1. Make sure a Vector Search endpoint has been create. You will use this endpoint to create a Vector Search index. 
+1. Make sure a Vector Search endpoint has been create. You will use this endpoint to create a Vector Search index.
    - To create a VS endpoint, navigate to **Compute**, and then **Vector Search**, then **Create Endpoint**
 2. Then, go to the `{catalog}.{schema}.sec_10k_chunked` Delta table in Unity Catalog
 3. To the upper-right corner, click **Create**, and select **Vector search index**
    - Follow this [documentation](https://docs.databricks.com/aws/en/generative-ai/create-query-vector-search) for more details on how to create an index
 
-## Step 3: Create Genie Space (UI Only)
+### Step 3: Create Genie Space (UI Only)
+
 Create a Genie Space for the financial data:
 
 1. Navigate to **Genie** in the Databricks workspace
@@ -47,8 +53,9 @@ Create a Genie Space for the financial data:
 5. Optimize your Genie space in order to get the best out of Genie:
    - Add data and column descriptions (you have the option to use AI Suggestion deccription in Unity Catalog)
    - Add to General Instructions -- example:
-      * **General Instructions**:
-         ```
+      - **General Instructions**:
+
+         ```text
          # Guidelines
          1. **Fully qualify** each column with its table alias (`bs`, `is`, `cf`, etc.).
          2. **Filter** by `company_id` (ticker) and explicit period(s) given by the user.
@@ -79,9 +86,11 @@ Create a Genie Space for the financial data:
 
          Remember: you are a precise, no-nonsense financial analyst SQL generator. Ask clarifying questions only when essential information is missing; otherwise, return the optimized SQL query immediately.
          ```
+
    - Add examples to SQL Queries -- example:
-      * **Q: What is the debt to equity ratio for APPL for 2022**
-         ```
+      - **Q: What is the debt to equity ratio for APPL for 2022**
+
+         ```sql
          SELECT
             ROUND(
                   try_divide((`short_term_debt` + `long_term_debt`), NULLIF(`total_equity`, 0)), 4
@@ -93,13 +102,15 @@ Create a Genie Space for the financial data:
             AND `YEAR` = :year
          ;
          ```
+
    - Follow this [documentation](https://docs.databricks.com/aws/en/genie/best-practices) for more details on how to cruate an effective Genie space
 
+### Step 4: Create Knowledge Assistant Agent Brick (UI Only)
 
-## Step 4: Create Knowledge Assistant Agent Brick (UI Only)
-```
+```text
 Note: This is a Beta feature.
 ```
+
 Create a Knowledge Assistant connected to the vector search index:
 
 1. Navigate to **Agent** in the Databricks workspace
@@ -107,7 +118,7 @@ Create a Knowledge Assistant connected to the vector search index:
 3. Configure the agent:
    - **Name**: `SEC 10K Knowledge Assistant`
    - **Description**: `Answers questions about SEC 10K document queries`
-4 Configure Knowledge Sources: 
+4 Configure Knowledge Sources:
    - For the first knowledge source:
       - **Type**: select **Vector Search Index**
       - **Source**: select `sec_10k_chunked_vsindex`, or the name you've chosen for the index durin index creation
@@ -115,14 +126,16 @@ Create a Knowledge Assistant connected to the vector search index:
       - **Text Column**: `doc_content`
       - **Describe the Content**: ```The Vector Search Index contains text chunks from 10K filings, for Apple and American Express, from years 2020 through 2022```
    - Add more knowledge sources if you have more, but for this tutorial you only have one vector search index
-   - Under **Optional**, you can add further **Insturctions** for the Knowledge Assistant agent 
+   - Under **Optional**, you can add further **Insturctions** for the Knowledge Assistant agent
 4. Click **Create Agent**
 5. Test the agent, and try to improve quality by adding example questions and guidelines in the **Improve Quality** tab
 
-## Step 5: Create Multi-Agent Supervisor (UI Only)
-```
+### Step 5: Create Multi-Agent Supervisor (UI Only)
+
+```text
 Note: This is a Beta feature.
 ```
+
 Create a supervisor agent to coordinate between the Genie Space and Knowledge Assistant:
 
 1. Navigate to **Agent** in the Databricks workspace
@@ -141,27 +154,31 @@ Create a supervisor agent to coordinate between the Genie Space and Knowledge As
       - **Agent Endpoint**: select the endpoint name of the Knowledge Assistant created in the previous step
       - **Agent Name**: `ka-agent`
       - **Describe the Content**: `Answers questions about SEC 10K document queries`
-   - Under **Optional**, you can add further **Insturctions** for the Multi-Agent Supervisor 
+   - Under **Optional**, you can add further **Insturctions** for the Multi-Agent Supervisor
 5. Click **Create Agent**
 
-## Step 6: Test the Multi-Agent System
+### Step 6: Test the Multi-Agent System
+
 Test your complete multi-agent system:
 
-1. **Genie Queries**: 
+1. **Genie Queries**:
+
    - "What was the total revenue last quarter?"
    - "Show me the balance sheet trends"
 
 2. **SEC Document Queries**:
+
    - "What are the main risk factors mentioned in the 10K?"
    - "Summarize the business overview section"
 
 3. **Combined Queries**:
+
    - "How do the financial results compare to the risks mentioned in the 10K?"
    - "Analyze the company's financial health based on both datasets"
 
 ## Architecture Overview
 
-```
+```text
 Multi-Agent Supervisor
 ├── Genie Space (Financial Data Analysis)
 │   ├── balance_sheet table
@@ -170,4 +187,4 @@ Multi-Agent Supervisor
     └── sec_10k_vector_index
 ```
 
-The supervisor agent intelligently routes queries to the appropriate sub-agent based on the type of information requested, and can coordinate responses from multiple agents for complex analytical tasks. 
+The supervisor agent intelligently routes queries to the appropriate sub-agent based on the type of information requested, and can coordinate responses from multiple agents for complex analytical tasks.
