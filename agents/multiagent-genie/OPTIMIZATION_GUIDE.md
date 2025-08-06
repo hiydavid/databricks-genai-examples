@@ -89,6 +89,22 @@ agents.deploy(
 
 Note: Sizing affects concurrency, not per-request latency.
 
+### Parallel Execution Configuration
+
+The ParallelExecutor agent uses ThreadPoolExecutor for concurrent Genie queries:
+
+**Key Parameters:**
+
+- `max_workers=min(len(queries), 3)` - Limits concurrent queries to 3
+- Consider adjusting based on Genie space rate limits and SQL warehouse capacity
+- Monitor query completion order and result synthesis quality
+
+**Optimization Strategies:**
+
+- Balance parallelism with Genie space rate limits
+- Use MLflow traces to identify bottlenecks in parallel execution
+- Consider query complexity when determining parallel batch sizes
+
 ## 3. Prompt Engineering Optimization
 
 The system has three main prompt components in `configs.yaml` that need to be customized for your specific dataset and use cases:
@@ -159,24 +175,30 @@ All agent interactions are automatically traced with MLflow 3.0+ integration.
 
 ### Testing Your Prompt Changes
 
-After updating prompts, test with the sample questions in `driver.py` cells 141-145:
+After updating prompts, test with sample questions in `driver.py`:
 
-1. **Simple Questions**: Should route directly to Genie
+1. **Current Complex Test Cases** (cells 141-143):
+   - "What's the debt-to-asset ratio for American Express from 2012 to 2021, compare to that of Bank of America?"
+   - "Give me an executive summary comparing year-on-year revenue growth from 2012 to 2021 between the AAPL and BAC?"
+   - "Why is BAC's revenue growth so volatile between the years 2012 to 2021?"
+
+2. **Recommended Simple Test Cases** (add these for complete coverage):
    - "What was AAPL's revenue in 2015?"
+   - "Calculate BAC's current ratio for 2014"
+   - "Show me AXP's net income from 2010 to 2012"
    
-2. **Complex Questions**: Should use ParallelExecutor
-   - "Compare the profitability trends of AAPL, BAC, and AXP from 2010-2015"
-
 3. **Edge Cases**: Test boundary conditions
-   - Questions that could go either way
+   - Questions that could route either way
    - Follow-up clarification scenarios
 
 ## 5. Evaluation and Quality Measurement
 
 ### Evaluation Framework
+
 Use Mosaic AI Agent Evaluation suite for systematic quality measurement.
 
 **Evaluation Dataset:**
+
 - Create 10-15 diverse, representative questions
 - Cover both simple and complex query types
 - Include edge cases and boundary conditions
@@ -184,7 +206,7 @@ Use Mosaic AI Agent Evaluation suite for systematic quality measurement.
 
 **Automated Evaluation:**
 
--  Use MLflow for programmatic evaluation runs
+- Use MLflow for programmatic evaluation runs
 - Built-in AI judges for response quality assessment
 - Track improvement metrics over time
 
@@ -202,7 +224,55 @@ Use Mosaic AI Agent Evaluation suite for systematic quality measurement.
 - **User Satisfaction**: Feedback from Review App
 - **Cost Efficiency**: Token usage optimization
 
-## 6. Best Practices Summary
+## 6. Authentication and Deployment Configuration
+
+### Genie Space Access Requirements
+
+**Environment Variables:**
+
+```python
+# Required for Genie space authentication
+DATABRICKS_GENIE_PAT = "<your-pat-token>"
+DB_MODEL_SERVING_HOST_URL = "<databricks-workspace-url>"
+```
+
+**Configuration Locations:**
+
+- Notebook development: Set in Databricks secrets
+- Model serving: Configure in `agent-bricks-config.yaml`
+- Deployment: Pass via `environment_vars` parameter
+
+### Model Serving Deployment
+
+**Authentication Flow:**
+
+1. PAT token provides Genie space access
+2. Automatic credential passthrough for UC tables
+3. SQL warehouse permissions inherited from serving endpoint
+
+**Deployment Configuration:**
+
+```python
+agents.deploy(
+    model_name,
+    model_version,
+    tags,
+    environment_vars={  # Critical for Genie access
+        "DATABRICKS_GENIE_PAT": "{{secrets/scope/genie-pat}}"
+    },
+    workload_size="Small",  # Adjust based on usage
+    endpoint_name=endpoint_name
+)
+```
+
+### Permission Requirements
+
+- **Genie Space**: Read access via PAT token
+- **SQL Warehouse**: Query execution permissions
+- **Unity Catalog**: Read access to financial data tables
+- **MLflow Experiment**: Write access for tracing data
+
+## 7. Best Practices Summary
 
 ### Prompt Engineering
 

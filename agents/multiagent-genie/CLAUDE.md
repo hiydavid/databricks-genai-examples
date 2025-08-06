@@ -19,7 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Main entry point: `driver.py` (Databricks notebook format with `# Databricks notebook source` magic commands)
 - Core agent implementation: `multiagent-genie.py` (Python module loaded via `%run ./multiagent-genie`)
 - Configuration: `configs.yaml` (requires manual setup of Databricks resources)
-- Test agent: Use sample questions in `driver.py` cells 141-145 for testing different complexity levels
+- Test agent: Use sample questions in `driver.py` cells 141-143 for testing different complexity levels
 
 ### Development Workflow
 1. Update `configs.yaml` with your Databricks resources (catalog, schema, workspace_url, etc.)
@@ -27,12 +27,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 3. Set up Databricks PAT token in secrets (required for Genie space access)
 4. Load data using `data/sec/ingest-sec-data.py` if needed
 5. Run cells in `driver.py` sequentially to test, log, register, and deploy the agent
-6. Use sample questions in cells 141-145 for testing different complexity levels
+6. Use sample questions in cells 141-143 for testing different complexity levels
 
 ### Testing the Agent
 - **Simple Questions**: Test with single metric queries (e.g., "What was AAPL's revenue in 2015?")
 - **Complex Questions**: Test multi-company comparisons and trend analysis
-- **Sample Test Cases**: Use `sample_questions` array in `driver.py` cells 141-145
+- **Sample Test Cases**: Use `sample_questions` array in `driver.py` cells 141-143
 - **Response Testing**: Both `predict()` and `predict_stream()` methods available
 
 ## Architecture Overview
@@ -98,7 +98,7 @@ Before running, update `configs.yaml` with:
 - LLM endpoint configuration
 
 ### Data Files
-- `data/sec/balance_sheet.parquet` and `data/sec/income_statement.parquet`: SEC financial datasets (2003-2017)
+- `data/sec/balance_sheet.parquet` and `data/sec/income_statement.parquet`: SEC financial datasets (2003-2022)
 - `data/sec/genie_instruction.md`: SQL query guidelines and supported financial metrics for SEC data
 - `data/sec/ingest-sec-data.py`: SEC data ingestion script
 - `data/sec/agent-bricks-config.yaml`: Additional agent configuration for deployment
@@ -157,6 +157,29 @@ The system is specifically designed for SEC financial data analysis with predefi
 - **Table Aliases**: `bs` (balance sheet), `is` (income statement), `cf` (cash flow)
 - **Query Guidelines**: Fully qualified columns, explicit filtering, NULLIF for division safety
 - **Supported Calculations**: 15+ financial ratios including liquidity, solvency, profitability, efficiency, and growth metrics
+
+## Critical Development Notes
+
+### Authentication Requirements
+- **Genie Space Access**: Requires `DATABRICKS_GENIE_PAT` environment variable for Genie space authentication
+- **Model Serving**: Configure PAT token in secrets for deployment (`{{secrets/scope/genie-pat}}`)
+- **Permissions**: Ensure PAT has access to Genie space, SQL warehouse, and Unity Catalog tables
+
+### Common Issues and Solutions
+- **Streaming Timeouts**: Use `predict_stream()` for long-running queries to prevent client timeouts
+- **Parallel Execution Bottlenecks**: Monitor ThreadPoolExecutor performance (max 3 workers) via MLflow traces
+- **Routing Accuracy**: Use structured output validation to ensure proper agent selection
+- **Data Inconsistencies**: Synchronize formulas between Genie space instructions and multi-agent prompts
+
+### MLflow Tracing Integration
+- All agent interactions automatically traced with `@mlflow.trace` decorators
+- Monitor supervisor routing decisions, Genie query performance, and parallel execution coordination
+- Use traces to identify optimization opportunities and performance bottlenecks
+
+### Structured Output Schema
+- `NextNode`: Controls agent routing with Literal type constraints
+- `ResearchPlan`: Defines parallel query structure and rationale
+- `AgentState`: Manages conversation state across iterations (max 3)
 
 ## Prompt Optimization
 
