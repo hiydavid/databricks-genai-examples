@@ -203,8 +203,6 @@ print(resources)
 
 # COMMAND ----------
 
-from pkg_resources import get_distribution
-
 with mlflow.start_run():
     logged_agent_info = mlflow.pyfunc.log_model(
         name=AGENT_NAME,
