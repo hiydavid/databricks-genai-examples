@@ -15,6 +15,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - `pydantic<2.12.0`
 - No traditional build, test, or lint commands - this is a Databricks notebook-based project
 
+### Databricks Notebook Structure
+- **driver.py**: Main Databricks notebook with `# Databricks notebook source` magic commands
+- **multiagent-genie.py**: Core Python module imported via `%run ./multiagent-genie` 
+- Notebook cells are separated by `# COMMAND ----------` markers
+- Development workflow requires Databricks environment with cluster compute
+
+### Environment Variables Required
+- `DB_MODEL_SERVING_HOST_URL`: Databricks workspace URL for model serving
+- `DATABRICKS_GENIE_PAT`: Personal Access Token for Genie space authentication
+- Configure in Databricks secrets for production deployment
+
 ### Running the Agent
 - Main entry point: `driver.py` (Databricks notebook format with `# Databricks notebook source` magic commands)
 - Core agent implementation: `multiagent-genie.py` (Python module loaded via `%run ./multiagent-genie`)
@@ -183,7 +194,7 @@ The system is specifically designed for SEC financial data analysis with predefi
 
 ## Prompt Optimization
 
-The system includes comprehensive prompt optimization capabilities documented in `OPTIMIZATION_GUIDE.md`:
+The system includes comprehensive prompt optimization capabilities documented in `docs/optimization-guide.md`:
 
 ### Key Optimization Areas
 - **Supervisor Agent System Prompt**: Controls routing logic and decision-making
@@ -202,4 +213,31 @@ All prompts are configured in `configs.yaml` under `agent_configs.supervisor_age
 - **Data-Aware Examples**: Use examples matching your actual dataset scope
 - **Performance Monitoring**: Use MLflow tracing to monitor routing decisions and response quality
 
-See `OPTIMIZATION_GUIDE.md` for detailed prompt customization strategies and testing approaches.
+See `docs/optimization-guide.md` for detailed prompt customization strategies and testing approaches.
+
+## File Structure and Dependencies
+
+### Core Files
+- `driver.py`: Databricks notebook entry point with cell-based structure
+- `multiagent-genie.py`: Core agent implementation with LangGraph workflow
+- `configs.yaml`: Complete system configuration including prompts
+- `requirements.txt`: Python dependencies for Databricks environment
+
+### Data Directory Structure
+- `data/sec/`: SEC financial data and instructions
+  - `balance_sheet.parquet`, `income_statement.parquet`: Financial datasets (2003-2022)
+  - `genie_instruction.md`: SQL guidelines and financial formulas for Genie space
+  - `ingest-sec-data.py`: Data ingestion script
+- `data/graphs/`: Architecture diagrams
+
+### Configuration Management
+- All settings managed through `configs.yaml` using `mlflow.models.ModelConfig`
+- Must update TODO placeholders before running
+- Prompts are configurable via YAML for easy optimization
+- Environment variables loaded from `os.getenv()` for runtime configuration
+
+### Notebook Development Pattern
+- Cells use `# MAGIC` commands for markdown documentation
+- Python code cells separated by `# COMMAND ----------`
+- Autoreload enabled for development: `%load_ext autoreload`, `%autoreload 2`
+- Library installation via `%pip install` followed by `dbutils.library.restartPython()`
