@@ -145,40 +145,50 @@ The system uses sophisticated prompt engineering for optimal routing:
 - **Parallel Execution**: Track ThreadPoolExecutor performance and bottlenecks
 - **Query Performance**: Individual Genie query execution times
 
-## Future Development Plans
+## Recent Updates
 
-### Genie Metadata Integration Plan
+### Genie Metadata Integration Plan (Enhanced)
 
-A comprehensive plan has been developed to enhance the supervisor agent's contextual awareness:
+A streamlined plan has been developed to enhance the supervisor agent's contextual awareness through one-time metadata loading:
 
-#### Proposed Implementation
+#### Simplified Implementation Approach
 
-1. **Metadata API Integration**
-   - Retrieve Genie space metadata via REST APIs (`GET /api/2.0/genie/spaces/{space_id}`)
-   - Access Unity Catalog table metadata for column descriptions and data types
-   - Implement caching system to minimize API overhead
+1. **One-Time Metadata Loading**
+   - Load Genie space metadata once at agent initialization using existing `WorkspaceClient`
+   - Retrieve table schemas for financial datasets (balance_sheet, income_statement)
+   - Store metadata context in memory for the entire session duration
 
-2. **Enhanced Context Awareness**
-   - Include table/column descriptions in supervisor agent system prompt
-   - Provide metadata about available tables, data types, and relationships
-   - Expose trusted assets information for better routing decisions
+2. **Enhanced Supervisor Context**
+   - Include table/column descriptions directly in supervisor agent system prompts
+   - Provide static metadata about available tables, data types, and relationships
+   - Enable better routing decisions with comprehensive data context
 
-3. **Benefits**
-   - Improved routing accuracy with full data context
-   - Reduced trial-and-error queries
-   - Better understanding of available data for complex analysis
+3. **Key Benefits**
+   - **Zero Runtime Overhead**: Metadata loaded once at startup, no API calls during queries
+   - **Simple & Reliable**: No complex caching, TTL management, or refresh logic needed
+   - **Perfect for Financial Data**: SEC data schemas are stable, ideal for one-time loading
+   - **Architecture Compatible**: Uses synchronous implementation matching existing codebase
 
-#### Implementation Approaches
+#### Implementation Details
 
-**Option 1: Direct API Integration**
-- Real-time metadata access via Databricks REST APIs
-- Automatic synchronization with Genie space changes
-- Comprehensive metadata coverage
+```python
+# One-time loading in LangGraphChatAgent initialization
+class LangGraphChatAgent:
+    def __init__(self, config: ModelConfig):
+        # Load metadata once at startup - no refresh needed
+        self.metadata_context = self._load_metadata_at_startup(config)
+        
+    def _load_metadata_at_startup(self, config: ModelConfig) -> dict:
+        genie_metadata = get_genie_space_metadata(self.workspace_client, space_id)
+        table_schemas = get_table_schemas(self.workspace_client, catalog, schema)
+        return {"genie": genie_metadata, "schemas": table_schemas}
+```
 
-**Option 2: Configuration-Based Solution**
-- Manual metadata management in `configs.yaml`
-- Full control over exposed information
-- No API call overhead during execution
+**Why One-Time Loading Works Best:**
+- Financial SEC data table structures are stable and change infrequently
+- Eliminates API call overhead during agent execution
+- Removes complexity of caching, invalidation, and refresh mechanisms
+- Provides consistent metadata context throughout session
 
 See `docs/genie-metadata-implementation.md` for complete technical details and implementation roadmap.
 

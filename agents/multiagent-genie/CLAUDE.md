@@ -192,18 +192,49 @@ The system is specifically designed for SEC financial data analysis with predefi
 - `ResearchPlan`: Defines parallel query structure and rationale
 - `AgentState`: Manages conversation state across iterations (max 3)
 
+## Metadata Integration (Recent Enhancement)
+
+The system now supports enhanced supervisor context through one-time metadata loading:
+
+### Simplified Metadata Approach
+- **One-Time Loading**: Genie space and table metadata retrieved once at agent initialization
+- **Zero Runtime Overhead**: No API calls during query execution, no complex caching needed
+- **Architecture Compatible**: Uses synchronous implementation matching existing LangGraph/ChatDatabricks stack
+- **Perfect for Financial Data**: SEC data schemas are stable, ideal for static context
+
+### Implementation Pattern
+```python
+class LangGraphChatAgent:
+    def __init__(self, config: ModelConfig):
+        # Load metadata once at startup - no refresh needed
+        self.metadata_context = self._load_metadata_at_startup(config)
+        
+    def _load_metadata_at_startup(self, config: ModelConfig) -> dict:
+        genie_metadata = get_genie_space_metadata(self.workspace_client, space_id)
+        table_schemas = get_table_schemas(self.workspace_client, catalog, schema)
+        return {"genie": genie_metadata, "schemas": table_schemas}
+```
+
+### Benefits
+- Enhanced routing decisions with full data context (table/column awareness)
+- Reduced trial-and-error queries through better schema understanding  
+- Consistent metadata context throughout entire session
+- Simple fallback when metadata loading fails (graceful degradation)
+
+See `docs/genie-metadata-implementation.md` for complete implementation details.
+
 ## Prompt Optimization
 
 The system includes comprehensive prompt optimization capabilities documented in `docs/optimization-guide.md`:
 
 ### Key Optimization Areas
-- **Supervisor Agent System Prompt**: Controls routing logic and decision-making
+- **Supervisor Agent System Prompt**: Controls routing logic and decision-making (enhanced with metadata context)
 - **Research Planning Prompt**: Determines when to use parallel query execution  
 - **Final Answer Prompt**: Formats responses for simple vs. complex queries
 
 ### Configuration Location
 All prompts are configured in `configs.yaml` under `agent_configs.supervisor_agent`:
-- `system_prompt`: Main supervisor routing logic
+- `system_prompt`: Main supervisor routing logic (can include metadata placeholders)
 - `research_prompt`: Parallel execution decision criteria
 - `final_answer_prompt`: Response formatting guidelines
 
@@ -211,6 +242,7 @@ All prompts are configured in `configs.yaml` under `agent_configs.supervisor_age
 - **Bias Toward Genie**: Default to direct Genie routing for simple queries to reduce latency
 - **Clear Thresholds**: Define specific criteria for complex analysis (e.g., "3+ separate queries")
 - **Data-Aware Examples**: Use examples matching your actual dataset scope
+- **Metadata Enhancement**: Include table/column context for better routing decisions
 - **Performance Monitoring**: Use MLflow tracing to monitor routing decisions and response quality
 
 See `docs/optimization-guide.md` for detailed prompt customization strategies and testing approaches.

@@ -60,50 +60,78 @@ This document outlines the research findings and implementation approaches for e
 
 ## Implementation Approaches
 
-### Approach 1: Direct API Integration (Recommended)
+### Approach 1: One-Time Initialization Retrieval (Recommended)
 
 **Advantages:**
-- Real-time metadata access
-- Always synchronized with Genie space configuration
-- No manual maintenance required
-- Comprehensive metadata coverage
+- Simple and reliable - no complex caching logic needed
+- Zero runtime performance impact - metadata loaded once at startup
+- Compatible with existing synchronous architecture
+- Perfect for stable financial data schemas
+
+**Key Insight:** For financial SEC data, table schemas are stable. Load once at initialization, use throughout session.
 
 **Implementation Steps:**
 
-1. **Add Genie Space Metadata Retrieval**
+1. **Add Synchronous Genie Space Metadata Retrieval**
    ```python
-   async def get_genie_space_metadata(space_id: str) -> dict:
-       """Retrieve Genie space metadata including table/column descriptions"""
-       response = await databricks_client.get(f"/api/2.0/genie/spaces/{space_id}")
-       return response.json()
+   def get_genie_space_metadata(client: WorkspaceClient, space_id: str) -> dict:
+       """Retrieve Genie space metadata once at initialization"""
+       try:
+           response = client.api_client.do("GET", f"/api/2.0/genie/spaces/{space_id}")
+           return response.json() if response else {}
+       except Exception as e:
+           logger.warning(f"Failed to load metadata: {e}")
+           return {}  # Graceful fallback
    ```
 
-2. **Add Unity Catalog Table Metadata**
+2. **Add Table Schema Retrieval**
    ```python
-   async def get_table_metadata(full_table_name: str) -> dict:
-       """Get detailed table metadata from Unity Catalog"""
-       response = await databricks_client.get(f"/api/2.1/unity-catalog/tables/{full_table_name}")
-       return response.json()
+   def get_table_schemas(client: WorkspaceClient, catalog: str, schema: str) -> dict:
+       """Get schemas for all tables in the financial dataset"""
+       tables = ["balance_sheet", "income_statement"]  # Known financial tables
+       schemas = {}
+       for table in tables:
+           try:
+               table_info = client.tables.get(f"{catalog}.{schema}.{table}")
+               schemas[table] = {
+                   "columns": [{"name": col.name, "type": str(col.type_name), 
+                               "comment": col.comment} for col in table_info.columns],
+                   "comment": table_info.comment
+               }
+           except Exception as e:
+               logger.warning(f"Failed to get schema for {table}: {e}")
+       return schemas
    ```
 
-3. **Supervisor Context Enhancement**
-   - Modify `supervisor_agent` function (multiagent-genie.py:100) to include metadata in system prompt
-   - Cache metadata to avoid repeated API calls
-   - Add metadata about available tables, columns, data types, and descriptions
-
-4. **Metadata Caching System**
+3. **One-Time Metadata Loading in Agent**
    ```python
-   class MetadataCache:
-       def __init__(self, ttl_minutes: int = 30):
-           self.cache = {}
-           self.ttl = ttl_minutes
-       
-       async def get_genie_metadata(self, space_id: str) -> dict:
-           # Check cache first, then fetch if expired
-           pass
+   class LangGraphChatAgent:
+       def __init__(self, config: ModelConfig):
+           # Load metadata ONCE at initialization
+           self.metadata_context = self._load_metadata_at_startup(config)
+           
+       def _load_metadata_at_startup(self, config: ModelConfig) -> dict:
+           """Load all needed metadata once - no refresh needed"""
+           genie_metadata = get_genie_space_metadata(
+               self.workspace_client, config.get("genie_space_id")
+           )
+           table_schemas = get_table_schemas(
+               self.workspace_client, 
+               config.get("catalog_name"), 
+               config.get("schema_name")
+           )
+           return {"genie": genie_metadata, "schemas": table_schemas}
    ```
 
-### Approach 2: Configuration-Based Solution (Alternative)
+4. **Enhance Supervisor with Static Context**
+   ```python
+   def supervisor_agent(state: AgentState) -> AgentState:
+       # Use pre-loaded metadata context
+       enhanced_prompt = f"{base_system_prompt}\n\nData Context:\n{format_metadata_context(agent.metadata_context)}"
+       # ... rest of supervisor logic
+   ```
+
+### Approach 2: Configuration-Based Solution (Simple Alternative)
 
 **Advantages:**
 - Full control over exposed metadata
@@ -148,54 +176,51 @@ This document outlines the research findings and implementation approaches for e
        return f"{base_prompt}\n\nAvailable Data Context:\n{metadata_context}"
    ```
 
-## Detailed Implementation Plan
+## Simplified Implementation Plan
 
-### Phase 1: API Client Development
-- [ ] Create Databricks API client wrapper for Genie and Unity Catalog endpoints
-- [ ] Implement authentication handling with PAT token
-- [ ] Add error handling and retry logic
-- [ ] Create data models for API responses
+### Phase 1: One-Time Metadata Loading (Core Implementation)
+- [ ] Add synchronous metadata retrieval functions using existing `WorkspaceClient`
+- [ ] Implement graceful error handling for API failures
+- [ ] Load metadata once in `LangGraphChatAgent.__init__()`
+- [ ] Add metadata context formatting for supervisor prompts
 
-### Phase 2: Metadata Caching System
-- [ ] Implement TTL-based caching to minimize API calls
-- [ ] Add cache invalidation triggers
-- [ ] Create metadata refresh capabilities
-- [ ] Add logging for cache performance monitoring
-
-### Phase 3: Supervisor Agent Integration
-- [ ] Modify `supervisor_agent` system prompt template to include metadata placeholders
-- [ ] Add metadata injection logic at agent initialization
-- [ ] Update routing logic to leverage table/column context
+### Phase 2: Supervisor Integration
+- [ ] Modify `supervisor_agent` system prompt to include static metadata context
+- [ ] Test routing decisions with metadata-enhanced prompts
 - [ ] Add configuration options for metadata verbosity
+- [ ] Validate improved routing accuracy
 
-### Phase 4: Testing and Validation
-- [ ] Test with sample queries across different complexity levels
-- [ ] Validate improved routing decisions with metadata context
-- [ ] Monitor performance impact of metadata loading
-- [ ] Compare routing accuracy before/after metadata integration
-
-### Phase 5: Documentation and Maintenance
+### Phase 3: Production Readiness
+- [ ] Add comprehensive error handling and fallback behavior
 - [ ] Document new configuration options in CLAUDE.md
-- [ ] Add troubleshooting guide for metadata issues
-- [ ] Create maintenance procedures for keeping metadata synchronized
+- [ ] Add startup metadata loading to deployment process
+- [ ] Create troubleshooting guide for metadata loading failures
 
 ## Code Integration Points
 
 ### Current Architecture Modifications
 
-1. **multiagent-genie.py:100** - `supervisor_agent` function
-   - Add metadata loading at initialization
-   - Enhance system prompt with data context
-   - Include table/column information in routing decisions
+1. **LangGraphChatAgent Class** (driver.py) - One-time loading
+   ```python
+   def __init__(self, config: ModelConfig):
+       # Load metadata once at startup
+       self.metadata_context = self._load_metadata_at_startup(config)
+   ```
 
-2. **configs.yaml** - Configuration
-   - Add `genie_space_metadata` section (Approach 2)
-   - Add `metadata_cache_ttl` configuration option
-   - Include API endpoint configurations
+2. **multiagent-genie.py:100** - `supervisor_agent` function
+   ```python
+   def supervisor_agent(state: AgentState) -> AgentState:
+       # Use pre-loaded metadata in system prompt
+       enhanced_prompt = build_metadata_prompt(base_prompt, agent.metadata_context)
+   ```
 
-3. **LangGraphChatAgent Class** - Driver integration
-   - Initialize metadata cache in constructor
-   - Refresh metadata on space configuration changes
+3. **configs.yaml** - Simple configuration
+   ```yaml
+   # No complex caching config needed
+   metadata_config:
+     include_column_descriptions: true
+     include_table_comments: true
+   ```
 
 ## Expected Benefits
 
@@ -217,24 +242,24 @@ This document outlines the research findings and implementation approaches for e
 ## Implementation Considerations
 
 ### Performance Impact
-- API calls for metadata retrieval add initial latency
-- Caching strategy crucial for production deployment
-- Consider async loading for large metadata sets
+- **Startup Only**: Metadata loading happens once at initialization - zero runtime impact
+- **Memory Usage**: Static metadata context stored in memory (minimal for financial tables)
+- **Simple and Fast**: No caching logic, TTL management, or refresh mechanisms needed
 
 ### Security and Permissions
-- Ensure PAT token has appropriate permissions for both Genie and Unity Catalog APIs
-- Handle permission errors gracefully
-- Consider service principal authentication for production
+- Ensure PAT token has `workspace-access` and `genie-access` permissions
+- Handle permission errors gracefully during startup
+- Log metadata loading success/failure for troubleshooting
 
 ### Maintenance Requirements
-- Metadata may need periodic refresh as Genie space evolves
-- Monitor for API changes in Databricks platform
-- Keep documentation synchronized with actual data structure
+- **Minimal**: Financial data schemas change infrequently
+- **Restart to Refresh**: If schemas change, restart agent deployment to reload
+- **No Complex Sync**: Eliminates cache invalidation and refresh logic
 
-### Fallback Strategies
-- Graceful degradation when metadata is unavailable
-- Default routing behavior when API calls fail
-- Logging and alerting for metadata synchronization issues
+### Fallback Strategy
+- **Simple**: If metadata loading fails at startup, continue without metadata context
+- **Logging**: Log metadata loading failures for troubleshooting
+- **Degraded Mode**: Agent works normally, just without enhanced routing context
 
 ## Next Steps
 
