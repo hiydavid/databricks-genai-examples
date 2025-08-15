@@ -20,15 +20,17 @@ This project demonstrates how to build a sophisticated multi-agent system using 
 ### DSPy Advantages Over LangGraph
 
 - **Modular Programming**: Program with modules instead of prompts
-- **Automatic Optimization**: Built-in prompt and weight optimization
+- **Automatic Optimization**: Built-in prompt and weight optimization (GEPA, SIMBA, GRPO optimizers)
 - **Declarative Signatures**: Clear input/output interfaces between modules
 - **Type Safety**: Strong typing with field definitions
 - **Research-Backed**: Based on Stanford NLP optimization techniques
+- **Enhanced Performance**: DSPy 3.0 provides improved async support and native MLflow integration
 
 ## Prerequisites
 
 ⚠️ **Important Setup Requirements**
 
+- **Python 3.10+** (required for DSPy 3.0)
 - Databricks workspace with Genie Space configured
 - Personal Access Token (PAT) stored as Databricks secret
 - SQL warehouse with appropriate permissions
@@ -42,7 +44,7 @@ pip install -r requirements.txt
 
 ### Key Dependencies
 
-- `dspy-ai>=2.5.0` - Core DSPy framework
+- `dspy-ai>=3.0.0` - Core DSPy framework (upgraded from 2.6.27)
 - `databricks-langchain==0.6.0` - Databricks integrations
 - `mlflow-skinny[databricks]==3.2.0` - Model serving and tracing
 - `databricks-agents==1.1.0` - Agent deployment
@@ -138,13 +140,34 @@ User Query → SupervisorModule → [GenieModule | ParallelExecutorModule] → F
 - [x] MLflow tracing integration
 
 ### 🚧 In Progress
-- [ ] DSPy optimization teleprompters integration
+- [ ] DSPy GEPA/SIMBA optimizer integration for enhanced financial analysis accuracy
 - [ ] Enhanced error handling and recovery
 
 ### 📋 Planned Features
-- [ ] DSPy 3.0 migration (when stable)
-- [ ] Automatic prompt optimization pipeline
+- [x] DSPy 3.0 upgrade (with enhanced optimization capabilities and native MLflow integration)
+- [ ] DSPy GEPA/SIMBA optimizer integration for automatic prompt optimization
 - [ ] Extended data source integration
+
+## DSPy Optimization Features
+
+### Available Optimizers (DSPy 3.0)
+
+- **GEPA (Genetic-Pareto)**: Natural language reflection with multi-objective evolutionary search (35x fewer rollouts)
+- **SIMBA (Stochastic Introspective Mini-Batch Ascent)**: LLM self-analysis for performance improvement with introspective reasoning
+- **GRPO (Group Relative Policy Optimization)**: Reinforcement learning-based optimization (outperformed by GEPA)
+
+### Future Optimization Integration
+
+```python
+# Example: Optimizing the SupervisorModule for better routing decisions
+from dspy.teleprompt import GEPA
+
+optimizer = GEPA(metric=financial_accuracy_metric)
+optimized_supervisor = optimizer.compile(
+    SupervisorModule(), 
+    trainset=financial_examples
+)
+```
 
 ## Development Notes
 
