@@ -3,7 +3,9 @@ import functools
 import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 from typing import Any, Dict, Generator, List, Literal, Optional
+from zoneinfo import ZoneInfo
 
 import mlflow
 from databricks.sdk import WorkspaceClient
@@ -23,6 +25,8 @@ from mlflow.types.agent import (
 )
 from pydantic import BaseModel
 from typing_extensions import Annotated, TypedDict
+
+mlflow.set_tracking_uri("databricks")
 
 ######################################
 ## Load variables from the config file
@@ -65,6 +69,41 @@ genie_agent = GenieAgent(
 llm = ChatDatabricks(endpoint=LLM_ENDPOINT_NAME)
 
 
+################################################
+# Create calendar functions for temporal context
+################################################
+
+
+def get_temporal_context() -> Dict[str, str]:
+    """Return current date, fiscal year, and fiscal quarter.
+
+    Fiscal year runs Sep 1 -> Aug 31, labeled by end year.
+    Quarters: Q1=Sep-Nov, Q2=Dec-Feb, Q3=Mar-May, Q4=Jun-Aug
+    """
+    now = datetime.now(ZoneInfo("America/New_York"))
+    today_iso = now.date().isoformat()
+
+    # Fiscal year calculation (Sep-Aug, labeled by end year)
+    fy_end_year = now.year + 1 if now.month >= 9 else now.year
+    fy = f"FY{fy_end_year}"
+
+    # Fiscal quarter calculation
+    if now.month in (9, 10, 11):
+        fq = "Q1"
+    elif now.month in (12, 1, 2):
+        fq = "Q2"
+    elif now.month in (3, 4, 5):
+        fq = "Q3"
+    else:  # Jun, Jul, Aug
+        fq = "Q4"
+
+    return {
+        "today_iso": today_iso,
+        "fy": fy,
+        "fq": fq,
+    }
+
+
 #################################################################
 # Define the supervisor agent with research planning capabilities
 #################################################################
@@ -99,35 +138,60 @@ class ResearchPlanOutput(BaseModel):
 
 @mlflow.trace(span_type=SpanType.AGENT, name="supervisor_agent")
 def supervisor_agent(state):
+    """Supervisor agent node that prepends temporal org context to the system prompt
+    and then decides whether to plan research or route normally.
+
+    The injected context includes:
+      - Current date (America/New_York)
+      - Current fiscal year (FY named by end year, Sep→Aug)
+      - Current fiscal quarter (Q1..Q4, with Q1 starting in September)
+    """
     count = state.get("iteration_count", 0) + 1
     if count > MAX_ITERATIONS:
         return FINISH
 
-    # Check if we should plan research or route normally
-    preprocessor = RunnableLambda(
-        lambda state: [{"role": "system", "content": SYSTEM_PROMPT}] + state["messages"]
+    # Build dynamic system prompt
+    temporal_ctx = get_temporal_context()
+
+    # Keep the context compact and machine-friendly at the very top of the system prompt.
+    temporal_prefix = (
+        "Below is information on the current date and fiscal year/quarter information. You may or may not use this in your analysis.\n"
+        f"- The current date is: {temporal_ctx['today_iso']}\n"
+        f"- The current fiscal year is: {temporal_ctx['fy']}\n"
+        f"- The current fiscal quarter is: {temporal_ctx['fq']}\n\n"
     )
 
-    # First, determine if we need research planning
+    SYSTEM_PROMPT_WITH_CONTEXT = temporal_prefix + SYSTEM_PROMPT
+    SYSTEM_PROMPT_WITH_CONTEXT_AND_RESEARCH = (
+        temporal_prefix + SYSTEM_PROMPT + "\n\n" + RESEARCH_PROMPT
+    )
+
+    # Preprocessors that include the dynamic prefix
+    preprocessor = RunnableLambda(
+        lambda state: [{"role": "system", "content": SYSTEM_PROMPT_WITH_CONTEXT}]
+        + state["messages"]
+    )
+
     enhanced_preprocessor = RunnableLambda(
         lambda state: [
-            {"role": "system", "content": SYSTEM_PROMPT + "\n\n" + RESEARCH_PROMPT}
+            {"role": "system", "content": SYSTEM_PROMPT_WITH_CONTEXT_AND_RESEARCH}
         ]
         + state["messages"]
     )
 
+    # Decide routing / research planning as before
     supervisor_chain = enhanced_preprocessor | llm.with_structured_output(
         ResearchPlanOutput
     )
     decision = supervisor_chain.invoke(state)
 
-    # if routed back to the same node, exit the loop
+    # If routed back to the same node, finish to prevent loops
     if state.get("next_node") == decision.next_node:
         return FINISH
 
     result = {"iteration_count": count, "next_node": decision.next_node}
 
-    # If research planning is needed, store the research plan
+    # Persist research plan if needed
     if decision.should_plan_research and decision.research_plan:
         result["research_plan"] = {
             "queries": decision.research_plan.queries,

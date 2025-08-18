@@ -59,6 +59,7 @@ User Query → Supervisor Agent → [Genie Agent OR Parallel Executor] → Final
 - **LLM**: ChatDatabricks with configurable endpoints (Claude Sonnet models)
 - **Observability**: MLflow tracing with `@mlflow.trace` decorators
 - **State Management**: Typed state management with Pydantic models
+- **Temporal Context**: Automatic fiscal year/quarter awareness with timezone support
 - **Deployment**: Databricks model serving endpoints
 
 ## Getting Started
@@ -110,6 +111,10 @@ Use the sample questions provided in `driver.py` (cells 141-143):
 - **Simple Question**: "What was AAPL's revenue in 2015?"
 - **Complex Analysis**: "Compare the profitability ratios of AAPL, BAC, and AXP for 2020-2022"
 - **Trend Analysis**: "Analyze AAPL's debt-to-equity ratio trend from 2018 to 2022"
+- **Temporal Context Examples**:
+  - "How does this fiscal quarter's performance compare to last quarter?"
+  - "What are the year-to-date financial metrics for the current fiscal year?"
+  - "Compare current fiscal year performance to the same period last year"
 
 ## System Optimization
 
@@ -146,6 +151,54 @@ The system uses sophisticated prompt engineering for optimal routing:
 - **Query Performance**: Individual Genie query execution times
 
 ## Recent Updates
+
+### Temporal Context Integration (New)
+
+The system now includes automatic temporal context awareness that provides real-time date and fiscal information to enhance financial analysis:
+
+#### Key Features
+
+1. **Automatic Date Context**
+   - Current date in ISO format (America/New_York timezone)
+   - Automatically injected into supervisor agent system prompts
+   - Enables date-aware financial queries and analysis
+
+2. **Fiscal Year Awareness**
+   - Fiscal year calculation following Sep 1 → Aug 31 calendar
+   - Labeled by end year (e.g., FY2025 runs Sep 2024 → Aug 2025)
+   - Supports fiscal year-based financial comparisons
+
+3. **Fiscal Quarter Context**
+   - Q1: Sep-Nov, Q2: Dec-Feb, Q3: Mar-May, Q4: Jun-Aug
+   - Enables quarterly financial analysis and reporting
+   - Supports quarter-over-quarter trend analysis
+
+#### Implementation Details
+
+The temporal context is automatically added to all supervisor agent prompts via the `get_temporal_context()` function (`multiagent-genie.py:77`):
+
+```python
+def get_temporal_context() -> Dict[str, str]:
+    """Return current date, fiscal year, and fiscal quarter.
+    
+    Fiscal year runs Sep 1 -> Aug 31, labeled by end year.
+    Quarters: Q1=Sep-Nov, Q2=Dec-Feb, Q3=Mar-May, Q4=Jun-Aug
+    """
+```
+
+**Context Format Injected:**
+```
+- The current date is: 2025-01-15
+- The current fiscal year is: FY2025
+- The current fiscal quarter is: Q2
+```
+
+#### Benefits
+
+- **Date-Aware Analysis**: Enables queries like "How does this quarter compare to last quarter?"
+- **Fiscal Context**: Supports fiscal year-based financial reporting standards
+- **Temporal Trends**: Better context for year-over-year and quarter-over-quarter analysis
+- **Real-Time Updates**: Context automatically reflects current date without manual updates
 
 ### Genie Metadata Integration Plan (Enhanced)
 
