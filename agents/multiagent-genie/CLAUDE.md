@@ -43,6 +43,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Testing the Agent
 - **Simple Questions**: Test with single metric queries (e.g., "What was AAPL's revenue in 2015?")
 - **Complex Questions**: Test multi-company comparisons and trend analysis
+- **Temporal Context Questions**: Test date-aware queries (e.g., "What is the current fiscal quarter performance?")
 - **Sample Test Cases**: Use `sample_questions` array in `driver.py` cells 141-143
 - **Response Testing**: Both `predict()` and `predict_stream()` methods available
 
@@ -89,6 +90,7 @@ User Query → Supervisor → [Parallel Executor OR Direct Genie] → Supervisor
 - **Parallel Execution**: Parallel Executor uses ThreadPoolExecutor (max 3 workers) for concurrent Genie queries
 - **Error Handling**: Comprehensive error handling in parallel query execution with graceful degradation
 - **Authentication**: Uses Databricks PAT stored in secrets for Genie space access
+- **Temporal Context**: Automatic fiscal year/quarter awareness with real-time date injection into prompts
 
 ### Implementation Details
 
@@ -151,7 +153,8 @@ The system is designed for deployment as a Databricks model serving endpoint wit
 ### Code Structure and Key Functions
 
 **multiagent-genie.py Functions:**
-- `supervisor_agent()` (line 100): Main routing logic with iteration limits and structured output
+- `get_temporal_context()` (line 77): Returns current date, fiscal year, and fiscal quarter context
+- `supervisor_agent()` (line 138): Main routing logic with temporal context injection and structured output
 - `research_planner_node()` (line 146): Parallel query execution with ThreadPoolExecutor
 - `agent_node()` (line 237): Generic wrapper for individual agents
 - `final_answer()` (line 251): Formats final response using configured prompt
@@ -191,6 +194,62 @@ The system is specifically designed for SEC financial data analysis with predefi
 - `NextNode`: Controls agent routing with Literal type constraints
 - `ResearchPlan`: Defines parallel query structure and rationale
 - `AgentState`: Manages conversation state across iterations (max 3)
+
+## Temporal Context Integration (Recent Enhancement)
+
+The system now includes automatic temporal context awareness that provides real-time fiscal calendar information to enhance financial analysis:
+
+### Temporal Context Features
+
+1. **Automatic Date Context**
+   - Current date in ISO format (America/New_York timezone)
+   - Automatically injected into supervisor agent system prompts
+   - Enables date-aware financial queries and analysis
+
+2. **Fiscal Year Awareness**
+   - Fiscal year calculation following Sep 1 → Aug 31 calendar
+   - Labeled by end year (e.g., FY2025 runs Sep 2024 → Aug 2025)
+   - Supports fiscal year-based financial comparisons and "current fiscal year" queries
+
+3. **Fiscal Quarter Context**  
+   - Q1: Sep-Nov, Q2: Dec-Feb, Q3: Mar-May, Q4: Jun-Aug
+   - Enables quarterly financial analysis and reporting
+   - Supports quarter-over-quarter trend analysis and "current quarter" queries
+
+### Implementation Architecture
+
+**Function Location**: `get_temporal_context()` in multiagent-genie.py:77
+
+```python
+def get_temporal_context() -> Dict[str, str]:
+    """Return current date, fiscal year, and fiscal quarter.
+    
+    Fiscal year runs Sep 1 -> Aug 31, labeled by end year.
+    Quarters: Q1=Sep-Nov, Q2=Dec-Feb, Q3=Mar-May, Q4=Jun-Aug
+    """
+```
+
+**Context Injection**: Automatically prepended to supervisor system prompts:
+```
+- The current date is: {today_iso}
+- The current fiscal year is: {fy}  
+- The current fiscal quarter is: {fq}
+```
+
+### Key Benefits
+
+- **Date-Aware Analysis**: Supports queries like "How does this quarter compare to last quarter?"
+- **Fiscal Context**: Enables fiscal year-based financial reporting aligned with business standards
+- **Temporal Trends**: Better context for year-over-year and quarter-over-quarter analysis
+- **Real-Time Updates**: Context automatically reflects current date without manual configuration
+- **Enhanced Routing**: Supervisor can make better decisions based on temporal context
+
+### Usage Examples
+
+With temporal context, the system can now handle queries like:
+- "What is the current fiscal year performance for AAPL?"
+- "Compare this quarter's results to the same quarter last year"
+- "How has performance changed since the beginning of the fiscal year?"
 
 ## Metadata Integration (Recent Enhancement)
 
