@@ -22,7 +22,7 @@ This multi-agent system provides intelligent financial data analysis by:
 
 ### Multi-Agent System Design
 
-```
+```txt
 User Query → Supervisor Agent → [Genie Agent OR Parallel Executor] → Final Answer
 ```
 
@@ -69,7 +69,7 @@ User Query → Supervisor Agent → [Genie Agent OR Parallel Executor] → Final
 1. **Databricks Environment**: Workspace with cluster compute access
 2. **Genie Space**: Created and configured with SEC financial data
 3. **Authentication**: Databricks Personal Access Token (PAT)
-4. **Permissions**: 
+4. **Permissions**:
    - `CAN RUN` on Genie Space
    - `CAN USE` on SQL Warehouse
    - `SELECT` on Unity Catalog tables
@@ -78,6 +78,7 @@ User Query → Supervisor Agent → [Genie Agent OR Parallel Executor] → Final
 ### Setup Instructions
 
 1. **Install Dependencies**
+
    ```bash
    pip install -r requirements.txt
    ```
@@ -90,12 +91,14 @@ User Query → Supervisor Agent → [Genie Agent OR Parallel Executor] → Final
    - MLflow experiment configuration
 
 3. **Set Environment Variables**
+
    ```bash
    export DB_MODEL_SERVING_HOST_URL="your-databricks-workspace-url"
    export DATABRICKS_GENIE_PAT="your-personal-access-token"
    ```
 
 4. **Load Data** (if needed)
+
    ```python
    # Run the data ingestion script
    %run ./data/sec/ingest-sec-data
@@ -134,11 +137,13 @@ The foundation of system performance relies on proper Genie space configuration:
 The system uses sophisticated prompt engineering for optimal routing:
 
 #### Supervisor Agent Prompts (`configs.yaml`)
+
 - **System Prompt**: Controls routing logic and decision-making criteria
 - **Research Prompt**: Determines when to use parallel query execution
 - **Final Answer Prompt**: Formats responses based on query complexity
 
 #### Optimization Strategy
+
 - **Bias Toward Genie**: Default to direct Genie routing for simple queries (reduces latency)
 - **Clear Thresholds**: Specific criteria for complex analysis (3+ separate queries)
 - **Data-Aware Examples**: Examples matching actual dataset scope (2003-2022 SEC data)
@@ -187,7 +192,8 @@ def get_temporal_context() -> Dict[str, str]:
 ```
 
 **Context Format Injected:**
-```
+
+```txt
 - The current date is: 2025-01-15
 - The current fiscal year is: FY2025
 - The current fiscal quarter is: Q2
@@ -200,54 +206,9 @@ def get_temporal_context() -> Dict[str, str]:
 - **Temporal Trends**: Better context for year-over-year and quarter-over-quarter analysis
 - **Real-Time Updates**: Context automatically reflects current date without manual updates
 
-### Genie Metadata Integration Plan (Enhanced)
-
-A streamlined plan has been developed to enhance the supervisor agent's contextual awareness through one-time metadata loading:
-
-#### Simplified Implementation Approach
-
-1. **One-Time Metadata Loading**
-   - Load Genie space metadata once at agent initialization using existing `WorkspaceClient`
-   - Retrieve table schemas for financial datasets (balance_sheet, income_statement)
-   - Store metadata context in memory for the entire session duration
-
-2. **Enhanced Supervisor Context**
-   - Include table/column descriptions directly in supervisor agent system prompts
-   - Provide static metadata about available tables, data types, and relationships
-   - Enable better routing decisions with comprehensive data context
-
-3. **Key Benefits**
-   - **Zero Runtime Overhead**: Metadata loaded once at startup, no API calls during queries
-   - **Simple & Reliable**: No complex caching, TTL management, or refresh logic needed
-   - **Perfect for Financial Data**: SEC data schemas are stable, ideal for one-time loading
-   - **Architecture Compatible**: Uses synchronous implementation matching existing codebase
-
-#### Implementation Details
-
-```python
-# One-time loading in LangGraphChatAgent initialization
-class LangGraphChatAgent:
-    def __init__(self, config: ModelConfig):
-        # Load metadata once at startup - no refresh needed
-        self.metadata_context = self._load_metadata_at_startup(config)
-        
-    def _load_metadata_at_startup(self, config: ModelConfig) -> dict:
-        genie_metadata = get_genie_space_metadata(self.workspace_client, space_id)
-        table_schemas = get_table_schemas(self.workspace_client, catalog, schema)
-        return {"genie": genie_metadata, "schemas": table_schemas}
-```
-
-**Why One-Time Loading Works Best:**
-- Financial SEC data table structures are stable and change infrequently
-- Eliminates API call overhead during agent execution
-- Removes complexity of caching, invalidation, and refresh mechanisms
-- Provides consistent metadata context throughout session
-
-See `docs/genie-metadata-implementation.md` for complete technical details and implementation roadmap.
-
 ## File Structure
 
-```
+```txt
 ├── README.md                               # This file
 ├── CLAUDE.md                              # Development guidance
 ├── docs/
@@ -271,16 +232,19 @@ See `docs/genie-metadata-implementation.md` for complete technical details and i
 ## Key Technical Features
 
 ### State Management
+
 - **LangGraph AgentState**: Typed state management with conversation history
 - **Iteration Control**: Maximum 3 iterations to prevent infinite loops
 - **Message Filtering**: Only final answers returned to prevent noise
 
 ### Error Handling
+
 - **Graceful Degradation**: Comprehensive error handling in parallel execution
 - **Query Validation**: Structured output validation for routing decisions
 - **Authentication**: Robust PAT token management for Databricks resources
 
 ### Streaming Support
+
 - **predict()**: Synchronous prediction for simple queries
 - **predict_stream()**: Streaming responses with status updates for complex analysis
 - **Timeout Prevention**: Status updates during long-running operations
