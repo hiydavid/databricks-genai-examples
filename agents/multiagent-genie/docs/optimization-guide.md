@@ -53,6 +53,31 @@ Ensure your Genie space instructions align with actual data availability:
 - Provisioned throughput versions expected later this quarter
 - Reference [Anthropic's prompt engineering guide](https://docs.anthropic.com/claude/docs/prompt-engineering) for Claude-specific optimization
 
+### Temperature Configuration
+
+**Location**: `configs.yaml` → `agent_configs.supervisor_agent.temperature`
+
+**Default**: 0.1 (recommended for financial analysis)
+
+**Configuration Guidelines:**
+
+- **Low Temperature (0.0-0.3)**: Recommended for financial data analysis
+  - More deterministic and consistent responses
+  - Better for factual queries and numerical calculations
+  - Reduces hallucination risk with financial metrics
+- **Medium Temperature (0.4-0.7)**: Consider for creative analysis tasks
+  - More varied response styles
+  - Better for narrative explanations and summaries
+- **High Temperature (0.8-1.0)**: Generally not recommended
+  - Too much variability for financial accuracy requirements
+
+**Best Practices:**
+
+- Start with 0.1 for financial analysis consistency
+- Monitor response quality through MLflow tracing
+- Test temperature changes with evaluation dataset
+- Consider different temperatures for different agent types if needed
+
 ### Iteration Control
 
 **Location**: `configs.yaml` → `agent_configs.supervisor_agent.max_iterations`
@@ -97,7 +122,7 @@ The ParallelExecutor agent uses asyncio-based parallel execution for concurrent 
 
 - `asyncio.gather(*tasks, return_exceptions=True)` - Executes queries concurrently with error isolation
 - `asyncio.to_thread()` - Preserves MLflow context during parallel execution
-- Maximum 3 concurrent queries to balance performance with resource limits
+- No hard limit on concurrent queries - executes all queries in the research plan (typically 2-4)
 - `nest-asyncio` dependency handles Databricks event loop compatibility
 
 **Optimization Strategies:**
@@ -106,7 +131,8 @@ The ParallelExecutor agent uses asyncio-based parallel execution for concurrent 
 - **Better Resource Usage**: ~2KB per async task vs ~8KB per thread
 - **Error Isolation**: Individual query failures don't cancel other parallel queries
 - **Performance Monitoring**: Use MLflow traces to identify bottlenecks in parallel execution
-- **Rate Limit Management**: Balance parallelism with Genie space and SQL warehouse capacity
+- **Rate Limit Management**: Monitor Genie space and SQL warehouse capacity when executing multiple concurrent queries
+- **Query Planning**: Supervisor agent creates 2-4 queries per research plan, all executed concurrently
 
 ## 3. Prompt Engineering Optimization
 
@@ -193,7 +219,7 @@ After updating prompts, test with sample questions in `driver.py`:
    - "What was AAPL's revenue in 2015?"
    - "Calculate BAC's current ratio for 2014"
    - "Show me AXP's net income from 2010 to 2012"
-   
+
 3. **Edge Cases**: Test boundary conditions
    - Questions that could route either way
    - Follow-up clarification scenarios
