@@ -91,19 +91,22 @@ Note: Sizing affects concurrency, not per-request latency.
 
 ### Parallel Execution Configuration
 
-The ParallelExecutor agent uses ThreadPoolExecutor for concurrent Genie queries:
+The ParallelExecutor agent uses asyncio-based parallel execution for concurrent Genie queries:
 
 **Key Parameters:**
 
-- `max_workers=min(len(queries), 3)` - Limits concurrent queries to 3
-- Consider adjusting based on Genie space rate limits and SQL warehouse capacity
-- Monitor query completion order and result synthesis quality
+- `asyncio.gather(*tasks, return_exceptions=True)` - Executes queries concurrently with error isolation
+- `asyncio.to_thread()` - Preserves MLflow context during parallel execution
+- Maximum 3 concurrent queries to balance performance with resource limits
+- `nest-asyncio` dependency handles Databricks event loop compatibility
 
 **Optimization Strategies:**
 
-- Balance parallelism with Genie space rate limits
-- Use MLflow traces to identify bottlenecks in parallel execution
-- Consider query complexity when determining parallel batch sizes
+- **Context Preservation**: Asyncio implementation eliminates MLflow tracing warnings
+- **Better Resource Usage**: ~2KB per async task vs ~8KB per thread
+- **Error Isolation**: Individual query failures don't cancel other parallel queries
+- **Performance Monitoring**: Use MLflow traces to identify bottlenecks in parallel execution
+- **Rate Limit Management**: Balance parallelism with Genie space and SQL warehouse capacity
 
 ## 3. Prompt Engineering Optimization
 
@@ -128,6 +131,10 @@ The system has three main prompt components in `configs.yaml` that need to be cu
 - **Routing bias** - Set default preference toward Genie for performance, only using ParallelExecutor when truly needed
 - **Examples** - Provide examples of simple vs complex queries specific to your domain
 - **Planning constraints** - Define guidelines for generating research queries within your data limitations
+- **Temporal Context Propagation** - Ensure relative time terms are converted to explicit dates in subqueries
+  - Transform "current fiscal year" → "FY2025" using temporal context
+  - Make each parallel query self-contained with explicit dates/years
+  - Prevent ambiguous temporal references in individual Genie queries
 
 ### Final Answer Prompt
 
@@ -195,26 +202,41 @@ After updating prompts, test with sample questions in `driver.py`:
 
 ### Evaluation Framework
 
-Use Mosaic AI Agent Evaluation suite for systematic quality measurement.
+The system now includes comprehensive evaluation capabilities integrated into the driver notebook:
 
-**Evaluation Dataset:**
+**Evaluation Dataset Structure:**
 
-- Create 10-15 diverse, representative questions
-- Cover both simple and complex query types
-- Include edge cases and boundary conditions
-- Match your actual data scope and use cases
+- **Location**: `data/evals/eval-questions.json`
+- **Format**: JSON array with `inputs` and `expectations` for each test case
+- **Coverage**: 5+ diverse questions covering simple queries, multi-company comparisons, and temporal analysis
+- **Examples**:
+  - Simple: "What was Apple's revenue in 2015?"
+  - Complex: "Compare the debt-to-equity ratio between Apple and Bank of America from 2018 to 2020"
+  - Temporal: "What are the key liquidity metrics for all three companies in 2020, and how do they compare?"
 
-**Automated Evaluation:**
+**Automated Evaluation Integration:**
 
-- Use MLflow for programmatic evaluation runs
-- Built-in AI judges for response quality assessment
-- Track improvement metrics over time
+- **MLflow Evaluate**: Built into driver notebook (cells 174-218)
+- **Scorers**: Correctness, RelevanceToQuery, and Safety metrics
+- **Batch Processing**: Evaluates all test cases systematically
+- **Progress Tracking**: Monitor routing decisions and response quality over time
+
+**Evaluation Workflow:**
+
+```python
+# Automated evaluation in driver.py
+eval_results = mlflow.genai.evaluate(
+    data=pd.DataFrame(eval_dataset_list),
+    predict_fn=my_predict_fn,
+    scorers=[Correctness(), RelevanceToQuery(), Safety()],
+)
+```
 
 **Human Evaluation:**
 
 - Deploy with `agents.deploy()` to get Review App access
 - Collect SME feedback through structured review process
-- Focus on financial accuracy and user experience
+- Focus on financial accuracy and temporal context handling
 
 ### Quality Metrics to Track
 

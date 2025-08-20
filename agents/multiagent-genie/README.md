@@ -40,8 +40,9 @@ User Query → Supervisor Agent → [Genie Agent OR Parallel Executor] → Final
    - Handles single-metric and straightforward financial questions
 
 3. **Parallel Executor Agent** (`multiagent-genie.py:146`)
-   - Executes multiple concurrent queries for complex analysis
-   - Uses ThreadPoolExecutor with max 3 workers
+   - Executes multiple concurrent queries for complex analysis using asyncio
+   - Uses `asyncio.gather()` with `asyncio.to_thread()` for MLflow context preservation
+   - Maximum 3 concurrent queries for optimal resource usage
    - Synthesizes results from parallel data sources
    - Handles multi-company comparisons and complex financial ratios
 
@@ -60,6 +61,8 @@ User Query → Supervisor Agent → [Genie Agent OR Parallel Executor] → Final
 - **Observability**: MLflow tracing with `@mlflow.trace` decorators
 - **State Management**: Typed state management with Pydantic models
 - **Temporal Context**: Automatic fiscal year/quarter awareness with timezone support
+- **Async Execution**: asyncio-based parallel processing with MLflow context preservation
+- **Evaluation Framework**: Integrated MLflow evaluation with curated test datasets
 - **Deployment**: Databricks model serving endpoints
 
 ## Getting Started
@@ -152,12 +155,39 @@ The system uses sophisticated prompt engineering for optimal routing:
 
 - **MLflow Integration**: All agent interactions traced for performance analysis
 - **Routing Decisions**: Monitor supervisor agent routing accuracy
-- **Parallel Execution**: Track ThreadPoolExecutor performance and bottlenecks
+- **Async Execution**: Track asyncio performance and MLflow context preservation
 - **Query Performance**: Individual Genie query execution times
+- **Evaluation Metrics**: Automated scoring with Correctness, RelevanceToQuery, and Safety
 
 ## Recent Updates
 
-### Temporal Context Integration (New)
+### Asyncio Parallel Execution (New)
+
+The system now uses asyncio-based parallel execution instead of ThreadPoolExecutor, providing significant improvements:
+
+#### Key Benefits
+
+1. **MLflow Context Preservation**
+   - Eliminates "Failed to get Databricks request ID" warnings
+   - Full trace visibility for debugging and monitoring
+   - Uses `asyncio.to_thread()` to preserve contextvars
+
+2. **Better Resource Efficiency**
+   - ~2KB per async task vs ~8KB per thread
+   - More efficient context switching and memory usage
+   - Handles Databricks event loop environments seamlessly
+
+3. **Enhanced Error Handling**
+   - Individual query failures don't cancel other parallel queries
+   - Uses `asyncio.gather(*tasks, return_exceptions=True)` for isolation
+   - Better debugging with complete trace context
+
+4. **Modern Architecture**
+   - Uses async/await patterns throughout parallel execution
+   - Compatible with `nest-asyncio` for Databricks environments
+   - Maintains all existing functionality and performance
+
+### Temporal Context Integration
 
 The system now includes automatic temporal context awareness that provides real-time date and fiscal information to enhance financial analysis:
 
@@ -224,6 +254,8 @@ def get_temporal_context() -> Dict[str, str]:
     │   ├── income_statement.parquet      # Income statement data (2003-2022)
     │   ├── genie_instruction.md          # SQL guidelines for Genie
     │   └── ingest-sec-data.py           # Data ingestion script
+    ├── evals/                            # Evaluation datasets
+    │   └── eval-questions.json          # Curated test questions with expected responses
     └── graphs/                           # Architecture diagrams
         ├── arch-drawing.png
         └── arch-graph.png

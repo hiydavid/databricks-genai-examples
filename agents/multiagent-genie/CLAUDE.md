@@ -13,6 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - `databricks-agents==1.1.0`
   - `langgraph==0.5.4`
   - `pydantic<2.12.0`
+  - `nest-asyncio==1.6.0`
 - No traditional build, test, or lint commands - this is a Databricks notebook-based project
 
 ### Databricks Notebook Structure
@@ -64,8 +65,9 @@ This is a **multi-agent system** built with LangGraph for financial data analysi
    - Primary data source for Income Statement and Balance Sheet metrics
 
 3. **Parallel Executor Agent** (`research_planner_node` function in multiagent-genie.py:146)
-   - Executes parallel queries for complex multi-step analysis
-   - Uses ThreadPoolExecutor for concurrent Genie queries
+   - Executes parallel queries for complex multi-step analysis using asyncio
+   - Uses `asyncio.gather()` with `asyncio.to_thread()` for concurrent Genie queries
+   - Preserves MLflow context during parallel execution (eliminates tracing warnings)
    - Synthesizes results from multiple data sources
    - Renamed from "Research Planner" to "Parallel Executor" for clarity
 
@@ -87,10 +89,12 @@ User Query → Supervisor → [Parallel Executor OR Direct Genie] → Supervisor
 - **Chat Interface**: Wrapped in `LangGraphChatAgent` class implementing MLflow's `ChatAgent` interface
 - **Streaming Support**: Both `predict` and `predict_stream` methods available with status updates to prevent timeouts
 - **Configuration**: Extensive YAML-based configuration for Databricks resources
-- **Parallel Execution**: Parallel Executor uses ThreadPoolExecutor (max 3 workers) for concurrent Genie queries
-- **Error Handling**: Comprehensive error handling in parallel query execution with graceful degradation
-- **Authentication**: Uses Databricks PAT stored in secrets for Genie space access
+- **Async Parallel Execution**: Uses asyncio with `asyncio.to_thread()` for concurrent Genie queries (max 3)
+- **MLflow Context Preservation**: Eliminates "Failed to get Databricks request ID" warnings
+- **Error Handling**: Individual query failures don't cancel other parallel queries (`return_exceptions=True`)
+- **Authentication**: Uses Databricks PAT stored in secrets for Genie space access  
 - **Temporal Context**: Automatic fiscal year/quarter awareness with real-time date injection into prompts
+- **Event Loop Compatibility**: Uses `nest-asyncio` for Databricks environment compatibility
 
 ### Implementation Details
 
@@ -181,9 +185,12 @@ The system is specifically designed for SEC financial data analysis with predefi
 
 ### Common Issues and Solutions
 - **Streaming Timeouts**: Use `predict_stream()` for long-running queries to prevent client timeouts
-- **Parallel Execution Bottlenecks**: Monitor ThreadPoolExecutor performance (max 3 workers) via MLflow traces
+- **MLflow Context Warnings**: Fixed by asyncio implementation using `asyncio.to_thread()`
+- **Event Loop Conflicts**: Resolved with `nest-asyncio` dependency for Databricks compatibility
+- **Parallel Execution Issues**: Monitor asyncio performance via MLflow traces; individual failures don't cancel other queries
 - **Routing Accuracy**: Use structured output validation to ensure proper agent selection
 - **Data Inconsistencies**: Synchronize formulas between Genie space instructions and multi-agent prompts
+- **Temporal Context**: Ensure relative time terms are converted to explicit dates in parallel subqueries
 
 ### MLflow Tracing Integration
 - All agent interactions automatically traced with `@mlflow.trace` decorators
@@ -319,6 +326,8 @@ See `docs/optimization-guide.md` for detailed prompt customization strategies an
   - `balance_sheet.parquet`, `income_statement.parquet`: Financial datasets (2003-2022)
   - `genie_instruction.md`: SQL guidelines and financial formulas for Genie space
   - `ingest-sec-data.py`: Data ingestion script
+- `data/evals/`: Evaluation datasets
+  - `eval-questions.json`: Curated test questions with expected responses for automated evaluation
 - `data/graphs/`: Architecture diagrams
 
 ### Configuration Management
