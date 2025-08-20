@@ -1,0 +1,67 @@
+[
+    {
+        "inputs": {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "What was Apple's revenue in 2015?"
+                }
+            ]
+        },
+        "expectations": {
+            "expected_response": "Apple's revenue in 2015 was approximately $53.4 billion based on SEC financial data."
+        }
+    },
+    {
+        "inputs": {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Compare the debt-to-equity ratio between Apple and Bank of America from 2018 to 2020."
+                }
+            ]
+        },
+        "expectations": {
+            "expected_response": "TICKER YEAR debt_to_equity_ratio\nAAPL 2020 1.72\nAAPL 2019 1.19\nAAPL 2018 1.07\nBAC 2020 1.03\nBAC 2019 1\nBAC 2018 0.94"
+        }
+    },
+    {
+        "inputs": {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Which company had the highest return on equity in 2019: Apple, Bank of America, or American Express?"
+                }
+            ]
+        },
+        "expectations": {
+            "expected_response": "TICKER return_on_equity\nAAPL 0.6106\nAXP 0.2939\nBAC 0.1036"
+        }
+    },
+    {
+        "inputs": {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Show me the revenue growth trend for American Express from 2010 to 2015."
+                }
+            ]
+        },
+        "expectations": {
+            "expected_response": "YEAR revenue_growth\n2010 null\n2011 20.75\n2012 -8.51\n2013\n19.57\n2014 9.82\n2015 -12.27"
+        }
+    },
+    {
+        "inputs": {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "What are the key liquidity metrics for all three companies in 2020, and how do they compare?"
+                }
+            ]
+        },
+        "expectations": {
+            "expected_response": "TICKER current_ratio quick_ratio\nAAPL 1.36 1.22\nAXP 8.36 8.36\nBAC 36.37 36.37"
+        }
+    }
+]

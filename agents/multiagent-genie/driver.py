@@ -171,6 +171,53 @@ print(response.messages[-1].content)
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC # Evaluating the agent with your curated dataset
+
+# COMMAND ----------
+
+import json
+
+evals_json_path = f"{os.getcwd()}/data/evals/eval-questions.json"
+
+with open(evals_json_path, "r") as f:
+    eval_dataset_list = json.load(f)
+
+# COMMAND ----------
+
+import pandas as pd
+
+eval_dataset = spark.createDataFrame(eval_dataset_list)
+
+from mlflow.genai.scorers import Correctness, Guidelines, RelevanceToQuery, Safety
+from mlflow.types.agent import (
+    ChatAgentChunk,
+    ChatAgentMessage,
+    ChatAgentRequest,
+    ChatAgentResponse,
+    ChatContext,
+)
+
+
+def my_predict_fn(
+    messages,
+):  # the signature corresponds to the keys in the "inputs" dict
+    return AGENT.predict(messages=[ChatAgentMessage(**message) for message in messages])
+
+
+# Run evaluation with predefined scorers
+eval_results = mlflow.genai.evaluate(
+    data=pd.DataFrame(eval_dataset_list),
+    predict_fn=my_predict_fn,
+    scorers=[
+        Correctness(),
+        RelevanceToQuery(),
+        Safety(),
+    ],
+)
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## Log the agent as an MLflow model
 # MAGIC
 # MAGIC Log the agent as code from the `multiagent-genie.py` file. See [MLflow - Models from Code](https://mlflow.org/docs/latest/models.html#models-from-code).
