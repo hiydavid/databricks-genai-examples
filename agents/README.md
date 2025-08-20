@@ -95,29 +95,4 @@ These tutorials will teach you to work with:
 - **Unity Catalog**: Data governance and access control
 - **Agent Bricks**: Databricks native agent framework (Beta)
 
-## Tutorial Structure
-
-```
-agents/
-├── agentbricks/           # Tutorial 1: No-code agent development
-│   ├── README.md         # Step-by-step tutorial guide
-│   ├── data/             # Sample datasets for hands-on practice
-│   └── ingest-data.py    # Data preparation walkthrough
-├── multiagent-genie/     # Tutorial 2: Programmatic agents with Genie
-│   ├── CLAUDE.md         # Development environment setup
-│   ├── OPTIMIZATION_GUIDE.md  # Advanced prompt engineering
-│   ├── multiagent-genie.py    # Core tutorial implementation
-│   ├── driver.py         # Interactive tutorial notebook
-│   ├── configs.yaml      # Configuration examples
-│   └── data/             # Tutorial datasets and instructions
-└── multiagent-langgraph/ # Tutorial 3: Advanced multi-agent systems
-    ├── README.md         # Tutorial overview and concepts
-    ├── CLAUDE.md         # Development best practices
-    ├── OPTIMIZATION_GUIDE.md  # Advanced prompt engineering
-    ├── agent.py          # Advanced implementation examples
-    ├── driver.py         # Hands-on exercise notebook
-    ├── configs.yaml      # Advanced configuration patterns
-    └── tools/            # Custom tool development examples
-```
-
 Each tutorial is self-contained with detailed instructions, sample code, and practical exercises to reinforce learning.
