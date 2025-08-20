@@ -8,9 +8,10 @@ All materials are provided AS IS, without any guarantees or warranties, and are 
 
 ## Agents
 
+* Multi-Agent with Agent Bricks
 * Multi-Agent System with LangGraph
 * Multi-Agent Genie with LangGraph
-* Multi-Agent with Agent Bricks
+* Multi-Agent Genie with DSPy (Work-In-Progress)
 
 ## Batch Inference
 

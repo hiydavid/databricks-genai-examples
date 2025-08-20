@@ -8,16 +8,18 @@ These tutorials use **financial data analysis** as a practical domain to demonst
 
 | Tutorial | Framework | Approach | Learning Objectives |
 |---|---|---|---|
-| **agentbricks/** | Databricks Agent Bricks | UI-First | Learn no-code agent creation via Databricks UI |
+| **agentbricks/** | Databricks Agent Bricks | UI-First | Learn multi-agent creation via Databricks UI |
 | **multiagent-genie/** | Genie + LangGraph | Code-First | Build SQL-focused agents with programmatic coordination |
 | **multiagent-langgraph/** | LangGraph + Vector Search + UC Tools | Code-First | Create document retrieval systems with advanced orchestration |
 
 ## Tutorials
 
 ### 🧱 Tutorial 1: Agent Bricks (`agentbricks/`)
-**Learn to build agents using Databricks' no-code interface**
+
+Learn to build agents using Databricks' no-code interface
 
 **What you'll learn:**
+
 - How to create Genie Spaces for structured data analysis
 - Building Knowledge Assistants with Vector Search integration
 - Configuring Multi-Agent Supervisors to coordinate between agents
@@ -28,9 +30,11 @@ These tutorials use **financial data analysis** as a practical domain to demonst
 **Prerequisites:** Basic familiarity with Databricks workspace navigation
 
 ### 🤖 Tutorial 2: Multi-Agent with Genie (`multiagent-genie/`)
-**Build programmatic agents that leverage Databricks Genie for SQL generation**
+
+Build programmatic agents that leverage Databricks Genie for SQL generation
 
 **What you'll learn:**
+
 - LangGraph fundamentals for multi-agent orchestration
 - Integrating Databricks Genie for natural language to SQL
 - Implementing supervisor patterns for agent coordination
@@ -40,9 +44,11 @@ These tutorials use **financial data analysis** as a practical domain to demonst
 **Prerequisites:** Python programming, basic SQL knowledge, familiarity with LangChain concepts
 
 ### 🔍 Tutorial 3: Advanced LangGraph System (`multiagent-langgraph/`)
-**Create sophisticated document retrieval and research agents**
+
+Create sophisticated document retrieval and research agents
 
 **What you'll learn:**
+
 - Advanced LangGraph patterns for complex workflows  
 - Multi-index vector search implementation
 - Self-querying retrievers with metadata filtering
@@ -65,7 +71,7 @@ All tutorials require access to:
 
 1. **Choose Your Learning Path**:
    - **New to agent development?** Start with Tutorial 1 (`agentbricks/`)
-   - **Want to learn programmatic coordination?** Begin with Tutorial 2 (`multiagent-genie/`) 
+   - **Want to learn programmatic coordination?** Begin with Tutorial 2 (`multiagent-genie/`)
    - **Ready for advanced patterns?** Jump to Tutorial 3 (`multiagent-langgraph/`)
 
 2. **Follow the Tutorial Structure**:
@@ -78,30 +84,8 @@ All tutorials require access to:
    - Try different prompts and configurations
    - Deploy your agents for hands-on experience
 
-## What You'll Learn About
+## Core Databricks Technologies
 
-### Agent Architecture Patterns
-Through these tutorials, you'll master three key patterns:
-
-**Supervisor Coordination**
-```
-User Query → Supervisor → [Specialized Agents] → Supervisor → Response
-```
-*Learned in: Tutorial 2 (Genie) and Tutorial 1 (Agent Bricks)*
-
-**Linear Pipeline Processing**
-```
-User Query → Validator → Planner → Executor → Response  
-```
-*Learned in: Tutorial 3 (LangGraph)*
-
-**UI-Driven Configuration**
-```
-User Query → Multi-Agent Supervisor → [Configured Agents] → Response
-```
-*Learned in: Tutorial 1 (Agent Bricks)*
-
-### Core Databricks Technologies
 These tutorials will teach you to work with:
 
 - **LangGraph**: Multi-agent orchestration and state management
