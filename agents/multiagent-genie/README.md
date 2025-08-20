@@ -161,10 +161,10 @@ The system uses sophisticated prompt engineering for optimal routing:
 ## File Structure
 
 ```txt
-├── README.md                               # This file
-├── CLAUDE.md                              # Development guidance
+├── README.md                             # This file
+├── CLAUDE.md                             # Development guidance
 ├── docs/
-│   └── optimization-guide.md              # System optimization strategies
+│   └── optimization-guide.md             # System optimization strategies
 ├── driver.py                             # Main Databricks notebook entry point
 ├── multiagent-genie.py                   # Core agent implementation
 ├── configs.yaml                          # System configuration
@@ -174,9 +174,9 @@ The system uses sophisticated prompt engineering for optimal routing:
     │   ├── balance_sheet.parquet         # Balance sheet data (2003-2022)
     │   ├── income_statement.parquet      # Income statement data (2003-2022)
     │   ├── genie_instruction.md          # SQL guidelines for Genie
-    │   └── ingest-sec-data.py           # Data ingestion script
+    │   └── ingest-sec-data.py            # Data ingestion script
     ├── evals/                            # Evaluation datasets
-    │   └── eval-questions.json          # Curated test questions with expected responses
+    │   └── eval-questions.json           # Curated test questions with expected responses
     └── graphs/                           # Architecture diagrams
         ├── arch-drawing.png
         └── arch-graph.png
