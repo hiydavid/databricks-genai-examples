@@ -2,7 +2,6 @@ import asyncio
 import functools
 import os
 import uuid
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Any, Dict, Generator, List, Literal, Optional
 from zoneinfo import ZoneInfo
@@ -218,8 +217,8 @@ def supervisor_agent(state):
 
 
 # @mlflow.trace(span_type=SpanType.AGENT, name="research_planner")  # Commented out - using autolog only
-def research_planner_node(state):
-    """Execute multiple Genie queries in parallel based on the research plan."""
+async def research_planner_node(state):
+    """Execute multiple Genie queries in parallel based on the research plan using asyncio."""
     try:
         research_plan = state.get("research_plan")
 
@@ -238,12 +237,13 @@ def research_planner_node(state):
         rationale = research_plan.get("rationale", "")
 
         # @mlflow.trace(span_type=SpanType.AGENT, name="execute_genie_query")  # Commented out to reduce memory overhead
-        def execute_genie_query(query: str) -> Dict[str, Any]:
-            """Execute a single Genie query."""
+        async def execute_genie_query_async(query: str) -> Dict[str, Any]:
+            """Execute a single Genie query using asyncio.to_thread to preserve MLflow context."""
             try:
                 # Create a state with just this query
                 query_state = {"messages": [{"role": "user", "content": query}]}
-                result = genie_agent.invoke(query_state)
+                # Use asyncio.to_thread to preserve contextvars including MLflow context
+                result = await asyncio.to_thread(genie_agent.invoke, query_state)
                 return {
                     "query": query,
                     "success": True,
@@ -262,37 +262,30 @@ def research_planner_node(state):
                     "error": str(e),
                 }
 
-        # Execute queries in parallel with memory-efficient processing
-        results = []
-        with ThreadPoolExecutor(max_workers=min(len(queries), 3)) as executor:
-            # Submit all queries
-            future_to_query = {
-                executor.submit(execute_genie_query, query): query for query in queries
-            }
+        # Execute queries in parallel using asyncio.gather with error handling
+        tasks = [execute_genie_query_async(query) for query in queries]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # Process results immediately to free memory with error handling
-            for future in as_completed(future_to_query):
-                try:
-                    result = future.result()
-                    results.append(result)
-                    del result  # Explicit cleanup of result object
-                except Exception as e:
-                    # If individual future fails, create error result
-                    query = future_to_query[future]
-                    error_result = {
-                        "query": query,
-                        "success": False,
-                        "response": None,
-                        "error": str(e),
-                    }
-                    results.append(error_result)
-                    print(
-                        f"[ERROR] Parallel execution failed for query '{query}': {str(e)}"
-                    )
+        # Process results and handle exceptions
+        processed_results = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                # Convert exception to error result
+                error_result = {
+                    "query": queries[i],
+                    "success": False,
+                    "response": None,
+                    "error": str(result),
+                }
+                processed_results.append(error_result)
+                print(
+                    f"[ERROR] Parallel execution failed for query '{queries[i]}': {str(result)}"
+                )
+            else:
+                processed_results.append(result)
 
-        # Sort results to maintain query order
-        query_to_result = {r["query"]: r for r in results}
-        ordered_results = [query_to_result[query] for query in queries]
+        # Results are already in order due to asyncio.gather preserving order
+        ordered_results = processed_results
 
         # Format the consolidated response
         response_parts = [f"Research Plan: {rationale}\n"]
@@ -314,7 +307,7 @@ def research_planner_node(state):
 
         # Explicit cleanup of large objects
         del response_parts
-        del query_to_result
+        del processed_results
         import gc
 
         gc.collect()
@@ -464,6 +457,50 @@ class LangGraphChatAgent(ChatAgent):
         context: Optional[ChatContext] = None,
         custom_inputs: Optional[dict[str, Any]] = None,
     ) -> ChatAgentResponse:
+        # Handle case where we're already in an event loop by using nest_asyncio
+        try:
+            import nest_asyncio
+            nest_asyncio.apply()
+            return asyncio.run(self._predict_async(messages, context, custom_inputs))
+        except ImportError:
+            # nest_asyncio not available, try alternative approach
+            try:
+                loop = asyncio.get_running_loop()
+                import threading
+                import queue
+                
+                result_queue = queue.Queue()
+                exception_queue = queue.Queue()
+                
+                def run_in_thread():
+                    try:
+                        new_loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(new_loop)
+                        result = new_loop.run_until_complete(self._predict_async(messages, context, custom_inputs))
+                        result_queue.put(result)
+                        new_loop.close()
+                    except Exception as e:
+                        exception_queue.put(e)
+                
+                thread = threading.Thread(target=run_in_thread)
+                thread.start()
+                thread.join()
+                
+                if not exception_queue.empty():
+                    raise exception_queue.get()
+                    
+                return result_queue.get()
+                
+            except RuntimeError:
+                # No event loop running, create a new one
+                return asyncio.run(self._predict_async(messages, context, custom_inputs))
+
+    async def _predict_async(
+        self,
+        messages: list[ChatAgentMessage],
+        context: Optional[ChatContext] = None,
+        custom_inputs: Optional[dict[str, Any]] = None,
+    ) -> ChatAgentResponse:
         # Truncate message history to prevent memory accumulation
         MAX_MESSAGES = 7
         if len(messages) > MAX_MESSAGES:
@@ -474,7 +511,7 @@ class LangGraphChatAgent(ChatAgent):
         }
 
         messages = []
-        for event in self.agent.stream(request, stream_mode="updates"):
+        async for event in self.agent.astream(request, stream_mode="updates"):
             for node_name, node_data in event.items():
                 # Only include messages from the final_answer node
                 if node_name == "final_answer":
@@ -514,6 +551,59 @@ class LangGraphChatAgent(ChatAgent):
         context: Optional[ChatContext] = None,
         custom_inputs: Optional[dict[str, Any]] = None,
     ) -> Generator[ChatAgentChunk, None, None]:
+        # Create an async generator and run it with proper event loop handling
+        async def _run_async_stream():
+            chunks = []
+            async for chunk in self._predict_stream_async(messages, context, custom_inputs):
+                chunks.append(chunk)
+            return chunks
+        
+        # Handle event loop properly - same pattern as predict()
+        try:
+            import nest_asyncio
+            nest_asyncio.apply()
+            chunks = asyncio.run(_run_async_stream())
+        except ImportError:
+            try:
+                loop = asyncio.get_running_loop()
+                import threading
+                import queue
+                
+                result_queue = queue.Queue()
+                exception_queue = queue.Queue()
+                
+                def run_in_thread():
+                    try:
+                        new_loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(new_loop)
+                        result = new_loop.run_until_complete(_run_async_stream())
+                        result_queue.put(result)
+                        new_loop.close()
+                    except Exception as e:
+                        exception_queue.put(e)
+                
+                thread = threading.Thread(target=run_in_thread)
+                thread.start()
+                thread.join()
+                
+                if not exception_queue.empty():
+                    raise exception_queue.get()
+                    
+                chunks = result_queue.get()
+                
+            except RuntimeError:
+                chunks = asyncio.run(_run_async_stream())
+        
+        # Yield chunks synchronously
+        for chunk in chunks:
+            yield chunk
+
+    async def _predict_stream_async(
+        self,
+        messages: list[ChatAgentMessage],
+        context: Optional[ChatContext] = None,
+        custom_inputs: Optional[dict[str, Any]] = None,
+    ):
         # Truncate message history to prevent memory accumulation
         MAX_MESSAGES = 7
         if len(messages) > MAX_MESSAGES:
@@ -526,7 +616,7 @@ class LangGraphChatAgent(ChatAgent):
         # Track which nodes we've seen to provide status updates
         seen_nodes = set()
 
-        for event in self.agent.stream(request, stream_mode="updates"):
+        async for event in self.agent.astream(request, stream_mode="updates"):
             for node_name, node_data in event.items():
                 # Provide status updates for intermediate nodes to prevent timeout
                 if node_name not in seen_nodes and node_name != "final_answer":
