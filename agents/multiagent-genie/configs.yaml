@@ -11,7 +11,9 @@ databricks_configs:
 
 agent_configs:
   agent_name: genie-reasoning-agent
-  llm_endpoint_name: "databricks-claude-3-7-sonnet" # TODO: or use "databricks-claude-sonnet-4"
+  llm:
+    endpoint_name: "databricks-claude-3-7-sonnet" # TODO: or use "databricks-claude-sonnet-4"
+    temperature: 0.1  # Lower temperature for more consistent supervisor routing
   genie_agent:
     space_id: # TODO: add Genie space id
     description: | # TODO: add your Genie agent description

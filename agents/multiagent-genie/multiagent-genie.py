@@ -36,7 +36,8 @@ mlflow.set_tracking_uri("databricks")
 configs = mlflow.models.ModelConfig(development_config="./configs.yaml")
 agent_configs = configs.get("agent_configs")
 
-LLM_ENDPOINT_NAME = agent_configs.get("llm_endpoint_name")
+LLM_ENDPOINT_NAME = agent_configs.get("llm").get("endpoint_name")
+LLM_TEMPERATURE = agent_configs.get("llm").get("temperature")
 GENIE_SPACE_ID = agent_configs.get("genie_agent").get("space_id")
 GENIE_DESCRIPTION = agent_configs.get("genie_agent").get("description")
 PARALLEL_EXECUTOR_DESCRIPTION = agent_configs.get("parallel_executor_agent").get(
@@ -66,7 +67,10 @@ genie_agent = GenieAgent(
 ############################################
 # Define your LLM endpoint and system prompt
 ############################################
-llm = ChatDatabricks(endpoint=LLM_ENDPOINT_NAME)
+llm = ChatDatabricks(
+    endpoint=LLM_ENDPOINT_NAME,
+    temperature=LLM_TEMPERATURE,
+)
 
 
 ################################################
