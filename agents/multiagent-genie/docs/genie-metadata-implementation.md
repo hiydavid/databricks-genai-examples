@@ -67,29 +67,30 @@ This document outlines the research findings and implementation approaches for e
 
 ## Implementation Approaches
 
-### Approach 1: One-Time Initialization Retrieval (Recommended)
+### Approach 1: Module-Level Metadata Loading (Recommended)
 
 **Advantages:**
 
 - Simple and reliable - no complex caching logic needed
-- Zero runtime performance impact - metadata loaded once at startup
-- Compatible with existing synchronous architecture
+- Zero runtime performance impact - metadata loaded once at module import
+- Compatible with existing architecture and asyncio parallel execution
 - Perfect for stable financial data schemas
+- Integrates seamlessly with temporal context
 
-**Key Insight:** For financial SEC data, table schemas are stable. Load once at initialization, use throughout session.
+**Key Insight:** For financial SEC data, table schemas are stable. Load once at module level, use throughout session alongside existing config loading pattern.
 
 **Implementation Steps:**
 
-1. **Add Synchronous Genie Space Metadata Retrieval**
+1. **Add Synchronous Metadata Retrieval Functions**
 
    ```python
    def get_genie_space_metadata(client: WorkspaceClient, space_id: str) -> dict:
-       """Retrieve Genie space metadata once at initialization"""
+       """Retrieve Genie space metadata once at module load"""
        try:
            response = client.api_client.do("GET", f"/api/2.0/genie/spaces/{space_id}")
            return response.json() if response else {}
        except Exception as e:
-           logger.warning(f"Failed to load metadata: {e}")
+           print(f"[WARNING] Failed to load Genie metadata: {e}")
            return {}  # Graceful fallback
    ```
 
@@ -109,38 +110,73 @@ This document outlines the research findings and implementation approaches for e
                    "comment": table_info.comment
                }
            except Exception as e:
-               logger.warning(f"Failed to get schema for {table}: {e}")
+               print(f"[WARNING] Failed to get schema for {table}: {e}")
        return schemas
    ```
 
-3. **One-Time Metadata Loading in Agent**
+3. **Module-Level Metadata Loading (in multiagent-genie.py)**
 
    ```python
-   class LangGraphChatAgent:
-       def __init__(self, config: ModelConfig):
-           # Load metadata ONCE at initialization
-           self.metadata_context = self._load_metadata_at_startup(config)
+   # Load alongside existing config (after WorkspaceClient creation)
+   def load_metadata_context() -> dict:
+       """Load all metadata once at module import time"""
+       try:
+           workspace_client = WorkspaceClient(
+               host=os.getenv("DB_MODEL_SERVING_HOST_URL"),
+               token=os.getenv("DATABRICKS_GENIE_PAT"),
+           )
            
-       def _load_metadata_at_startup(self, config: ModelConfig) -> dict:
-           """Load all needed metadata once - no refresh needed"""
-           genie_metadata = get_genie_space_metadata(
-               self.workspace_client, config.get("genie_space_id")
-           )
-           table_schemas = get_table_schemas(
-               self.workspace_client, 
-               config.get("catalog_name"), 
-               config.get("schema_name")
-           )
+           genie_metadata = get_genie_space_metadata(workspace_client, GENIE_SPACE_ID)
+           table_schemas = get_table_schemas(workspace_client, 
+                                           databricks_configs.get("catalog"),
+                                           databricks_configs.get("schema"))
+           
            return {"genie": genie_metadata, "schemas": table_schemas}
+       except Exception as e:
+           print(f"[WARNING] Failed to load metadata context: {e}")
+           return {}  # Graceful degradation
+
+   # Load at module level alongside other config
+   METADATA_CONTEXT = load_metadata_context()
    ```
 
-4. **Enhance Supervisor with Static Context**
+4. **Enhance Supervisor with Metadata Context**
 
    ```python
-   def supervisor_agent(state: AgentState) -> AgentState:
-       # Use pre-loaded metadata context
-       enhanced_prompt = f"{base_system_prompt}\n\nData Context:\n{format_metadata_context(agent.metadata_context)}"
-       # ... rest of supervisor logic
+   def supervisor_agent(state):
+       # Combine temporal context with metadata context
+       temporal_ctx = get_temporal_context()
+       
+       # Build comprehensive context prefix
+       context_prefix = build_enhanced_context_prefix(temporal_ctx, METADATA_CONTEXT)
+       
+       # Enhance system prompts with both temporal and metadata context
+       enhanced_system_prompt = context_prefix + SYSTEM_PROMPT
+       enhanced_research_prompt = context_prefix + SYSTEM_PROMPT + "\n\n" + RESEARCH_PROMPT
+       
+       # Continue with existing supervisor logic...
+   ```
+
+5. **Context Formatting Helper**
+
+   ```python
+   def build_enhanced_context_prefix(temporal_ctx: dict, metadata_ctx: dict) -> str:
+       """Build context prefix combining temporal and metadata information"""
+       prefix_parts = [
+           "Below is information on the current date, fiscal context, and available data structures:",
+           f"- The current date is: {temporal_ctx['today_iso']}",
+           f"- The current fiscal year is: {temporal_ctx['fy']}",  
+           f"- The current fiscal quarter is: {temporal_ctx['fq']}",
+       ]
+       
+       # Add metadata context if available
+       if metadata_ctx.get("schemas"):
+           prefix_parts.append("\nAvailable Data Tables:")
+           for table_name, table_info in metadata_ctx["schemas"].items():
+               prefix_parts.append(f"- {table_name}: {table_info.get('comment', 'SEC financial data')}")
+               # Optionally include key columns for better routing decisions
+       
+       return "\n".join(prefix_parts) + "\n\n"
    ```
 
 ### Approach 2: Configuration-Based Solution (Simple Alternative)
@@ -191,56 +227,77 @@ This document outlines the research findings and implementation approaches for e
        return f"{base_prompt}\n\nAvailable Data Context:\n{metadata_context}"
    ```
 
-## Simplified Implementation Plan
+## Updated Implementation Plan
 
-### Phase 1: One-Time Metadata Loading (Core Implementation)
+### Phase 1: Module-Level Metadata Loading (Core Implementation)
 
-- [ ] Add synchronous metadata retrieval functions using existing `WorkspaceClient`
-- [ ] Implement graceful error handling for API failures
-- [ ] Load metadata once in `LangGraphChatAgent.__init__()`
-- [ ] Add metadata context formatting for supervisor prompts
+- [ ] Add synchronous metadata retrieval functions to `multiagent-genie.py`
+- [ ] Implement graceful error handling for API failures (print warnings, continue without metadata)
+- [ ] Load metadata once at module level alongside existing config loading
+- [ ] Add context formatting helper that combines temporal and metadata context
+- [ ] Test metadata loading in development environment
 
-### Phase 2: Supervisor Integration
+### Phase 2: Supervisor Integration with Enhanced Context
 
-- [ ] Modify `supervisor_agent` system prompt to include static metadata context
-- [ ] Test routing decisions with metadata-enhanced prompts
-- [ ] Add configuration options for metadata verbosity
-- [ ] Validate improved routing accuracy
+- [ ] Modify `supervisor_agent` to use combined temporal + metadata context prefix
+- [ ] Update both system prompt and research prompt with enhanced context
+- [ ] Test routing decisions with metadata-enhanced prompts using sample questions
+- [ ] Add configuration options for metadata verbosity levels
+- [ ] Validate improved routing accuracy through evaluation framework
 
-### Phase 3: Production Readiness
+### Phase 3: Production Readiness and Optimization
 
-- [ ] Add comprehensive error handling and fallback behavior
-- [ ] Document new configuration options in CLAUDE.md
-- [ ] Add startup metadata loading to deployment process
+- [ ] Add comprehensive error handling and fallback behavior for production
+- [ ] Update documentation in `CLAUDE.md`, `README.md`, and `optimization-guide.md`
+- [ ] Add metadata context to evaluation criteria and test cases
 - [ ] Create troubleshooting guide for metadata loading failures
+- [ ] Monitor metadata impact on routing decisions via MLflow traces
 
 ## Code Integration Points
 
-### Current Architecture Modifications
+### Current Architecture Integration (Post-Asyncio)
 
-1. **LangGraphChatAgent Class** (driver.py) - One-time loading
-
-   ```python
-   def __init__(self, config: ModelConfig):
-       # Load metadata once at startup
-       self.metadata_context = self._load_metadata_at_startup(config)
-   ```
-
-2. **multiagent-genie.py:100** - `supervisor_agent` function
+1. **multiagent-genie.py** - Module-level metadata loading
 
    ```python
-   def supervisor_agent(state: AgentState) -> AgentState:
-       # Use pre-loaded metadata in system prompt
-       enhanced_prompt = build_metadata_prompt(base_prompt, agent.metadata_context)
+   # Add after existing config loading (line ~40)
+   METADATA_CONTEXT = load_metadata_context()
+   
+   # Modify supervisor_agent function (line ~143)
+   def supervisor_agent(state):
+       temporal_ctx = get_temporal_context()
+       context_prefix = build_enhanced_context_prefix(temporal_ctx, METADATA_CONTEXT)
+       
+       enhanced_system_prompt = context_prefix + SYSTEM_PROMPT
+       enhanced_research_prompt = context_prefix + SYSTEM_PROMPT + "\n\n" + RESEARCH_PROMPT
    ```
 
-3. **configs.yaml** - Simple configuration
+2. **LangGraphChatAgent Class** - No changes needed
+
+   ```python
+   # Current constructor remains unchanged - compatible with asyncio implementation
+   class LangGraphChatAgent(ChatAgent):
+       def __init__(self, agent: CompiledStateGraph):
+           self.agent = agent
+   ```
+
+3. **configs.yaml** - Optional metadata configuration
 
    ```yaml
-   # No complex caching config needed
+   # Add optional metadata verbosity controls
    metadata_config:
      include_column_descriptions: true
      include_table_comments: true
+     include_genie_instructions: false  # May be too verbose for prompts
+   ```
+
+4. **Integration with Temporal Context** - Enhanced context building
+
+   ```python
+   # Replaces current temporal_prefix in supervisor_agent
+   def build_enhanced_context_prefix(temporal_ctx: dict, metadata_ctx: dict) -> str:
+       # Combines temporal context (existing) with metadata context (new)
+       # Returns unified context prefix for all supervisor prompts
    ```
 
 ## Expected Benefits
@@ -267,33 +324,54 @@ This document outlines the research findings and implementation approaches for e
 
 ### Performance Impact
 
-- **Startup Only**: Metadata loading happens once at initialization - zero runtime impact
+- **Startup Only**: Metadata loading happens once at module import - zero runtime impact
 - **Memory Usage**: Static metadata context stored in memory (minimal for financial tables)
 - **Simple and Fast**: No caching logic, TTL management, or refresh mechanisms needed
+- **Asyncio Compatible**: Metadata loading is synchronous at startup, asyncio handles runtime parallel execution
 
 ### Security and Permissions
 
 - Ensure PAT token has `workspace-access` and `genie-access` permissions
-- Handle permission errors gracefully during startup
+- Handle permission errors gracefully during module loading (print warnings, continue)
+- Use same authentication pattern as existing Genie agent setup
 - Log metadata loading success/failure for troubleshooting
 
 ### Maintenance Requirements
 
 - **Minimal**: Financial data schemas change infrequently
-- **Restart to Refresh**: If schemas change, restart agent deployment to reload
+- **Module Reload**: If schemas change, restart notebook/agent to reload module-level metadata
 - **No Complex Sync**: Eliminates cache invalidation and refresh logic
+- **Compatible with Deployment**: Works seamlessly with Databricks model serving restarts
 
 ### Fallback Strategy
 
-- **Simple**: If metadata loading fails at startup, continue without metadata context
-- **Logging**: Log metadata loading failures for troubleshooting
-- **Degraded Mode**: Agent works normally, just without enhanced routing context
+- **Graceful Degradation**: If metadata loading fails at module load, continue without metadata context
+- **Warning Logging**: Print warnings for metadata loading failures for troubleshooting  
+- **Full Functionality**: Agent works normally with asyncio parallel execution, just without enhanced routing context
+- **Development Friendly**: Easy to disable/enable metadata loading for testing
+
+### Architecture Compatibility
+
+- **Asyncio Integration**: Module-level metadata loading is independent of asyncio parallel execution
+- **Temporal Context**: Metadata context integrates seamlessly with existing temporal context
+- **Evaluation Framework**: Enhanced context can be included in evaluation criteria
+- **MLflow Tracing**: Metadata impact on routing decisions visible in traces
 
 ## Next Steps
 
-1. **Proof of Concept:** Implement basic API client and test metadata retrieval
-2. **Integration Testing:** Add metadata to supervisor prompt and test routing improvements  
-3. **Performance Optimization:** Implement caching and measure impact
-4. **Production Deployment:** Add monitoring, error handling, and documentation
+1. **Proof of Concept:** Implement metadata retrieval functions and test at module level
+2. **Context Integration:** Combine metadata with temporal context in supervisor prompts  
+3. **Routing Validation:** Test routing improvements using evaluation framework
+4. **Production Enhancement:** Add comprehensive error handling and documentation updates
 
-This plan provides a comprehensive roadmap for exposing Genie space metadata to your supervisor agent, improving its ability to make informed routing decisions and provide more accurate responses.
+## Summary
+
+This updated plan provides a practical, low-complexity approach to exposing Genie space metadata to your supervisor agent. The **module-level loading strategy** aligns perfectly with your current architecture while providing:
+
+✅ **Zero runtime performance impact** - metadata loaded once at module import  
+✅ **Seamless asyncio compatibility** - independent of parallel execution improvements  
+✅ **Enhanced routing context** - combines temporal and metadata information  
+✅ **Simple fallback behavior** - graceful degradation when metadata unavailable  
+✅ **Easy implementation** - minimal changes to existing codebase  
+
+The approach maintains all benefits of metadata-enhanced routing decisions while integrating naturally with your recent asyncio improvements and temporal context features.
