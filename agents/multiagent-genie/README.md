@@ -2,7 +2,7 @@
 
 A multi-agent system built with LangGraph, leveraging Databricks Genie for natural language to SQL query generation. This system intelligently routes queries between specialized agents to provide comprehensive analysis of financial metrics.
 
-I used SEC income statement and balance sheet data for three companies as examples. But this will work with any structured data, provided that a Genie Space has been created and optimized on the dataset. See [here](https://docs.databricks.com/aws/en/genie/set-up) for how to create a Genie Space.
+I used SEC income statement and balance sheet data for three companies as examples. But this will work with any structured data, provided that a Genie Space has been created and optimized on the dataset. [See this documentation](https://docs.databricks.com/aws/en/genie/set-up) for how to create a Genie Space.
 
 ## What This System Does
 
