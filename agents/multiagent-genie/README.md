@@ -1,22 +1,17 @@
-# Multi-Agent Financial Analysis System with Databricks Genie
+# Multi-Agent System with Databricks Genie
 
-A sophisticated multi-agent system built with LangGraph for SEC financial data analysis, leveraging Databricks Genie for natural language to SQL query generation. This system intelligently routes financial queries between specialized agents to provide comprehensive analysis of financial metrics.
+A multi-agent system built with LangGraph, leveraging Databricks Genie for natural language to SQL query generation. This system intelligently routes queries between specialized agents to provide comprehensive analysis of financial metrics.
+
+I used SEC income statement and balance sheet data for three companies as examples. But this will work with any structured data, provided that a Genie Space has been created and optimized on the dataset. See [here](https://docs.databricks.com/aws/en/genie/set-up) for how to create a Genie Space.
 
 ## What This System Does
 
 This multi-agent system provides intelligent financial data analysis by:
 
-1. **Intelligent Query Routing**: A supervisor agent analyzes incoming financial questions and routes them to the most appropriate agent based on complexity
+1. **Intelligent Query Routing**: A supervisor agent analyzes incoming questions and routes them to the most appropriate agent based on complexity
 2. **Natural Language SQL Generation**: Uses Databricks Genie to convert financial questions into SQL queries against SEC filing data
 3. **Parallel Query Execution**: For complex analyses, executes multiple related queries concurrently to gather comprehensive data
 4. **Comprehensive Analysis**: Synthesizes results from multiple data sources to provide detailed financial insights
-
-### Supported Analysis Types
-
-- **Simple Queries**: Single financial metrics (e.g., "What was AAPL's revenue in 2015?")
-- **Complex Comparative Analysis**: Multi-company comparisons across different financial ratios
-- **Trend Analysis**: Year-over-year financial performance tracking
-- **Financial Ratio Calculations**: Liquidity, solvency, profitability, and efficiency metrics
 
 ## Architecture Overview
 
@@ -46,12 +41,11 @@ User Query → Supervisor Agent → [Genie Agent OR Parallel Executor] → Final
    - Synthesizes results from parallel data sources
    - Handles multi-company comparisons and complex financial ratios
 
-### Data Scope and Coverage
+### Sample Data Scope and Coverage
 
 - **Time Period**: SEC financial data from 2003-2022
 - **Companies**: Apple Inc. (AAPL), Bank of America Corp (BAC), American Express (AXP)
 - **Data Types**: Income Statement and Balance Sheet metrics
-- **Financial Metrics**: 15+ ratios including liquidity, solvency, profitability, efficiency, and growth
 
 ### Technical Stack
 
@@ -130,7 +124,7 @@ This system includes comprehensive optimization capabilities across multiple lay
 
 The foundation of system performance relies on proper Genie space configuration:
 
-- **Table Descriptions**: Comprehensive metadata for all financial tables
+- **Table Descriptions**: Comprehensive descriptions for all financial tables
 - **General Instructions**: Clear SQL guidelines and financial calculation formulas (see `data/sec/genie_instruction.md`)
 - **Trusted Assets**: Validated example SQL queries for complex financial metrics
 - **Consistency**: Synchronized instructions between Genie space and multi-agent prompts
@@ -161,80 +155,8 @@ The system uses sophisticated prompt engineering for optimal routing:
 
 ## Recent Updates
 
-### Asyncio Parallel Execution (New)
-
-The system now uses asyncio-based parallel execution instead of ThreadPoolExecutor, providing significant improvements:
-
-#### Key Benefits
-
-1. **MLflow Context Preservation**
-   - Eliminates "Failed to get Databricks request ID" warnings
-   - Full trace visibility for debugging and monitoring
-   - Uses `asyncio.to_thread()` to preserve contextvars
-
-2. **Better Resource Efficiency**
-   - ~2KB per async task vs ~8KB per thread
-   - More efficient context switching and memory usage
-   - Handles Databricks event loop environments seamlessly
-
-3. **Enhanced Error Handling**
-   - Individual query failures don't cancel other parallel queries
-   - Uses `asyncio.gather(*tasks, return_exceptions=True)` for isolation
-   - Better debugging with complete trace context
-
-4. **Modern Architecture**
-   - Uses async/await patterns throughout parallel execution
-   - Compatible with `nest-asyncio` for Databricks environments
-   - Maintains all existing functionality and performance
-
-### Temporal Context Integration
-
-The system now includes automatic temporal context awareness that provides real-time date and fiscal information to enhance financial analysis:
-
-#### Key Features
-
-1. **Automatic Date Context**
-   - Current date in ISO format (America/New_York timezone)
-   - Automatically injected into supervisor agent system prompts
-   - Enables date-aware financial queries and analysis
-
-2. **Fiscal Year Awareness**
-   - Fiscal year calculation following Sep 1 → Aug 31 calendar
-   - Labeled by end year (e.g., FY2025 runs Sep 2024 → Aug 2025)
-   - Supports fiscal year-based financial comparisons
-
-3. **Fiscal Quarter Context**
-   - Q1: Sep-Nov, Q2: Dec-Feb, Q3: Mar-May, Q4: Jun-Aug
-   - Enables quarterly financial analysis and reporting
-   - Supports quarter-over-quarter trend analysis
-
-#### Implementation Details
-
-The temporal context is automatically added to all supervisor agent prompts via the `get_temporal_context()` function (`multiagent-genie.py:77`):
-
-```python
-def get_temporal_context() -> Dict[str, str]:
-    """Return current date, fiscal year, and fiscal quarter.
-    
-    Fiscal year runs Sep 1 -> Aug 31, labeled by end year.
-    Quarters: Q1=Sep-Nov, Q2=Dec-Feb, Q3=Mar-May, Q4=Jun-Aug
-    """
-```
-
-**Context Format Injected:**
-
-```txt
-- The current date is: 2025-01-15
-- The current fiscal year is: FY2025
-- The current fiscal quarter is: Q2
-```
-
-#### Benefits
-
-- **Date-Aware Analysis**: Enables queries like "How does this quarter compare to last quarter?"
-- **Fiscal Context**: Supports fiscal year-based financial reporting standards
-- **Temporal Trends**: Better context for year-over-year and quarter-over-quarter analysis
-- **Real-Time Updates**: Context automatically reflects current date without manual updates
+- Asyncio Parallel Execution: The system now uses asyncio-based parallel execution instead of ThreadPoolExecutor, providing significant improvements
+- Temporal Context Integration: The system now includes automatic temporal context awareness that provides real-time date and fiscal information to enhance financial analysis
 
 ## File Structure
 
@@ -242,7 +164,6 @@ def get_temporal_context() -> Dict[str, str]:
 ├── README.md                               # This file
 ├── CLAUDE.md                              # Development guidance
 ├── docs/
-│   ├── genie-metadata-implementation.md   # Future metadata integration plan
 │   └── optimization-guide.md              # System optimization strategies
 ├── driver.py                             # Main Databricks notebook entry point
 ├── multiagent-genie.py                   # Core agent implementation
@@ -261,26 +182,6 @@ def get_temporal_context() -> Dict[str, str]:
         └── arch-graph.png
 ```
 
-## Key Technical Features
-
-### State Management
-
-- **LangGraph AgentState**: Typed state management with conversation history
-- **Iteration Control**: Maximum 3 iterations to prevent infinite loops
-- **Message Filtering**: Only final answers returned to prevent noise
-
-### Error Handling
-
-- **Graceful Degradation**: Comprehensive error handling in parallel execution
-- **Query Validation**: Structured output validation for routing decisions
-- **Authentication**: Robust PAT token management for Databricks resources
-
-### Streaming Support
-
-- **predict()**: Synchronous prediction for simple queries
-- **predict_stream()**: Streaming responses with status updates for complex analysis
-- **Timeout Prevention**: Status updates during long-running operations
-
 ## Deployment Architecture
 
 The system is designed for production deployment on Databricks:
@@ -290,28 +191,8 @@ The system is designed for production deployment on Databricks:
 - **Environment Variables**: Secrets-based configuration for secure token management
 - **Resource Dependencies**: Declared upfront for automatic credential management
 
-## Contributing and Development
-
-### Development Workflow
-
-1. **Environment Setup**: Configure Databricks workspace and Genie space
-2. **Local Testing**: Use sample questions to validate functionality
-3. **Performance Monitoring**: Review MLflow traces for optimization opportunities
-4. **Prompt Tuning**: Adjust routing criteria in `configs.yaml`
-5. **Deployment**: Register and deploy via Databricks model serving
-
-### Optimization Guidelines
-
-- **Monitor Routing Decisions**: Use MLflow traces to validate supervisor logic
-- **Test Across Complexity Levels**: Ensure proper routing for simple vs. complex queries
-- **Synchronize Genie Instructions**: Keep Genie space and agent prompts aligned
-- **Performance Tuning**: Optimize parallel execution worker counts based on usage patterns
-
 ## Support and Documentation
 
 - **Development Guide**: See `CLAUDE.md` for detailed development instructions
 - **Optimization**: Refer to `docs/optimization-guide.md` for performance tuning
-- **Future Plans**: Review `docs/genie-metadata-implementation.md` for upcoming features
 - **Data Guidelines**: Check `data/sec/genie_instruction.md` for financial metrics and SQL patterns
-
-This multi-agent system represents a sophisticated approach to financial data analysis, combining the power of natural language processing with intelligent agent orchestration to provide comprehensive financial insights.

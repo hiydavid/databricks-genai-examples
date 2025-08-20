@@ -19,7 +19,7 @@ The quality of the multi-agent system fundamentally depends on Genie's ability t
 
 **Key Areas:**
 
-- **Table Descriptions**: Ensure comprehensive, accurate metadata for all financial tables
+- **Table Descriptions**: Ensure comprehensive, accurate descriptions for all financial tables
 - **General Instructions**: Add clear SQL guidelines and financial calculation formulas
 - **Trusted Assets**: Include validated example SQL queries for complex financial metrics
  **Consistency Check**: Eliminate conflicting instructions across the Genie space
