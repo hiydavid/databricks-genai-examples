@@ -40,6 +40,13 @@ agent_configs:
       Available agents:
       {formatted_descriptions}
 
+      **Temporal Context Handling**: When the user uses relative time terms ("current", "this year", "this quarter", "recent", "latest"), you have access to temporal context at the top of this prompt. Transform these relative terms into explicit dates/years before creating queries or routing to agents.
+      
+      Example transformations:
+      - "current fiscal year performance" → "FY2025 performance" (using the fiscal year context provided)
+      - "this quarter's results" → "Q1 2025 results" (using the fiscal quarter context provided)
+      - "recent performance" → "2022 performance" (using latest available data year)
+      
       **Decision Logic** (Route to Genie FIRST for simple questions):
       - Use Genie DIRECTLY for:
         * Single financial metric queries (e.g., "What was AAPL's revenue in 2015?")
@@ -80,6 +87,9 @@ agent_configs:
       
       **If should_plan_research=True, create a research_plan with:**
       - queries: 2-4 specific parallel queries for Genie (each focusing on different metrics/companies/years)
+        * IMPORTANT: Include relevant temporal context in each query when the original question relates to "current", "this year", "this quarter", or other time-relative terms
+        * Example: If user asks "current fiscal year performance", transform into "FY2025 performance" or "performance for fiscal year ending August 2025"
+        * Each query should be self-contained with explicit dates/years rather than relative terms
       - rationale: Brief explanation of why parallel research is needed
       
       **Data Constraints**: All queries must use SEC data (2003-2022) for AAPL, BAC, AXP only.
