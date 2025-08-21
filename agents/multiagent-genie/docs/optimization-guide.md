@@ -22,7 +22,7 @@ The quality of the multi-agent system fundamentally depends on Genie's ability t
 - **Table Descriptions**: Ensure comprehensive, accurate descriptions for all financial tables
 - **General Instructions**: Add clear SQL guidelines and financial calculation formulas
 - **Trusted Assets**: Include validated example SQL queries for complex financial metrics
- **Consistency Check**: Eliminate conflicting instructions across the Genie space
+- **Consistency Check**: Eliminate conflicting instructions across the Genie space
 
 **Important Limitation**: The Supervisor agent and Genie do not share contextual information automatically. Custom instructions in the Genie Space must be manually synchronized with multi-agent system prompts.
 
@@ -39,6 +39,8 @@ Ensure your Genie space instructions align with actual data availability:
 
 ### LLM Endpoint Configuration
 
+This controls the overall quality and “intelligence” of the supervisor agent.
+
 **Location**: `configs.yaml` → `agent_configs.supervisor_agent.llm_endpoint_name`
 
 **Options:**
@@ -54,6 +56,8 @@ Ensure your Genie space instructions align with actual data availability:
 - Reference [Anthropic's prompt engineering guide](https://docs.anthropic.com/claude/docs/prompt-engineering) for Claude-specific optimization
 
 ### Temperature Configuration
+
+This controls how consistent the supervisor’s responses will be.
 
 **Location**: `configs.yaml` → `agent_configs.supervisor_agent.temperature`
 
@@ -80,6 +84,8 @@ Ensure your Genie space instructions align with actual data availability:
 
 ### Iteration Control
 
+This controls how many times the supervisor will be invoked in a single conversational turn.
+
 **Location**: `configs.yaml` → `agent_configs.supervisor_agent.max_iterations`
 
 **Default**: 3 iterations (recommended starting point)
@@ -92,7 +98,9 @@ Ensure your Genie space instructions align with actual data availability:
 
 ### Endpoint Sizing for Deployment
 
-When deploying with `agents.deploy()`, consider concurrency needs:
+When deploying with `agents.deploy()`, consider concurrency needs, which means how many users will be interacting with the agent endpoint at any given time. We’ve set the endpoint to Medium right now, which should be enough for end-user testing.
+
+Where to set the cluster sizing when deploying the agent.
 
 ```python
 agents.deploy(
@@ -116,7 +124,7 @@ Note: Sizing affects concurrency, not per-request latency.
 
 ### Parallel Execution Configuration
 
-The ParallelExecutor agent uses asyncio-based parallel execution for concurrent Genie queries:
+The ParallelExecutor agent uses asyncio-based parallel execution for concurrent Genie queries. Currently the supervisor agent is instructed to create “2 to 4 subqueries” if the research-node is invoked. You can increase this and try to get a potentially more comprehensive answer, but you could end up increasing the overall latency if you do not also scale up your SQL warehouse cluster, which is where the actual execution will be performed.
 
 **Key Parameters:**
 
@@ -125,14 +133,9 @@ The ParallelExecutor agent uses asyncio-based parallel execution for concurrent 
 - No hard limit on concurrent queries - executes all queries in the research plan (typically 2-4)
 - `nest-asyncio` dependency handles Databricks event loop compatibility
 
-**Optimization Strategies:**
+### SQL Warehouse Configuration
 
-- **Context Preservation**: Asyncio implementation eliminates MLflow tracing warnings
-- **Better Resource Usage**: ~2KB per async task vs ~8KB per thread
-- **Error Isolation**: Individual query failures don't cancel other parallel queries
-- **Performance Monitoring**: Use MLflow traces to identify bottlenecks in parallel execution
-- **Rate Limit Management**: Monitor Genie space and SQL warehouse capacity when executing multiple concurrent queries
-- **Query Planning**: Supervisor agent creates 2-4 queries per research plan, all executed concurrently
+Genie’s response time has two main drivers: query generation and query execution. Query generation is done by the LLM that’s powering Genie. Query execution is done by the Serverless Databricks SQL Warehouse (or Pro SQL Warehouse). Make sure the warehouse size can handle the concurrent executions without too many queued queries.
 
 ## 3. Prompt Engineering Optimization
 
@@ -176,7 +179,7 @@ The system has three main prompt components in `configs.yaml` that need to be cu
 - **Start conservative** - Bias toward direct Genie routing to minimize latency
 - **Be domain-specific** - Include terminology, entities, and examples from your actual data
 - **Test iteratively** - Use representative queries to validate routing decisions
-- **Maintain consistency** - Ensure prompts align with your Genie space instructions
+- **Maintain consistency** - Ensure prompts align with your Genie space instructions. **This is critically important**. Make sure your supervisor prompts and your Genie Space instructions do not contradict each other.
 
 ## 4. Development and Debugging Workflow
 
@@ -208,21 +211,7 @@ All agent interactions are automatically traced with MLflow 3.0+ integration.
 
 ### Testing Your Prompt Changes
 
-After updating prompts, test with sample questions in `driver.py`:
-
-1. **Current Complex Test Cases** (cells 141-143):
-   - "What's the debt-to-asset ratio for American Express from 2012 to 2021, compare to that of Bank of America?"
-   - "Give me an executive summary comparing year-on-year revenue growth from 2012 to 2021 between the AAPL and BAC?"
-   - "Why is BAC's revenue growth so volatile between the years 2012 to 2021?"
-
-2. **Recommended Simple Test Cases** (add these for complete coverage):
-   - "What was AAPL's revenue in 2015?"
-   - "Calculate BAC's current ratio for 2014"
-   - "Show me AXP's net income from 2010 to 2012"
-
-3. **Edge Cases**: Test boundary conditions
-   - Questions that could route either way
-   - Follow-up clarification scenarios
+After updating prompts, test with evaluation dataset in `driver.py`. Follow this documentation for an [end-to-end guide](https://docs.databricks.com/aws/en/mlflow3/genai/eval-monitor/evaluate-app) on how to use evaluation datasets to evaluate quality, identify issues, and iteratively improve your agentic system.
 
 ## 5. Evaluation and Quality Measurement
 
