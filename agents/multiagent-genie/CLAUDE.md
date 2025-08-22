@@ -191,10 +191,13 @@ The system is specifically designed for SEC financial data analysis with predefi
 - **Routing Accuracy**: Use structured output validation to ensure proper agent selection
 - **Data Inconsistencies**: Synchronize formulas between Genie space instructions and multi-agent prompts
 - **Temporal Context**: Ensure relative time terms are converted to explicit dates in parallel subqueries
+- **MLflow Trace Verbosity**: Disable `mlflow.langchain.autolog()` and use manual `@mlflow.trace` decorators for clean trace UI output
 
 ### MLflow Tracing Integration
-- All agent interactions automatically traced with `@mlflow.trace` decorators
+- All agent interactions traced with manual `@mlflow.trace` decorators for clean output
+- **MLflow Autolog Disabled**: `mlflow.langchain.autolog()` commented out to prevent verbose LangChain state capture
 - Monitor supervisor routing decisions, Genie query performance, and parallel execution coordination
+- Enhanced Genie tracing with explicit query parameters for better trace visibility
 - Use traces to identify optimization opportunities and performance bottlenecks
 
 ### Structured Output Schema

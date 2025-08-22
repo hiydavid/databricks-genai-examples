@@ -52,7 +52,7 @@ User Query → Supervisor Agent → [Genie Agent OR Parallel Executor] → Final
 - **Framework**: LangGraph for agent orchestration
 - **Data Access**: Databricks Genie for natural language SQL generation
 - **LLM**: ChatDatabricks with configurable endpoints (Claude Sonnet models)
-- **Observability**: MLflow tracing with `@mlflow.trace` decorators
+- **Observability**: MLflow tracing with manual `@mlflow.trace` decorators (autolog disabled for clean output)
 - **State Management**: Typed state management with Pydantic models
 - **Temporal Context**: Automatic fiscal year/quarter awareness with timezone support
 - **Async Execution**: asyncio-based parallel processing with MLflow context preservation
@@ -147,11 +147,12 @@ The system uses sophisticated prompt engineering for optimal routing:
 
 ### 3. Performance Monitoring
 
-- **MLflow Integration**: All agent interactions traced for performance analysis
+- **MLflow Integration**: All agent interactions traced with manual decorators for clean trace UI output
 - **Routing Decisions**: Monitor supervisor agent routing accuracy
 - **Async Execution**: Track asyncio performance and MLflow context preservation
-- **Query Performance**: Individual Genie query execution times
+- **Query Performance**: Individual Genie query execution times with explicit query parameters
 - **Evaluation Metrics**: Automated scoring with Correctness, RelevanceToQuery, and Safety
+- **Trace Optimization**: Disabled `mlflow.langchain.autolog()` to prevent verbose LangChain state capture
 
 ## Recent Updates
 

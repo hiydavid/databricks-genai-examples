@@ -139,7 +139,7 @@ class ResearchPlanOutput(BaseModel):
     next_node: Literal[tuple(options)]
 
 
-# @mlflow.trace(span_type=SpanType.AGENT, name="supervisor_routing")
+@mlflow.trace(span_type=SpanType.AGENT, name="supervisor_routing")
 def supervisor_agent(state):
     """Supervisor agent node that prepends temporal org context to the system prompt
     and then decides whether to plan research or route normally.
@@ -216,7 +216,7 @@ def supervisor_agent(state):
 ##############################################
 
 
-# @mlflow.trace(span_type=SpanType.AGENT, name="research_planner")  # Commented out - using autolog only
+@mlflow.trace(span_type=SpanType.AGENT, name="research_planner")
 async def research_planner_node(state):
     """Execute multiple Genie queries in parallel based on the research plan using asyncio."""
     try:
@@ -236,7 +236,7 @@ async def research_planner_node(state):
         queries = research_plan["queries"]
         rationale = research_plan.get("rationale", "")
 
-        # @mlflow.trace(span_type=SpanType.AGENT, name="execute_genie_query")  # Commented out to reduce memory overhead
+        @mlflow.trace(span_type=SpanType.AGENT, name="execute_genie_query")
         async def execute_genie_query_async(query: str) -> Dict[str, Any]:
             """Execute a single Genie query using asyncio.to_thread to preserve MLflow context."""
             try:
@@ -344,11 +344,35 @@ async def research_planner_node(state):
 #######################################
 
 
-# @mlflow.trace(span_type=SpanType.AGENT)  # Commented out to reduce memory overhead
 def agent_node(state, agent, name):
     """Agent node wrapper with error handling to prevent supervisor failures."""
-    try:
+    # Extract the user query for better trace visibility
+    messages = state.get("messages", [])
+    user_query = None
+    if messages:
+        # Find the most recent user message
+        for msg in reversed(messages):
+            if isinstance(msg, dict) and msg.get("role") == "user":
+                user_query = msg.get("content")
+                break
+            elif hasattr(msg, "role") and msg.role == "user":
+                user_query = msg.content
+                break
+
+    # Use a traced inner function with explicit query parameter for better MLflow visibility
+    @mlflow.trace(span_type=SpanType.AGENT, name=f"{name}_agent_execution")
+    def _execute_agent_with_query(query: str, agent_name: str):
+        """Execute agent with explicit query parameter for MLflow tracing."""
+        print(f"[{agent_name}] Processing query: {query[:100]}...")
         result = agent.invoke(state)
+        return result, query
+
+    try:
+        if user_query:
+            result, traced_query = _execute_agent_with_query(user_query, name)
+        else:
+            # Fallback if no user query found
+            result = agent.invoke(state)
 
         # Validate result structure
         if not result or "messages" not in result or not result["messages"]:
@@ -380,7 +404,7 @@ def agent_node(state, agent, name):
         }
 
 
-# @mlflow.trace(span_type=SpanType.AGENT, name="final_answer")
+@mlflow.trace(span_type=SpanType.AGENT, name="final_answer")
 def final_answer(state):
     """Generate final answer with error handling."""
     try:
@@ -450,7 +474,7 @@ class LangGraphChatAgent(ChatAgent):
     def __init__(self, agent: CompiledStateGraph):
         self.agent = agent
 
-    # @mlflow.trace(span_type=SpanType.AGENT, name="user_interaction")
+    @mlflow.trace(span_type=SpanType.AGENT, name="user_interaction")
     def predict(
         self,
         messages: list[ChatAgentMessage],
@@ -460,40 +484,45 @@ class LangGraphChatAgent(ChatAgent):
         # Handle case where we're already in an event loop by using nest_asyncio
         try:
             import nest_asyncio
+
             nest_asyncio.apply()
             return asyncio.run(self._predict_async(messages, context, custom_inputs))
         except ImportError:
             # nest_asyncio not available, try alternative approach
             try:
                 loop = asyncio.get_running_loop()
-                import threading
                 import queue
-                
+                import threading
+
                 result_queue = queue.Queue()
                 exception_queue = queue.Queue()
-                
+
                 def run_in_thread():
                     try:
                         new_loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(new_loop)
-                        result = new_loop.run_until_complete(self._predict_async(messages, context, custom_inputs))
+                        result = new_loop.run_until_complete(
+                            self._predict_async(messages, context, custom_inputs)
+                        )
                         result_queue.put(result)
                         new_loop.close()
                     except Exception as e:
                         exception_queue.put(e)
-                
+
                 thread = threading.Thread(target=run_in_thread)
                 thread.start()
                 thread.join()
-                
+
                 if not exception_queue.empty():
                     raise exception_queue.get()
-                    
+
                 return result_queue.get()
-                
+
             except RuntimeError:
                 # No event loop running, create a new one
-                return asyncio.run(self._predict_async(messages, context, custom_inputs))
+                return asyncio.run(
+                    self._predict_async(messages, context, custom_inputs)
+                )
 
     async def _predict_async(
         self,
@@ -510,7 +539,7 @@ class LangGraphChatAgent(ChatAgent):
             "messages": [m.model_dump_compat(exclude_none=True) for m in messages]
         }
 
-        messages = []
+        final_messages = []
         async for event in self.agent.astream(request, stream_mode="updates"):
             for node_name, node_data in event.items():
                 # Only include messages from the final_answer node
@@ -535,16 +564,16 @@ class LangGraphChatAgent(ChatAgent):
                         if "id" not in msg_dict or not msg_dict["id"]:
                             msg_dict["id"] = str(uuid.uuid4())
 
-                        messages.append(ChatAgentMessage(**msg_dict))
+                        final_messages.append(ChatAgentMessage(**msg_dict))
 
         # Explicit cleanup to free memory
         import gc
 
         gc.collect()
 
-        return ChatAgentResponse(messages=messages)
+        return ChatAgentResponse(messages=final_messages)
 
-    # @mlflow.trace(span_type=SpanType.AGENT, name="user_interaction_stream")
+    @mlflow.trace(span_type=SpanType.AGENT, name="user_interaction_stream")
     def predict_stream(
         self,
         messages: list[ChatAgentMessage],
@@ -554,24 +583,27 @@ class LangGraphChatAgent(ChatAgent):
         # Create an async generator and run it with proper event loop handling
         async def _run_async_stream():
             chunks = []
-            async for chunk in self._predict_stream_async(messages, context, custom_inputs):
+            async for chunk in self._predict_stream_async(
+                messages, context, custom_inputs
+            ):
                 chunks.append(chunk)
             return chunks
-        
+
         # Handle event loop properly - same pattern as predict()
         try:
             import nest_asyncio
+
             nest_asyncio.apply()
             chunks = asyncio.run(_run_async_stream())
         except ImportError:
             try:
                 loop = asyncio.get_running_loop()
-                import threading
                 import queue
-                
+                import threading
+
                 result_queue = queue.Queue()
                 exception_queue = queue.Queue()
-                
+
                 def run_in_thread():
                     try:
                         new_loop = asyncio.new_event_loop()
@@ -581,19 +613,19 @@ class LangGraphChatAgent(ChatAgent):
                         new_loop.close()
                     except Exception as e:
                         exception_queue.put(e)
-                
+
                 thread = threading.Thread(target=run_in_thread)
                 thread.start()
                 thread.join()
-                
+
                 if not exception_queue.empty():
                     raise exception_queue.get()
-                    
+
                 chunks = result_queue.get()
-                
+
             except RuntimeError:
                 chunks = asyncio.run(_run_async_stream())
-        
+
         # Yield chunks synchronously
         for chunk in chunks:
             yield chunk
@@ -660,6 +692,6 @@ class LangGraphChatAgent(ChatAgent):
 
 
 # Create the agent object
-mlflow.langchain.autolog()
+# mlflow.langchain.autolog() # Disabled due to verbosity issue
 AGENT = LangGraphChatAgent(multi_agent)
 mlflow.models.set_model(AGENT)

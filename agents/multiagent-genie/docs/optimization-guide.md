@@ -185,7 +185,7 @@ The system has three main prompt components in `configs.yaml` that need to be cu
 
 ### MLflow Tracing Integration
 
-All agent interactions are automatically traced with MLflow 3.0+ integration.
+All agent interactions are traced with manual `@mlflow.trace` decorators for optimal trace UI visibility.
 
 **Setup Requirements:**
 
@@ -193,6 +193,12 @@ All agent interactions are automatically traced with MLflow 3.0+ integration.
 - Proper experiment configuration in `configs.yaml`
 - Token permissions for MLflow experiment access
 - Use `agents.deploy()` for automatic tracing in Model Serving
+
+**Tracing Configuration:**
+
+- **Manual Tracing**: Uses `@mlflow.trace` decorators on individual agent functions
+- **Autolog Disabled**: `mlflow.langchain.autolog()` is disabled to prevent verbose LangChain state capture
+- **Clean Trace Output**: Trace UI shows simple role/content format instead of full LangChain objects
 
 **Debugging Workflow:**
 
@@ -205,9 +211,16 @@ All agent interactions are automatically traced with MLflow 3.0+ integration.
 **Key Tracing Data Points:**
 
 - Supervisor routing decisions (Genie vs ParallelExecutor)
-- Individual Genie query performance
+- Individual Genie query performance with explicit query parameters
 - Parallel execution coordination
 - Final answer synthesis quality
+- Clean trace output without verbose LangChain metadata
+
+**Troubleshooting Trace Issues:**
+
+- **Verbose Output**: If trace UI shows complex LangChain objects, ensure `mlflow.langchain.autolog()` is disabled
+- **Missing Query Details**: Verify `@mlflow.trace` decorators are present on agent functions
+- **Message Filtering**: Check that only `final_answer` node messages are returned in ChatAgentResponse
 
 ### Testing Your Prompt Changes
 
