@@ -12,10 +12,11 @@ This project demonstrates how to build a sophisticated multi-agent system using 
 
 ### Key Components
 
-- **SupervisorModule**: Routes queries between agents using DSPy signatures
+- **SupervisorModule**: Routes queries between agents using DSPy signatures with temporal awareness
 - **GenieModule**: Wraps Databricks GenieAgent for SQL-based financial queries
 - **ParallelExecutorModule**: Executes parallel research queries for complex analysis
 - **FinalAnswerModule**: Generates comprehensive responses using DSPy chain-of-thought
+- **Temporal Context Engine**: Provides real-time fiscal year and quarter context for financial analysis
 
 ### DSPy Advantages Over LangGraph
 
@@ -52,6 +53,7 @@ pip install -r requirements.txt
 ## Configuration
 
 1. **Update `configs.yaml`** with your Databricks resources:
+
    ```yaml
    databricks_configs:
      catalog: your_catalog
@@ -89,6 +91,7 @@ print(response.messages[-1].content)
 ### Deployment
 
 Use the provided `driver.py` notebook to:
+
 1. Test the agent locally
 2. Log as MLflow model  
 3. Register to Unity Catalog
@@ -97,11 +100,13 @@ Use the provided `driver.py` notebook to:
 ## Supported Financial Analysis
 
 ### Data Scope
+
 - **Time Range**: 2003-2022 SEC filings
 - **Companies**: AAPL, BAC, AXP only
 - **Data Types**: Income Statement and Balance Sheet metrics
 
 ### Financial Metrics
+
 - **Liquidity**: Current Ratio, Quick Ratio
 - **Solvency**: Debt-to-Equity, Interest Coverage  
 - **Profitability**: Gross Margin, Net Profit Margin, ROA, ROE
@@ -120,30 +125,36 @@ sample_questions = [
 
 ## Architecture
 
-```
+```text
 User Query → SupervisorModule → [GenieModule | ParallelExecutorModule] → FinalAnswerModule
 ```
 
 ### Decision Logic
+
 - **Simple Questions**: Route directly to GenieModule
 - **Complex Analysis**: Route to ParallelExecutorModule for parallel execution
 - **Iteration Limit**: Maximum 3 iterations to prevent loops
+- **Temporal Awareness**: All routing decisions include current date, fiscal year (FY), and fiscal quarter (Q1-Q4) context
 
 ## Project Status
 
 ### ✅ Completed Features
+
 - [x] Core DSPy module implementation
 - [x] Databricks LLM integration via custom `DatabricksLM`
 - [x] MLflow ChatAgent wrapper for compatibility
 - [x] Parallel query execution with ThreadPoolExecutor
 - [x] Comprehensive configuration system
 - [x] MLflow tracing integration
+- [x] **NEW**: Temporal context integration with fiscal year/quarter awareness
 
 ### 🚧 In Progress
+
 - [ ] DSPy GEPA/SIMBA optimizer integration for enhanced financial analysis accuracy
 - [ ] Enhanced error handling and recovery
 
 ### 📋 Planned Features
+
 - [x] DSPy 3.0 upgrade (with enhanced optimization capabilities and native MLflow integration)
 - [ ] DSPy GEPA/SIMBA optimizer integration for automatic prompt optimization
 - [ ] Extended data source integration
@@ -168,6 +179,45 @@ optimized_supervisor = optimizer.compile(
     trainset=financial_examples
 )
 ```
+
+## Temporal Context Feature
+
+### Overview
+
+The system now includes built-in temporal awareness through the `get_temporal_context()` function, which provides real-time fiscal year and quarter context to enhance financial analysis accuracy.
+
+### Technical Implementation
+
+```python
+def get_temporal_context() -> Dict[str, str]:
+    """Return current date, fiscal year, and fiscal quarter.
+    
+    Fiscal year runs Sep 1 -> Aug 31, labeled by end year.
+    Quarters: Q1=Sep-Nov, Q2=Dec-Feb, Q3=Mar-May, Q4=Jun-Aug
+    """
+```
+
+### Fiscal Year Calculation
+
+- **Fiscal Year Period**: September 1 → August 31 (labeled by end year)
+- **Q1**: September, October, November  
+- **Q2**: December, January, February
+- **Q3**: March, April, May
+- **Q4**: June, July, August
+
+### Context Integration
+
+- Automatically injected into SupervisorModule routing decisions
+- Provides current date (ISO format), fiscal year (FY2024), and fiscal quarter (Q1-Q4)
+- Enhances time-sensitive financial analysis and comparisons
+- Uses Eastern Time Zone (America/New_York) for consistency
+
+### Usage Impact
+
+The temporal context enables more accurate financial analysis by:
+- Providing current fiscal context for year-over-year comparisons
+- Supporting quarter-specific financial reporting analysis
+- Enabling time-aware routing decisions for seasonal financial patterns
 
 ## Development Notes
 
