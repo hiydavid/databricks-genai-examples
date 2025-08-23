@@ -1,7 +1,7 @@
 # Multi-Agent System with DSPy
 
 > **🚧 UNDER CONSTRUCTION / WORK IN PROGRESS 🚧**
-> 
+>
 > This project is currently under active development and is not yet production-ready. Features, APIs, and documentation may change significantly. Use for experimentation and development purposes only.
 
 A multi-agent financial data analysis system built with the DSPy framework, designed as an alternative to the LangGraph-based `multiagent-genie` implementation.
@@ -182,8 +182,6 @@ optimized_supervisor = optimizer.compile(
 
 ## Temporal Context Feature
 
-### Overview
-
 The system now includes built-in temporal awareness through the `get_temporal_context()` function, which provides real-time fiscal year and quarter context to enhance financial analysis accuracy.
 
 ### Technical Implementation
@@ -215,6 +213,7 @@ def get_temporal_context() -> Dict[str, str]:
 ### Usage Impact
 
 The temporal context enables more accurate financial analysis by:
+
 - Providing current fiscal context for year-over-year comparisons
 - Supporting quarter-specific financial reporting analysis
 - Enabling time-aware routing decisions for seasonal financial patterns
