@@ -5,35 +5,40 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Development Commands
 
 ### Environment Setup
+
 - Install dependencies: `pip install -r requirements.txt`
 - The project uses Python with Databricks-specific libraries (MLflow, LangChain, LangGraph)
-- **Key Dependencies**: 
-  - `mlflow-skinny[databricks]==3.1.1`
+- **Key Dependencies**:
+  - `mlflow[databricks]==3.2.0`
   - `databricks-langchain==0.6.0`
-  - `databricks-agents==1.1.0`
+  - `databricks-agents==1.4.0`
   - `langgraph==0.5.4`
   - `pydantic<2.12.0`
   - `nest-asyncio==1.6.0`
 - No traditional build, test, or lint commands - this is a Databricks notebook-based project
 
 ### Databricks Notebook Structure
+
 - **driver.py**: Main Databricks notebook with `# Databricks notebook source` magic commands
-- **multiagent-genie.py**: Core Python module imported via `%run ./multiagent-genie` 
+- **multiagent-genie.py**: Core Python module imported via `%run ./multiagent-genie`
 - Notebook cells are separated by `# COMMAND ----------` markers
 - Development workflow requires Databricks environment with cluster compute
 
 ### Environment Variables Required
+
 - `DB_MODEL_SERVING_HOST_URL`: Databricks workspace URL for model serving
 - `DATABRICKS_GENIE_PAT`: Personal Access Token for Genie space authentication
 - Configure in Databricks secrets for production deployment
 
 ### Running the Agent
+
 - Main entry point: `driver.py` (Databricks notebook format with `# Databricks notebook source` magic commands)
 - Core agent implementation: `multiagent-genie.py` (Python module loaded via `%run ./multiagent-genie`)
 - Configuration: `configs.yaml` (requires manual setup of Databricks resources)
 - Test agent: Use sample questions in `driver.py` cells 141-143 for testing different complexity levels
 
 ### Development Workflow
+
 1. Update `configs.yaml` with your Databricks resources (catalog, schema, workspace_url, etc.)
 2. Create Genie space and obtain space ID from Databricks workspace
 3. Set up Databricks PAT token in secrets (required for Genie space access)
@@ -42,6 +47,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 6. Use sample questions in cells 141-143 for testing different complexity levels
 
 ### Testing the Agent
+
 - **Simple Questions**: Test with single metric queries (e.g., "What was AAPL's revenue in 2015?")
 - **Complex Questions**: Test multi-company comparisons and trend analysis
 - **Temporal Context Questions**: Test date-aware queries (e.g., "What is the current fiscal quarter performance?")
@@ -72,13 +78,15 @@ This is a **multi-agent system** built with LangGraph for financial data analysi
    - Renamed from "Research Planner" to "Parallel Executor" for clarity
 
 ### Data Scope
+
 - **Time Range**: SEC financial data from 2003-2022 (updated from original 2003-2017)
 - **Companies**: Apple Inc. (AAPL), Bank of America Corp (BAC), American Express (AXP)
 - **Data Types**: Income Statement and Balance Sheet metrics
 - **Supported Metrics**: See `data/sec/genie_instruction.md` for full list of financial ratios and calculations
 
 ### Workflow Pattern
-```
+
+```text
 User Query → Supervisor → [Parallel Executor OR Direct Genie] → Supervisor → Final Answer
 ```
 
@@ -108,6 +116,7 @@ User Query → Supervisor → [Parallel Executor OR Direct Genie] → Supervisor
 ### Configuration Requirements
 
 Before running, update `configs.yaml` with:
+
 - Databricks workspace details (catalog, schema, workspace_url)
 - Genie space ID and SQL warehouse ID
 - MLflow experiment name
@@ -115,6 +124,7 @@ Before running, update `configs.yaml` with:
 - LLM endpoint configuration
 
 ### Data Files
+
 - `data/sec/balance_sheet.parquet` and `data/sec/income_statement.parquet`: SEC financial datasets (2003-2022)
 - `data/sec/genie_instruction.md`: SQL query guidelines and supported financial metrics for SEC data
 - `data/sec/ingest-sec-data.py`: SEC data ingestion script
@@ -137,6 +147,7 @@ The Supervisor Agent uses structured output with the following routing strategy:
 ### Supported Financial Metrics
 
 The system supports comprehensive financial analysis including:
+
 - **Liquidity**: Current Ratio, Quick Ratio
 - **Solvency**: Debt-to-Equity, Interest Coverage
 - **Profitability**: Gross Margin, Net Profit Margin, ROA, ROE
@@ -149,6 +160,7 @@ See `data/sec/genie_instruction.md` for complete SQL formulas and implementation
 ### Deployment Architecture
 
 The system is designed for deployment as a Databricks model serving endpoint with:
+
 - **Automatic Authentication Passthrough**: For Databricks resources (Genie spaces, SQL warehouses, UC tables)
 - **Environment Variables**: Secrets-based configuration for PAT tokens
 - **Resource Dependencies**: Declared upfront for automatic credential management
@@ -157,6 +169,7 @@ The system is designed for deployment as a Databricks model serving endpoint wit
 ### Code Structure and Key Functions
 
 **multiagent-genie.py Functions:**
+
 - `get_temporal_context()` (line 77): Returns current date, fiscal year, and fiscal quarter context
 - `supervisor_agent()` (line 138): Main routing logic with temporal context injection and structured output
 - `research_planner_node()` (line 146): Parallel query execution with ThreadPoolExecutor
@@ -165,12 +178,14 @@ The system is designed for deployment as a Databricks model serving endpoint wit
 - `execute_genie_query()` (line 165): Individual Genie query execution with error handling
 
 **LangGraphChatAgent Class:**
+
 - `predict()` (line 300): Synchronous prediction with message filtering
 - `predict_stream()` (line 339): Streaming prediction with status updates
 
 ### Financial Data Analysis Capabilities
 
 The system is specifically designed for SEC financial data analysis with predefined formulas in `data/sec/genie_instruction.md`:
+
 - **Data Coverage**: 2003-2022 SEC filings for AAPL, BAC, AXP only
 - **Table Aliases**: `bs` (balance sheet), `is` (income statement), `cf` (cash flow)
 - **Query Guidelines**: Fully qualified columns, explicit filtering, NULLIF for division safety
@@ -179,11 +194,13 @@ The system is specifically designed for SEC financial data analysis with predefi
 ## Critical Development Notes
 
 ### Authentication Requirements
+
 - **Genie Space Access**: Requires `DATABRICKS_GENIE_PAT` environment variable for Genie space authentication
 - **Model Serving**: Configure PAT token in secrets for deployment (`{{secrets/scope/genie-pat}}`)
 - **Permissions**: Ensure PAT has access to Genie space, SQL warehouse, and Unity Catalog tables
 
 ### Common Issues and Solutions
+
 - **Streaming Timeouts**: Use `predict_stream()` for long-running queries to prevent client timeouts
 - **MLflow Context Warnings**: Fixed by asyncio implementation using `asyncio.to_thread()`
 - **Event Loop Conflicts**: Resolved with `nest-asyncio` dependency for Databricks compatibility
@@ -194,6 +211,7 @@ The system is specifically designed for SEC financial data analysis with predefi
 - **MLflow Trace Verbosity**: Disable `mlflow.langchain.autolog()` and use manual `@mlflow.trace` decorators for clean trace UI output
 
 ### MLflow Tracing Integration
+
 - All agent interactions traced with manual `@mlflow.trace` decorators for clean output
 - **MLflow Autolog Disabled**: `mlflow.langchain.autolog()` commented out to prevent verbose LangChain state capture
 - Monitor supervisor routing decisions, Genie query performance, and parallel execution coordination
@@ -201,6 +219,7 @@ The system is specifically designed for SEC financial data analysis with predefi
 - Use traces to identify optimization opportunities and performance bottlenecks
 
 ### Structured Output Schema
+
 - `NextNode`: Controls agent routing with Literal type constraints
 - `ResearchPlan`: Defines parallel query structure and rationale
 - `AgentState`: Manages conversation state across iterations (max 3)
@@ -240,7 +259,8 @@ def get_temporal_context() -> Dict[str, str]:
 ```
 
 **Context Injection**: Automatically prepended to supervisor system prompts:
-```
+
+```text
 - The current date is: {today_iso}
 - The current fiscal year is: {fy}  
 - The current fiscal quarter is: {fq}
@@ -257,27 +277,31 @@ def get_temporal_context() -> Dict[str, str]:
 ### Usage Examples
 
 With temporal context, the system can now handle queries like:
+
 - "What is the current fiscal year performance for AAPL?"
 - "Compare this quarter's results to the same quarter last year"
 - "How has performance changed since the beginning of the fiscal year?"
-
 
 ## Prompt Optimization
 
 The system includes comprehensive prompt optimization capabilities documented in `docs/optimization-guide.md`:
 
 ### Key Optimization Areas
+
 - **Supervisor Agent System Prompt**: Controls routing logic and decision-making
 - **Research Planning Prompt**: Determines when to use parallel query execution  
 - **Final Answer Prompt**: Formats responses for simple vs. complex queries
 
 ### Configuration Location
+
 All prompts are configured in `configs.yaml` under `agent_configs.supervisor_agent`:
+
 - `system_prompt`: Main supervisor routing logic
 - `research_prompt`: Parallel execution decision criteria
 - `final_answer_prompt`: Response formatting guidelines
 
 ### Optimization Guidelines
+
 - **Bias Toward Genie**: Default to direct Genie routing for simple queries to reduce latency
 - **Clear Thresholds**: Define specific criteria for complex analysis (e.g., "3+ separate queries")
 - **Data-Aware Examples**: Use examples matching your actual dataset scope
@@ -288,12 +312,14 @@ See `docs/optimization-guide.md` for detailed prompt customization strategies an
 ## File Structure and Dependencies
 
 ### Core Files
+
 - `driver.py`: Databricks notebook entry point with cell-based structure
 - `multiagent-genie.py`: Core agent implementation with LangGraph workflow
 - `configs.yaml`: Complete system configuration including prompts
 - `requirements.txt`: Python dependencies for Databricks environment
 
 ### Data Directory Structure
+
 - `data/sec/`: SEC financial data and instructions
   - `balance_sheet.parquet`, `income_statement.parquet`: Financial datasets (2003-2022)
   - `genie_instruction.md`: SQL guidelines and financial formulas for Genie space
@@ -303,12 +329,14 @@ See `docs/optimization-guide.md` for detailed prompt customization strategies an
 - `data/graphs/`: Architecture diagrams
 
 ### Configuration Management
+
 - All settings managed through `configs.yaml` using `mlflow.models.ModelConfig`
 - Must update TODO placeholders before running
 - Prompts are configurable via YAML for easy optimization
 - Environment variables loaded from `os.getenv()` for runtime configuration
 
 ### Notebook Development Pattern
+
 - Cells use `# MAGIC` commands for markdown documentation
 - Python code cells separated by `# COMMAND ----------`
 - Autoreload enabled for development: `%load_ext autoreload`, `%autoreload 2`
