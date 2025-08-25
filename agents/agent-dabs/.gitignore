@@ -1,0 +1,98 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# MLflow
+mlruns/
+mlartifacts/
+.mlflow/
+
+# Databricks
+.databricks/
+*.dbc
+
+# Environment variables and secrets
+.env.local
+.env.production
+.env.staging
+secrets.yaml
+secrets.yml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Model artifacts
+models/
+artifacts/
+
+# Data files (if sensitive or large)
+# Uncomment if you don't want to track data files:
+# data/
+# *.parquet
+# *.csv
+# *.json
+
+# Config with secrets (create template instead)
+# Uncomment if configs.yaml contains sensitive data:
+# configs.yaml
+
+*.pyi
+/typings
+/scratch
