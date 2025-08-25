@@ -9,6 +9,7 @@ These tutorials use **financial data analysis** as a practical domain to demonst
 | Tutorial | Framework | Approach | Learning Objectives |
 |---|---|---|---|
 | **agentbricks/** | Databricks Agent Bricks | UI-First | Learn multi-agent creation via Databricks UI |
+| **agent-dabs/** | LangGraph + MLflow + DABs | MLOps-First | Master local development to production deployment workflow |
 | **multiagent-genie/** | Genie + LangGraph | Code-First | Build SQL-focused agents with programmatic coordination |
 | **multiagent-langgraph/** | LangGraph + Vector Search + UC Tools | Code-First | Create document retrieval systems with advanced orchestration |
 
@@ -29,7 +30,21 @@ Learn to build agents using Databricks' no-code interface
 
 **Prerequisites:** Basic familiarity with Databricks workspace navigation
 
-### 🤖 Tutorial 2: Multi-Agent with Genie (`multiagent-genie/`)
+### 🚀 Tutorial 2: Agent Development with DABs (`agent-dabs/`)
+
+Learn the complete MLOps workflow from local development to production deployment using Databricks Asset Bundles
+
+**What you'll learn:**
+
+- Local agent development with Python and LangGraph
+- MLflow integration for tracing, evaluation, and model management
+- Databricks Asset Bundles (DABs) for Infrastructure-as-Code
+- Production deployment via model serving endpoints
+- End-to-end workflow: Development → Testing → Evaluation → Deployment
+
+**Prerequisites:** Python programming, Databricks CLI, Unity Catalog access, Genie space setup
+
+### 🤖 Tutorial 3: Multi-Agent with Genie (`multiagent-genie/`)
 
 Build programmatic agents that leverage Databricks Genie for SQL generation
 
@@ -43,7 +58,7 @@ Build programmatic agents that leverage Databricks Genie for SQL generation
 
 **Prerequisites:** Python programming, basic SQL knowledge, familiarity with LangChain concepts
 
-### 🔍 Tutorial 3: Advanced LangGraph System (`multiagent-langgraph/`)
+### 🔍 Tutorial 4: Advanced LangGraph System (`multiagent-langgraph/`)
 
 Create sophisticated document retrieval and research agents
 
@@ -71,8 +86,9 @@ All tutorials require access to:
 
 1. **Choose Your Learning Path**:
    - **New to agent development?** Start with Tutorial 1 (`agentbricks/`)
-   - **Want to learn programmatic coordination?** Begin with Tutorial 2 (`multiagent-genie/`)
-   - **Ready for advanced patterns?** Jump to Tutorial 3 (`multiagent-langgraph/`)
+   - **Want to learn MLOps workflows?** Begin with Tutorial 2 (`agent-dabs/`)
+   - **Want to learn programmatic coordination?** Try Tutorial 3 (`multiagent-genie/`)
+   - **Ready for advanced patterns?** Jump to Tutorial 4 (`multiagent-langgraph/`)
 
 2. **Follow the Tutorial Structure**:
    - Each tutorial includes step-by-step instructions
@@ -94,5 +110,6 @@ These tutorials will teach you to work with:
 - **MLflow**: Model tracking, serving, and deployment
 - **Unity Catalog**: Data governance and access control
 - **Agent Bricks**: Databricks native agent framework (Beta)
+- **Databricks Asset Bundles (DABs)**: Infrastructure-as-Code for ML deployments
 
 Each tutorial is self-contained with detailed instructions, sample code, and practical exercises to reinforce learning.

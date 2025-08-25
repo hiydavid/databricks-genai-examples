@@ -11,7 +11,7 @@ All materials are provided AS IS, without any guarantees or warranties, and are 
 * Multi-Agent with Agent Bricks
 * Multi-Agent System with LangGraph
 * Multi-Agent Genie with LangGraph
-* Multi-Agent Genie with DSPy (Work-In-Progress)
+* Agent Deployement with Databricks Asset Bundles
 
 ## Batch Inference
 
