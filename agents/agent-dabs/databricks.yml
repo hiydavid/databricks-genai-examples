@@ -1,0 +1,52 @@
+# This is a Databricks asset bundle definition for agents-on-databricks.
+# The Databricks extension requires databricks.yml configuration file.
+# See https://docs.databricks.com/dev-tools/bundles/index.html for documentation.
+
+bundle:
+  name: agent-dabs
+
+variables:
+  experiment_name:
+    description: "Genie Deep Research with LangGraph"
+    default: "/Users/${workspace.current_user.userName}"
+
+resources:
+  experiments:
+    agents_experiment:
+      name: ${var.experiment_name}
+  
+  jobs:
+    agent_deploy_job:
+      name: "multiagent-genie-deployment-${bundle.target}"
+      run_as:
+        user_name: "${workspace.current_user.userName}"
+      tasks:
+        - task_key: run_multiagent_genie
+          notebook_task:
+            notebook_path: "src/deployment.py"
+            base_parameters:
+              mlflow_experiment: "${var.experiment_name}"
+      timeout_seconds: 3600
+      max_concurrent_runs: 1
+    
+    agent_evaluation_job:
+      name: "multiagent-genie-evaluation-${bundle.target}"
+      run_as:
+        user_name: "${workspace.current_user.userName}"
+      tasks:
+        - task_key: run_agent_evaluation
+          notebook_task:
+            notebook_path: "src/evaluation.py"
+            base_parameters:
+              mlflow_experiment: "${var.experiment_name}"
+      timeout_seconds: 1800
+      max_concurrent_runs: 1
+      
+targets:
+  dev:
+    mode: production
+    default: true
+    workspace:
+      host: https://you-workspace.databricks.com # TODO
+    variables:
+      experiment_name: "/Users/${workspace.current_user.userName}/agent-dabs"
