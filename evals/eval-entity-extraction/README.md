@@ -1,25 +1,26 @@
-# Databricks MLflow LLM Evaluation Demo
+# MLflow 3 Evaluation: Entity Extraction Use Case
 
-This repository contains a comprehensive example demonstrating how to evaluate Large Language Model (LLM) performance for lease document entity extraction using Databricks MLflow.
+This folder contains examples demonstrating how to evaluate Large Language Model (LLM) performance for entity extraction using MLflow 3 on Databricks.
 
 ## Project Overview
 
 This project showcases a complete evaluation pipeline for an LLM-powered entity extraction system that processes lease agreements and extracts structured data. The system uses Claude 3.7 Sonnet via Databricks Model Serving to extract key information from unstructured lease documents.
+
+For demo purposes, we're using a public lease agreement dataset [sourced from here](https://arxiv.org/abs/2010.10386).
 
 ## Repository Structure
 
 ```text
 evals/
 ├── eval-entity-extraction/
-│   ├── 00_setup.ipynb                      # Environment setup and configuration
-│   ├── 01_create-eval-dataset.ipynb        # Evaluation dataset creation
+│   ├── 00_setup.ipynb                        # Environment setup and configuration
+│   ├── 01_create-eval-dataset.ipynb          # Evaluation dataset creation
 │   ├── 02_eval-with-predefined-scorers.ipynb # Evaluation using built-in scorers
 │   ├── 03_eval-with-custom-guidelines.ipynb  # Custom evaluation guidelines
 │   └── data/
-│       └── leases.csv                       # Sample lease documents dataset
-├── databricks.yml                          # Databricks project configuration
-├── requirements.txt                        # Python dependencies
-└── README.md                               # This file
+│       └── leases.csv                        # Sample lease documents dataset
+├── requirements.txt                          # Python dependencies
+└── README.md                                 # This file
 ```
 
 ## Workflow Components
@@ -87,27 +88,6 @@ evals/
 - Date fields require valid formats (e.g., "June 8th, 2024")
 - Entity-specific extraction accuracy requirements
 - Domain knowledge validation for lease terminology
-
-## Key Features
-
-### Environment Flexibility
-
-- **Databricks Workspace**: Uses workspace-based experiment paths
-- **Local Development**: Uses current working directory for experiments
-- Automatic environment detection via `DATABRICKS_RUNTIME_VERSION`
-
-### MLflow Integration
-
-- Unity Catalog dataset management
-- Experiment tracking and comparison
-- Model evaluation metrics and traces
-- Results visualization in Databricks workspace
-
-### Structured Data Extraction
-
-- JSON schema-enforced output format
-- Comprehensive lease entity coverage
-- Error handling and validation
 
 ## Getting Started
 
