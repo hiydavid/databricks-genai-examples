@@ -16,6 +16,7 @@ evals/
 │   ├── 02_eval-with-predefined-scorers.ipynb # Evaluation using built-in scorers
 │   ├── 03_eval-with-custom-guidelines.ipynb  # Custom evaluation guidelines
 │   ├── 04_eval-with-code-scorers.ipynb       # Custom code-based fuzzy matching scorers
+│   ├── 05_eval-with-experts.ipynb            # Expert review with labeling sessions
 │   └── data/
 │       └── leases.csv                        # Sample lease documents dataset
 ├── requirements.txt                          # Python dependencies
@@ -34,19 +35,29 @@ TODO: Be sure to replace all the TODO's in the notebook!
 
 ### 1. Evaluation Dataset Creation (`01_create-eval-dataset.ipynb`)
 
-In this notebook, we will take a sample of the datasets, along with their ground-truth labels, and create a Mlflow Evaluation Dataset. See [this documentation](https://docs.databricks.com/aws/en/mlflow3/genai/eval-monitor/build-eval-dataset) for more details.
+In this notebook, we will take a sample of the datasets, along with their ground-truth labels, and create a Mlflow Evaluation Dataset. See [this documentation to learn more on creating evaluation datasets](https://docs.databricks.com/aws/en/mlflow3/genai/eval-monitor/build-eval-dataset).
 
 ### 2. Predefined Scorer Evaluation (`02_eval-with-predefined-scorers.ipynb`)
 
-In this notebook, we will run an evaluation using MLflow's built-in predefined scorers. See [this documentation](https://docs.databricks.com/aws/en/mlflow3/genai/eval-monitor/predefined-judge-scorers) for more details.
+In this notebook, we will run an evaluation using MLflow's built-in predefined scorers. See [this documentation to learn more on the predefined LLM judges](https://docs.databricks.com/aws/en/mlflow3/genai/eval-monitor/predefined-judge-scorers).
 
 ### 3. Custom Guidelines Evaluation (`03_eval-with-custom-guidelines.ipynb`)
 
-The predefined scorers are adequate for most use cases. However, for entity extraction usecase, we might want a separate scorer for each extraction field. This is where the `custom guidelines` come in handy. In this notebook, we will run an evaluation using customer guidelines, where you'll be able to define individual scorers for each extraction field using simple natural language.
+The predefined scorers are adequate for most use cases. However, for entity extraction usecase, we might want a separate scorer for each extraction field. This is where the `custom guidelines` come in handy.
+
+In this notebook, we will run an evaluation using customer guidelines, where you'll be able to define individual scorers for each extraction field using simple natural language. See [this documentation to learn more on evaluating using custom LLM judges](https://docs.databricks.com/aws/en/mlflow3/genai/eval-monitor/custom-judge).
 
 ### 4. Custom Code-Based Scorers (`04_eval-with-code-scorers.ipynb`)
 
-For more advanced evaluation scenarios, custom code-based scorers provide maximum flexibility. In this notebook, we implement fuzzy matching scorers for each of the 10 entity extraction fields using Python's `difflib` library. Each scorer compares predicted and expected field values with a 70% similarity threshold, returning 1 for matches above the threshold and 0 otherwise. This approach is particularly useful for handling variations in formatting, abbreviations, and minor textual differences while maintaining precise evaluation criteria.
+For more advanced evaluation scenarios, custom code-based scorers provide maximum flexibility. In this notebook, we implement fuzzy matching scorers for each of the 10 entity extraction fields using Python's `difflib` library. Each scorer compares predicted and expected field values with a 70% similarity threshold, returning 1 for matches above the threshold and 0 otherwise.
+
+This approach is particularly useful for handling variations in formatting, abbreviations, and minor textual differences while maintaining precise evaluation criteria. See [this documentation to learn more on evaluating using code-based scorers](https://docs.databricks.com/aws/en/mlflow3/genai/eval-monitor/custom-scorers).
+
+### 5. Expert Review with Labeling Sessions (`05_eval-with-experts.ipynb`)
+
+For cases where automated evaluation isn't sufficient, subject matter expert (SME) review provides human validation of model outputs. This notebook demonstrates how to create labeling sessions for expert reviewers to manually assess the accuracy of each extracted field.
+
+The notebook creates individual label schemas for all 10 extraction fields, allowing experts to provide structured feedback with "Correct", "Incorrect", or "Not Found" assessments plus detailed comments. This approach enables high-quality human evaluation for model validation and continuous improvement. See [this documentation to learn more on creating labeling sessions](https://docs.databricks.com/aws/en/mlflow3/genai/human-feedback/concepts/labeling-sessions).
 
 ## Getting Started
 
@@ -61,7 +72,8 @@ For more advanced evaluation scenarios, custom code-based scorers provide maximu
    01_create-eval-dataset.ipynb → 
    02_eval-with-predefined-scorers.ipynb → 
    03_eval-with-custom-guidelines.ipynb →
-   04_eval-with-code-scorers.ipynb
+   04_eval-with-code-scorers.ipynb →
+   05_eval-with-experts.ipynb
    ```
 
 3. **View Results**:
