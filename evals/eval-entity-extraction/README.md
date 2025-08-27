@@ -6,8 +6,6 @@ This folder contains examples demonstrating how to evaluate Large Language Model
 
 This project showcases a complete evaluation pipeline for an LLM-powered entity extraction system that processes lease agreements and extracts structured data. The system uses Claude 3.7 Sonnet via Databricks Model Serving to extract key information from unstructured lease documents.
 
-For demo purposes, we're using a public lease agreement dataset [sourced from here](https://arxiv.org/abs/2010.10386).
-
 ## Repository Structure
 
 ```text
@@ -17,6 +15,7 @@ evals/
 │   ├── 01_create-eval-dataset.ipynb          # Evaluation dataset creation
 │   ├── 02_eval-with-predefined-scorers.ipynb # Evaluation using built-in scorers
 │   ├── 03_eval-with-custom-guidelines.ipynb  # Custom evaluation guidelines
+│   ├── 04_eval-with-code-scorers.ipynb       # Custom code-based fuzzy matching scorers
 │   └── data/
 │       └── leases.csv                        # Sample lease documents dataset
 ├── requirements.txt                          # Python dependencies
@@ -25,80 +24,44 @@ evals/
 
 ## Workflow Components
 
-### 1. Setup and Configuration (`00_setup.ipynb`)
+### 0. Setup and Configuration (`00_setup.ipynb`)
 
-- **Environment Detection**: Automatically detects whether running on Databricks workspace or local development
-- **MLflow Configuration**: Sets up MLflow tracking and experiment management
-- **Model Configuration**: Configures Databricks Model Serving endpoint for Claude 3.7 Sonnet
-- **Entity Extraction Function**: Defines the core LLM function with structured JSON schema output
+In this notebook, we will setup all the critical environment variables that will be needed in the subsequent notebooks. In addition, we also define the LLM-calling function that will be used to produce structured extraction results from the lease agreement data.
 
-**Key Features:**
+```text
+TODO: Be sure to replace all the TODO's in the notebook!
+```
 
-- Environment-aware MLflow experiment naming
-- Structured JSON schema for lease entity extraction
-- OpenAI-compatible client setup for Databricks Model Serving
+### 1. Evaluation Dataset Creation (`01_create-eval-dataset.ipynb`)
 
-**Extracted Entities:**
+In this notebook, we will take a sample of the datasets, along with their ground-truth labels, and create a Mlflow Evaluation Dataset. See [this documentation](https://docs.databricks.com/aws/en/mlflow3/genai/eval-monitor/build-eval-dataset) for more details.
 
-- `start_date`: Lease commencement date
-- `end_date`: Lease termination date  
-- `leased_space`: Property description and location
-- `lessee`: Tenant information
-- `lessor`: Landlord information
-- `signing_date`: Contract signing date
-- `term_of_payment`: Payment schedule and terms
-- `designated_use`: Permitted property usage
-- `extension_period`: Renewal/extension options
-- `expiration_date_of_lease`: Final lease expiration
+### 2. Predefined Scorer Evaluation (`02_eval-with-predefined-scorers.ipynb`)
 
-### 2. Evaluation Dataset Creation (`01_create-eval-dataset.ipynb`)
+In this notebook, we will run an evaluation using MLflow's built-in predefined scorers. See [this documentation](https://docs.databricks.com/aws/en/mlflow3/genai/eval-monitor/predefined-judge-scorers) for more details.
 
-- **Dataset Initialization**: Creates MLflow evaluation dataset in Unity Catalog
-- **Ground Truth Loading**: Loads labeled lease documents from Unity Catalog table
-- **Record Transformation**: Converts ground truth data into MLflow evaluation format
-- **Dataset Population**: Adds 15 lease document records with expected outputs
+### 3. Custom Guidelines Evaluation (`03_eval-with-custom-guidelines.ipynb`)
 
-**Process:**
+The predefined scorers are adequate for most use cases. However, for entity extraction usecase, we might want a separate scorer for each extraction field. This is where the `custom guidelines` come in handy. In this notebook, we will run an evaluation using customer guidelines, where you'll be able to define individual scorers for each extraction field using simple natural language.
 
-1. Creates evaluation dataset table in Unity Catalog
-2. Loads ground truth data from `lease_docs_short` table
-3. Transforms records into `inputs`/`expectations` format
-4. Populates the evaluation dataset for downstream evaluation
+### 4. Custom Code-Based Scorers (`04_eval-with-code-scorers.ipynb`)
 
-### 3. Predefined Scorer Evaluation (`02_eval-with-predefined-scorers.ipynb`)
-
-- **Built-in Metrics**: Uses MLflow's predefined evaluation scorers
-- **Model Testing**: Validates model inference with sample lease text
-- **Automated Evaluation**: Runs evaluation across all dataset records
-
-**Evaluation Metrics:**
-
-- **Correctness**: Compares model output against ground truth labels
-- **Relevance to Query**: Assesses output relevance to input lease document
-- **Safety**: Evaluates content safety and appropriateness
-
-### 4. Custom Guidelines Evaluation (`03_eval-with-custom-guidelines.ipynb`)
-
-- **Field-Specific Guidelines**: Custom evaluation criteria for each extracted entity
-- **Date Format Validation**: Specific requirements for date field formatting
-- **Domain-Specific Scoring**: Tailored evaluation for lease document context
-
-**Custom Guidelines Include:**
-
-- Date fields require valid formats (e.g., "June 8th, 2024")
-- Entity-specific extraction accuracy requirements
-- Domain knowledge validation for lease terminology
+For more advanced evaluation scenarios, custom code-based scorers provide maximum flexibility. In this notebook, we implement fuzzy matching scorers for each of the 10 entity extraction fields using Python's `difflib` library. Each scorer compares predicted and expected field values with a 70% similarity threshold, returning 1 for matches above the threshold and 0 otherwise. This approach is particularly useful for handling variations in formatting, abbreviations, and minor textual differences while maintaining precise evaluation criteria.
 
 ## Getting Started
 
 1. **Configure Environment Variables**:
-   - Update `USER`, `CATALOG`, `SCHEMA` in `00_setup.ipynb`
+   - Update the TODO-marked variables in `00_setup.ipynb`
    - Set model serving endpoint URL for your workspace
 
 2. **Run Notebooks in Sequence**:
 
    ```text
-   00_setup.ipynb → 01_create-eval-dataset.ipynb → 02_eval-with-predefined-scorers.ipynb → 03_eval-with-custom-guidelines.ipynb
+   00_setup.ipynb → 
+   01_create-eval-dataset.ipynb → 
+   02_eval-with-predefined-scorers.ipynb → 
+   03_eval-with-custom-guidelines.ipynb →
+   04_eval-with-code-scorers.ipynb
    ```
 
 3. **View Results**:
@@ -108,12 +71,7 @@ evals/
 
 ## Dataset
 
-The evaluation uses a dataset of 15 lease agreements with ground truth labels, covering various:
-
-- Commercial and office lease agreements
-- Different date formats and terminology
-- Various property types and locations
-- Multiple payment terms and structures
+The evaluation uses a dataset of 15 lease agreements with ground truth labels. We've sourced the sample data from a public [lease agreement dataset](https://arxiv.org/abs/2010.10386).
 
 ## Dependencies
 
