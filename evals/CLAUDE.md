@@ -15,6 +15,7 @@ The codebase follows a sequential notebook workflow pattern:
 3. **Predefined Evaluation (`02_eval-with-predefined-scorers.ipynb`)**: Built-in MLflow scorers (Correctness, Relevance, Safety)
 4. **Custom Evaluation (`03_eval-with-custom-guidelines.ipynb`)**: Field-specific evaluation guidelines
 5. **Code-Based Scorers (`04_eval-with-code-scorers.ipynb`)**: Custom fuzzy matching scorers using Python difflib
+6. **SME Labeling Session (`05_eval-with-experts.ipynb`)**: Create a Labeling Session for SME reviews
 
 ### Key Components
 
@@ -25,6 +26,7 @@ The codebase follows a sequential notebook workflow pattern:
 ## Configuration Requirements
 
 Before running notebooks, update TODO-marked variables in `00_setup.ipynb`:
+
 - `USER`: Databricks user email
 - `CATALOG`, `SCHEMA`: Unity Catalog location  
 - `GT_TABLE`, `EVAL_TABLE`: Ground truth and evaluation table names
@@ -33,14 +35,18 @@ Before running notebooks, update TODO-marked variables in `00_setup.ipynb`:
 ## Development Workflow
 
 ### Running Evaluations
-Execute notebooks sequentially: 00 → 01 → 02 → 03 → 04
+
+Execute notebooks sequentially: 00 → 01 → 02 → 03 → 04 -> 05
 
 ### Environment Detection
+
 The setup automatically detects execution context:
+
 - Databricks workspace: Uses workspace-based experiment paths
 - Local development: Uses current working directory paths
 
 ### Databricks Asset Bundle
+
 The project includes `databricks.yml` for asset bundle deployment with job definitions for dataset creation.
 
 ## Dependencies
@@ -57,14 +63,18 @@ The project includes `databricks.yml` for asset bundle deployment with job defin
 ## Evaluation Patterns
 
 ### Custom Guidelines Structure
+
 Use `Guidelines(name="field_name", guidelines="description")` for field-specific evaluation. Date fields require format specifications (e.g., "June 8th, 2024").
 
 ### Code-Based Scorers
+
 Custom scorers using `@scorer` decorator for advanced evaluation logic. The fuzzy matching implementation:
+
 - Uses `difflib.SequenceMatcher` for similarity scoring (0.0-1.0)
 - 70% similarity threshold for pass/fail evaluation
 - Returns 1 (pass) or 0 (fail) with detailed percentage rationale
 - Handles ChatCompletion objects, JSON strings, and nested response structures
 
 ### MLflow Experiment Management
+
 Experiments automatically handle existing experiment detection and creation. Results viewable in Databricks workspace MLflow UI.

@@ -5,3 +5,5 @@ databricks.yml
 /.venv
 /.vscode
 /typings
+.databricks/
+.venv/
