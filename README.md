@@ -18,6 +18,10 @@ All materials are provided AS IS, without any guarantees or warranties, and are 
 * CPU Model Serving Endpoint Batch Inference
 * Provisioned Throughput Endpoint Batch Inference with `AI_Query`
 
+## Evals
+
+* Evaluate Entity Extraction Use Case with MLflow 3
+
 ## Fine-Tuning
 
 * Structured Extraction with LLM
