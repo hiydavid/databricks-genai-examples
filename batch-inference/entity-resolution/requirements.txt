@@ -1,0 +1,3 @@
+openai==1.102.0
+Faker==37.6.0
+databricks-vectorsearch==0.57
