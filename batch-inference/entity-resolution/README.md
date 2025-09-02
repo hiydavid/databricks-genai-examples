@@ -14,30 +14,9 @@ This solution uses:
 
 ## Tutorial Structure
 
-### 1. Generate Datasets (`00_generate-datasets.ipynb`)
-
-- Creates a master merchant entity table with ~50 merchants across various categories
-- Uses `ai_query()` with Databricks' LLM to generate realistic name variations (like those on credit card statements)
-- Generates synthetic transaction data with 1000+ records using the name variations
-
-### 2. Build Vector Search Index (`01_generate-vs-index.ipynb`)
-
-- Enables Change Data Feed on the merchant entity table
-- Creates a Delta Sync Vector Search index that auto-embeds merchant names
-- Uses Databricks' embedding model to create semantic representations of merchant names
-
-### 3. Resolve Entities (`02_resolve-entities-aiquery.ipynb`)
-
-- For each transaction, retrieves top 10 possible entity matches using Vector Search
-- Uses `ai_query()` with an LLM to intelligently select the correct entity from candidates
-- Combines semantic search with LLM reasoning for high-accuracy entity resolution
-
-## Key Features
-
-- **Scalable**: Processes thousands of transactions in parallel using Spark SQL
-- **Accurate**: Combines vector similarity with LLM intelligence for robust matching
-- **Flexible**: Easily adaptable to different entity types beyond merchants
-- **Production-Ready**: Built on Databricks' serverless compute and managed services
+1. **Generate Datasets (`00_generate-datasets.ipynb`)**: In this notebook, you will creates a master merchant entity table with ~50 merchants across various categories. Then, we will use a LLM to generate variations of each merchant entity to mimic merchant names that look like those on credit card statements. And finally, we will generates synthetic transaction data with 1000+ records using the name variations with Faker.
+2. **Build Vector Search Index (`01_generate-vs-index.ipynb`)**: In this notebook, we will create a Databricks Vector Search Index on the master merchant entity table.
+3. **Resolve Entities (`02_resolve-entities-aiquery.ipynb`)**: In this final notebook, we will demonstrate how to use the `vector_search()` Databricks AI Function to search possible merchant entities for each transaction, and then use `ai_query()` with an LLM to intelligently select the correct entity from candidates entities.
 
 ## Prerequisites
 
@@ -45,7 +24,7 @@ This solution uses:
   - Unity Catalog
   - Vector Search endpoints
   - LLM endpoints (e.g., `databricks-llama-4-maverick`, `databricks-gpt-oss-120b`)
-- Python environment with required libraries
+- Python environment with required libraries (i.e., `requirements.txt`)
 
 ## Getting Started
 
