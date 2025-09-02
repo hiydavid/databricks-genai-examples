@@ -39,16 +39,6 @@ This solution uses:
    - `01_generate-vs-index.ipynb` - Build search index
    - `02_resolve-entities-aiquery.ipynb` - Perform entity resolution
 
-## Data Flow
-
-```text
-Master Entities → Generate Variations → Create Transactions
-                           ↓
-                   Vector Search Index
-                           ↓
-                Transaction + Vector Search → LLM Resolution → Resolved Entities
-```
-
 ## Example Results
 
 Input transaction: `"STRBKS #1234"`
