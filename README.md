@@ -16,7 +16,8 @@ All materials are provided AS IS, without any guarantees or warranties, and are 
 ## Batch Inference
 
 * CPU Model Serving Endpoint Batch Inference
-* Provisioned Throughput Endpoint Batch Inference with `AI_Query`
+* Provisioned Throughput Endpoint Batch Inference with `ai_query`
+* Entity Resolution with `vector_search` and `ai_query`
 
 ## Evals
 
