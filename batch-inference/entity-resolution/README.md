@@ -14,9 +14,9 @@ This solution uses:
 
 ## Tutorial Structure
 
-1. **Generate Datasets (`00_generate-datasets.ipynb`)**: In this notebook, you will creates a master merchant entity table with ~50 merchants across various categories. Then, we will use a LLM to generate variations of each merchant entity to mimic merchant names that look like those on credit card statements. And finally, we will generates synthetic transaction data with 1000+ records using the name variations with Faker.
-2. **Build Vector Search Index (`01_generate-vs-index.ipynb`)**: In this notebook, we will create a Databricks Vector Search Index on the master merchant entity table.
-3. **Resolve Entities (`02_resolve-entities-aiquery.ipynb`)**: In this final notebook, we will demonstrate how to use the `vector_search()` Databricks AI Function to search possible merchant entities for each transaction, and then use `ai_query()` with an LLM to intelligently select the correct entity from candidates entities.
+1. **Generate Datasets (`00_generate-datasets.ipynb`)**: Creates a master merchant entity table with ~50 merchants across various categories. Uses LLM to generate realistic variations of each merchant entity to mimic merchant names as they appear on credit card statements. Generates synthetic transaction data with 1000+ records using the name variations with Faker.
+2. **Build Vector Search Index (`01_generate-vs-index.ipynb`)**: Creates a Databricks Vector Search Index on the master merchant entity table using Delta Sync with auto-embedding capabilities.
+3. **Resolve Entities (`02_resolve-entities-aiquery.ipynb`)**: Demonstrates how to use the `VECTOR_SEARCH()` function with hybrid query type to retrieve top-N candidate merchant entities for each transaction, then uses `ai_query()` with an LLM to intelligently select the correct entity from the candidates.
 
 ## Prerequisites
 
@@ -41,8 +41,12 @@ This solution uses:
 
 ## Example Results
 
-Input transaction: `"STRBKS #1234"`
-Vector Search candidates: `["Starbucks", "Star Market", "Stars Restaurant", ...]`
-LLM resolution: `"Starbucks"`
+**Input transaction:** `"STRBKS #1234"`  
+**Vector Search (Hybrid):** Returns top 5 candidates with similarity scores  
+**Candidates:** `["Starbucks", "Star Market", "Stars Restaurant", ...]`  
+**LLM Resolution:** `"Starbucks"`
 
-This approach achieves high accuracy by combining the recall of semantic search with the precision of LLM-based reasoning.
+This approach achieves high accuracy by:
+- Using hybrid search (combining semantic and keyword matching) for better recall
+- Leveraging LLM reasoning to select the correct entity from candidates
+- Processing thousands of transactions in parallel using Databricks serverless compute
