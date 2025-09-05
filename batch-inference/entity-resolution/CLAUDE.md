@@ -55,6 +55,7 @@ spark = DatabricksSession.builder.remote(serverless=True).getOrCreate()
 - `ner_demo_generated_transactions`: Synthetic transaction data
 - `ner_demo_top_results`: Vector search results per transaction
 - `ner_demo_resolution_output`: Final resolved entities
+- `ner_demo_evaluation`: Evaluation table comparing predictions to ground truth
 
 ### Key SQL Patterns
 

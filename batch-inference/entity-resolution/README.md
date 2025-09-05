@@ -17,6 +17,7 @@ This solution uses:
 1. **Generate Datasets (`00_generate-datasets.ipynb`)**: Creates a master merchant entity table with ~50 merchants across various categories. Uses LLM to generate realistic variations of each merchant entity to mimic merchant names as they appear on credit card statements. Generates synthetic transaction data with 1000+ records using the name variations with Faker.
 2. **Build Vector Search Index (`01_generate-vs-index.ipynb`)**: Creates a Databricks Vector Search Index on the master merchant entity table using Delta Sync with auto-embedding capabilities.
 3. **Resolve Entities (`02_resolve-entities-aiquery.ipynb`)**: Demonstrates how to use the `VECTOR_SEARCH()` function with hybrid query type to retrieve top-N candidate merchant entities for each transaction, then uses `ai_query()` with an LLM to intelligently select the correct entity from the candidates.
+4. **Evaluate Accuracy (`03_evaluate-accuracy.ipynb`)**: Evaluates the entity resolution accuracy by comparing predictions against ground truth data, achieving ~92% accuracy and providing analysis of incorrect matches.
 
 ## Prerequisites
 
@@ -38,6 +39,7 @@ This solution uses:
    - `00_generate-datasets.ipynb` - Create sample data
    - `01_generate-vs-index.ipynb` - Build search index
    - `02_resolve-entities-aiquery.ipynb` - Perform entity resolution
+   - `03_evaluate-accuracy.ipynb` - Evaluate resolution accuracy
 
 ## Example Results
 
@@ -47,6 +49,7 @@ This solution uses:
 **LLM Resolution:** `"Starbucks"`
 
 This approach achieves high accuracy by:
+
 - Using hybrid search (combining semantic and keyword matching) for better recall
 - Leveraging LLM reasoning to select the correct entity from candidates
 - Processing thousands of transactions in parallel using Databricks serverless compute
