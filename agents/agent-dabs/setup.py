@@ -13,7 +13,7 @@ setup(
         "databricks-agents==1.4.0",
         "langgraph==0.5.4",
         "pydantic<2.12.0",
-        "lark==1.2.2",
+        "nest-asyncio==1.6.0",
     ],
     include_package_data=True,
     package_data={
