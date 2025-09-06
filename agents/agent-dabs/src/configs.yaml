@@ -11,6 +11,8 @@ databricks_configs:
 
 agent_configs:
   agent_name: genie-reasoning-agent
+  conversation:
+    max_messages: 7  # Maximum number of conversational messages to keep in context
   llm:
     endpoint_name: "databricks-claude-3-7-sonnet" # TODO: or use "databricks-claude-sonnet-4"
     temperature: 0.1  # Lower temperature for more consistent supervisor routing
