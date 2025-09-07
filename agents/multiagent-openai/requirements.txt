@@ -1,0 +1,5 @@
+backoff==2.2.1
+databricks-openai==0.6.1
+databricks-agents==1.4.0
+databricks-ai-bridge==0.7.1
+mlflow-skinny[databricks]==3.3.2
