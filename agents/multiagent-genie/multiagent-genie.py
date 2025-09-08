@@ -475,48 +475,6 @@ class LangGraphChatAgent(ChatAgent):
         self.agent = agent
         # Set up async environment once at initialization
         self._setup_async_environment()
-        # Read max messages from config with safe fallback
-        try:
-            self._max_messages = agent_configs.get("conversation", {}).get(
-                "max_messages", 7
-            )
-        except Exception:
-            self._max_messages = 7
-
-    def _sanitize_messages(self, messages: list[ChatAgentMessage | dict]) -> list[dict]:
-        """Filter out ephemeral processing messages and enforce max history cap.
-
-        - Removes any message whose content starts with "Processing with ";
-        - Retains ordering and keeps only the last N items (N=_max_messages).
-        Returns a list of serializable message dicts.
-        """
-        msg_dicts: list[dict] = []
-        for m in messages:
-            if hasattr(m, "model_dump_compat"):
-                d = m.model_dump_compat(exclude_none=True)
-            elif isinstance(m, dict):
-                d = {k: v for k, v in m.items() if v is not None}
-            else:
-                # Best-effort fallback
-                d = {
-                    "role": getattr(m, "role", "assistant"),
-                    "content": getattr(m, "content", str(m)),
-                }
-
-            content = d.get("content")
-            if isinstance(content, str):
-                text = content.strip()
-                # Drop ephemeral status updates like "Processing with X..."
-                if text.lower().startswith("processing with "):
-                    continue
-
-            msg_dicts.append(d)
-
-        # Enforce max history window
-        if len(msg_dicts) > self._max_messages:
-            msg_dicts = msg_dicts[-self._max_messages :]
-
-        return msg_dicts
 
     def _setup_async_environment(self):
         """Configure async environment for Databricks notebooks."""
@@ -558,8 +516,14 @@ class LangGraphChatAgent(ChatAgent):
         context: Optional[ChatContext] = None,
         custom_inputs: Optional[dict[str, Any]] = None,
     ) -> ChatAgentResponse:
-        # Sanitize and cap message history before invoking the agent
-        request = {"messages": self._sanitize_messages(messages)}
+        # Truncate message history to prevent memory accumulation
+        MAX_MESSAGES = 7
+        if len(messages) > MAX_MESSAGES:
+            messages = messages[-MAX_MESSAGES:]
+
+        request = {
+            "messages": [m.model_dump_compat(exclude_none=True) for m in messages]
+        }
 
         final_messages = []
         async for event in self.agent.astream(request, stream_mode="updates"):
@@ -658,8 +622,14 @@ class LangGraphChatAgent(ChatAgent):
         context: Optional[ChatContext] = None,
         custom_inputs: Optional[dict[str, Any]] = None,
     ):
-        # Sanitize and cap message history before invoking the agent
-        request = {"messages": self._sanitize_messages(messages)}
+        # Truncate message history to prevent memory accumulation
+        MAX_MESSAGES = 7
+        if len(messages) > MAX_MESSAGES:
+            messages = messages[-MAX_MESSAGES:]
+
+        request = {
+            "messages": [m.model_dump_compat(exclude_none=True) for m in messages]
+        }
 
         # Track which nodes we've seen to provide status updates
         seen_nodes = set()
