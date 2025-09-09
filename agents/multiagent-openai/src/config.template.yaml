@@ -1,0 +1,25 @@
+databricks:
+  catalog: your_catalog  # TODO
+  schema: your_schema  # TODO
+  model: your_model_name  # TODO
+  workspace_url: https://your-workspace.databricks.net/  # TODO
+  sql_warehouse_id: your_sql_warehouse_id  # TODO
+  mlflow_experiment_name: your_experiment_name  # TODO
+  databricks_pat:
+    secret_scope_name: your_secret_scope  # TODO
+    secret_key_name: your_secret_key  # TODO
+
+agent:
+  name: your_agent_name  # TODO
+  llm:
+    endpoint_name: "databricks-claude-3-7-sonnet"
+    temperature: 0.1
+  system:
+    prompt: |
+      You are a helpful assistant that can run Python code.
+  tools:
+    uc_tool_names:  # TODO
+      - "system.ai.python_exec"
+    genie:
+      space_id: your_genie_space_id  # TODO
+      
