@@ -1,0 +1,10 @@
+transformers==4.48.0
+torch==2.5.1
+torchvision==0.20.1
+accelerate
+diffusers==0.32.2
+huggingface_hub==0.27.1
+invisible-watermark>=0.2.0
+bitsandbytes==0.45.4
+sentencepiece==0.2.0
+mlflow-skinny[databricks]==3.3.2
