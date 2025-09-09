@@ -90,8 +90,9 @@ artifacts/
 # *.json
 
 # Config with secrets (create template instead)
-# Uncomment if configs.yaml contains sensitive data:
-# configs.yaml
+# Actual config files with sensitive data - use templates instead
+configs.yaml
+databricks.yml
 
 *.pyi
 /typings
