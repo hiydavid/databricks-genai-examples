@@ -27,6 +27,10 @@ All materials are provided AS IS, without any guarantees or warranties, and are 
 
 * Structured Extraction with LLM
 
+## Model Serving
+
+* Serving FLUX1-Dev on Customer GPUs
+
 ## Vector Search
 
 * Multi-Index Vector Search
