@@ -12,6 +12,7 @@ These tutorials use **financial data analysis** as a practical domain to demonst
 | **agent-dabs/** | LangGraph + MLflow + DABs | MLOps-First | Master local development to production deployment workflow |
 | **multiagent-genie/** | Genie + LangGraph | Code-First | Build SQL-focused agents with programmatic coordination |
 | **multiagent-langgraph/** | LangGraph + Vector Search + UC Tools | Code-First | Create document retrieval systems with advanced orchestration |
+| **multiagent-openai/** | OpenAI Response API + Genie + UC Tools | API-First | Master OpenAI-compatible agent architecture with Databricks integration |
 
 ## Tutorials
 
@@ -72,6 +73,22 @@ Create sophisticated document retrieval and research agents
 
 **Prerequisites:** Intermediate Python, understanding of vector embeddings, experience with document processing
 
+### 🤖 Tutorial 5: OpenAI-Compatible Agent (`multiagent-openai/`)
+
+Build production-ready agents using the OpenAI Response API format with comprehensive Databricks integration
+
+**What you'll learn:**
+
+- OpenAI Response API implementation patterns for agent development
+- Unity Catalog function integration as agent tools
+- Databricks Genie integration for natural language data queries
+- MLflow-based agent tracing and observability
+- Streaming agent responses and real-time interactions
+- Tool-calling architectures with automatic function execution
+- Production deployment using Databricks Asset Bundles
+
+**Prerequisites:** Python programming, familiarity with OpenAI API patterns, Unity Catalog access, Genie space setup
+
 ## Setup Requirements
 
 All tutorials require access to:
@@ -88,7 +105,8 @@ All tutorials require access to:
    - **New to agent development?** Start with Tutorial 1 (`agentbricks/`)
    - **Want to learn MLOps workflows?** Begin with Tutorial 2 (`agent-dabs/`)
    - **Want to learn programmatic coordination?** Try Tutorial 3 (`multiagent-genie/`)
-   - **Ready for advanced patterns?** Jump to Tutorial 4 (`multiagent-langgraph/`)
+   - **Ready for advanced patterns?** Try Tutorial 4 (`multiagent-langgraph/`)
+   - **Want OpenAI-compatible architecture?** Explore Tutorial 5 (`multiagent-openai/`)
 
 2. **Follow the Tutorial Structure**:
    - Each tutorial includes step-by-step instructions
