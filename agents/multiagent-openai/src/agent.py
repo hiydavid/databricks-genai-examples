@@ -174,14 +174,14 @@ for vs_tool in VECTOR_SEARCH_TOOLS:
     TOOL_INFOS.append(create_tool_info(vs_tool.tool, vs_tool.execute))
 
 
-class ToolCallingAgent(ResponsesAgent):
+class MultiAgent(ResponsesAgent):
     """
     Class representing a tool-calling Agent.
     Handles both tool execution via exec_fn and LLM interactions via model serving.
     """
 
     def __init__(self, llm_endpoint: str, tools: list[ToolInfo]):
-        """Initializes the ToolCallingAgent with tools."""
+        """Initializes the MultiAgent with tools."""
         self.llm_endpoint = llm_endpoint
         self.workspace_client = WorkspaceClient()
         self.model_serving_client: OpenAI = (
@@ -201,7 +201,7 @@ class ToolCallingAgent(ResponsesAgent):
         return self._tools_dict[tool_name].exec_fn(**args)
 
     def _responses_to_cc(self, message: dict[str, Any]) -> list[dict[str, Any]]:
-        """Convert from a Responses API output item to  a list of ChatCompletion messages."""
+        """Convert from a Responses API output item to a list of ChatCompletion messages."""
         msg_type = message.get("type")
         if msg_type == "function_call":
             return [
@@ -247,8 +247,8 @@ class ToolCallingAgent(ResponsesAgent):
         return chat_msgs
 
     @backoff.on_exception(backoff.expo, openai.RateLimitError)
-    @mlflow.trace(span_type=SpanType.LLM)
     def call_llm(self) -> Generator[dict[str, Any], None, None]:
+        # Using OpenAI ChatCompletion API since Databricks hosted models are not compatible with the OpenAI Response API yet
         for chunk in self.model_serving_client.chat.completions.create(
             model=self.llm_endpoint,
             messages=self.prep_msgs_for_llm(self.messages),
@@ -348,7 +348,6 @@ class ToolCallingAgent(ResponsesAgent):
             ),
         )
 
-    @mlflow.trace(span_type=SpanType.AGENT)
     def predict(self, request: ResponsesAgentRequest) -> ResponsesAgentResponse:
         outputs = [
             event.item
@@ -359,7 +358,6 @@ class ToolCallingAgent(ResponsesAgent):
             output=outputs, custom_outputs=request.custom_inputs
         )
 
-    @mlflow.trace(span_type=SpanType.AGENT)
     def predict_stream(
         self, request: ResponsesAgentRequest
     ) -> Generator[ResponsesAgentStreamEvent, None, None]:
@@ -371,5 +369,5 @@ class ToolCallingAgent(ResponsesAgent):
 
 # Log the model using MLflow
 mlflow.openai.autolog()
-AGENT = ToolCallingAgent(llm_endpoint=LLM_ENDPOINT_NAME, tools=TOOL_INFOS)
+AGENT = MultiAgent(llm_endpoint=LLM_ENDPOINT_NAME, tools=TOOL_INFOS)
 mlflow.models.set_model(AGENT)

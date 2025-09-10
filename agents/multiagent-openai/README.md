@@ -52,7 +52,7 @@ databricks:
   model: your_model_name
   workspace_url: https://your-workspace.databricks.net/
   sql_warehouse_id: your_warehouse_id
-  mlflow_experiment_name: your_experiment_name
+  mlflow_experiment_id: your_experiment_id
 
 agent:
   name: your_agent_name
@@ -139,7 +139,7 @@ agent:
 
 ### Core Components
 
-- **`ToolCallingAgent`**: Main agent class extending MLflow's `ResponsesAgent`
+- **`MultiAgent`**: Main agent class extending MLflow's `ResponsesAgent`
 - **`ToolInfo`**: Wrapper for OpenAI function calling specifications
 - **Genie Integration**: Uses `databricks-ai-bridge` for simplified natural language querying
 - **Streaming Support**: Real-time response generation with proper event handling
@@ -184,6 +184,6 @@ The agent supports hot reloading and comprehensive tracing:
 
 ### 🎯 **Upcoming Features**
 
-1. **Add Evaluation Framework**: Implement agent evaluation via MLflow 3
-2. **Add Agent Deployment**: Set up production deployment pipeline and model serving endpoints
-3. **Add Parallel Tool-Calling**: Enable simultaneous execution of multiple Genie calls
+[] **Add Evaluation Framework**: Implement agent evaluation via MLflow 3
+[] **Add Agent Deployment**: Set up production deployment pipeline and model serving endpoints
+[] **Add Parallel Tool-Calling**: Enable simultaneous execution of multiple Genie calls

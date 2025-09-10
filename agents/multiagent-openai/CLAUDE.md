@@ -5,12 +5,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Development Workflow
 
 ### Core Commands
+
 - **Test agent locally**: Run `src/driver.ipynb` in Jupyter/Databricks notebooks
 - **Install dependencies**: `pip install -r src/requirements.txt`
 - **Deploy with Databricks bundles**: `databricks bundle deploy --target dev`
 
 ### Configuration Setup
+
 Before development, update `src/config.yaml` with your Databricks settings:
+
 - Set your catalog/schema for Unity Catalog access
 - Configure Genie space_id for natural language queries  
 - Update workspace_url and warehouse_id for your environment
@@ -19,6 +22,7 @@ Before development, update `src/config.yaml` with your Databricks settings:
 ## Architecture Overview
 
 ### Core Components
+
 The system implements an **OpenAI Responses Agent** using MLflow's ResponsesAgent base class with three key integration layers:
 
 1. **Tool System**: Extensible framework using `ToolInfo` wrapper pattern
@@ -26,7 +30,7 @@ The system implements an **OpenAI Responses Agent** using MLflow's ResponsesAgen
    - Databricks Genie via `databricks-ai-bridge`
    - Vector Search via `VectorSearchRetrieverTool`
 
-2. **Agent Engine**: `ToolCallingAgent` class handles:
+2. **Agent Engine**: `MultiAgent` class handles:
    - Streaming responses with proper event marshalling
    - Message format conversion between Responses API and OpenAI ChatCompletion
    - Tool execution with automatic MLflow tracing
@@ -37,6 +41,7 @@ The system implements an **OpenAI Responses Agent** using MLflow's ResponsesAgen
 ### Key Design Patterns
 
 **Tool Creation Pattern**: All tools follow the same `ToolInfo` wrapper:
+
 ```python
 def create_custom_tool(params):
     tool_spec = {"type": "function", "function": {...}}
@@ -56,6 +61,7 @@ def create_custom_tool(params):
 - **Tool Registry**: `TOOL_INFOS` global list populated at module load time based on configuration
 
 ### Databricks Bundle Structure
+
 - `databricks.yml` defines the bundle with development target
 - Agent deployment managed through Databricks Asset Bundles
 - MLflow model registration handled automatically via `mlflow.models.set_model()`
@@ -63,7 +69,7 @@ def create_custom_tool(params):
 ### Development Notes
 
 - The agent automatically initializes with configured tools on import
-- MLflow experiment tracking is set up in `driver.ipynb` 
+- MLflow experiment tracking is set up in `driver.ipynb` using experiment ID lookup with `mlflow.get_experiment()` and `mlflow.set_experiment()`
 - All tool executions are automatically traced with MLflow spans
 - Vector search tools are configurable but not enabled by default
 - The system supports both DataFrame and string responses from Genie

@@ -4,7 +4,7 @@ databricks:
   model: your_model_name  # TODO
   workspace_url: https://your-workspace.databricks.net/  # TODO
   sql_warehouse_id: your_sql_warehouse_id  # TODO
-  mlflow_experiment_name: your_experiment_name  # TODO
+  mlflow_experiment_id: your_experiment_id  # TODO
   databricks_pat:
     secret_scope_name: your_secret_scope  # TODO
     secret_key_name: your_secret_key  # TODO
