@@ -184,6 +184,6 @@ The agent supports hot reloading and comprehensive tracing:
 
 ### 🎯 **Upcoming Features**
 
-[] **Add Evaluation Framework**: Implement agent evaluation via MLflow 3
-[] **Add Agent Deployment**: Set up production deployment pipeline and model serving endpoints
-[] **Add Parallel Tool-Calling**: Enable simultaneous execution of multiple Genie calls
+[] Add Evaluation Framework
+[] Add Parallel Tool-Calling
+[] Replace Genie and UC Functions with Managed MCPs (when exits Beta)

@@ -40,6 +40,7 @@ agent:
          - Don't try to generate charts using matplotlib since you cannot see the visual results.
          - Focus on returning calculated results and statistics.
          - The execution environment does not support local file operations.
+         
   tools:
     uc_tool_names:  # TODO
       - "system.ai.python_exec"
