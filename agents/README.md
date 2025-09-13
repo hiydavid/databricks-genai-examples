@@ -45,7 +45,7 @@ Learn the complete MLOps workflow from local development to production deploymen
 
 **Prerequisites:** Python programming, Databricks CLI, Unity Catalog access, Genie space setup
 
-### 🤖 Tutorial 3: Multi-Agent with Genie (`multiagent-genie/`)
+### 🤖 Tutorial 3: Multi-Agent with Genie (`langgraph-genie-deep-research/`)
 
 Build programmatic agents that leverage Databricks Genie for SQL generation
 
