@@ -59,7 +59,7 @@ Build programmatic agents that leverage Databricks Genie for SQL generation
 
 **Prerequisites:** Python programming, basic SQL knowledge, familiarity with LangChain concepts
 
-### 🔍 Tutorial 4: Advanced LangGraph System (`langgraph-knowledge-assistant/`)
+### 🔍 Tutorial 4: Advanced LangGraph System (`langgraph-research-assistant/`)
 
 Create sophisticated document retrieval and research agents
 
@@ -73,7 +73,7 @@ Create sophisticated document retrieval and research agents
 
 **Prerequisites:** Intermediate Python, understanding of vector embeddings, experience with document processing
 
-### 🤖 Tutorial 5: OpenAI-Compatible Agent (`openai-genie/`)
+### 🤖 Tutorial 5: OpenAI-Compatible Agent (`openai-genie-agent/`)
 
 Build production-ready agents using the OpenAI Response API format with comprehensive Databricks integration
 
