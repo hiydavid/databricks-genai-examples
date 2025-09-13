@@ -8,19 +8,18 @@ These tutorials use **financial data analysis** as a practical domain to demonst
 
 | Tutorial | Framework | Approach | Learning Objectives |
 |---|---|---|---|
-| **agentbricks/** | Databricks Agent Bricks | UI-First | Learn multi-agent creation via Databricks UI |
+| **agent-bricks/** | Databricks Agent Bricks | UI-First | Learn multi-agent creation via Databricks UI |
 | **agent-dabs/** | LangGraph + MLflow + DABs | MLOps-First | Master local development to production deployment workflow |
 | **multiagent-genie/** | Genie + LangGraph | Code-First | Build SQL-focused agents with programmatic coordination |
 | **multiagent-langgraph/** | LangGraph + Vector Search + UC Tools | Code-First | Create document retrieval systems with advanced orchestration |
 | **multiagent-openai/** | OpenAI Response API + Genie + UC Tools | API-First | Master OpenAI-compatible agent architecture with Databricks integration |
+| **openai-knowledge-assistant/** | OpenAI Response API + Vector Search + Unity Catalog | Knowledge-First | Build intelligent knowledge assistants with document retrieval capabilities |
 
 ## Tutorials
 
-### 🧱 Tutorial 1: Agent Bricks (`agentbricks/`)
+### 🧱 Tutorial 1: Agent Bricks (`agent-bricks/`)
 
 Learn to build agents using Databricks' no-code interface
-
-**What you'll learn:**
 
 - How to create Genie Spaces for structured data analysis
 - Building Knowledge Assistants with Vector Search integration
@@ -29,13 +28,9 @@ Learn to build agents using Databricks' no-code interface
 
 **Note**: Agent Bricks is currently in **Beta**. See the [official documentation](https://docs.databricks.com/aws/en/generative-ai/agent-bricks/multi-agent-supervisor) for latest updates.
 
-**Prerequisites:** Basic familiarity with Databricks workspace navigation
-
 ### 🚀 Tutorial 2: Agent Development with DABs (`agent-dabs/`)
 
 Learn the complete MLOps workflow from local development to production deployment using Databricks Asset Bundles
-
-**What you'll learn:**
 
 - Local agent development with Python and LangGraph
 - MLflow integration for tracing, evaluation, and model management
@@ -43,13 +38,9 @@ Learn the complete MLOps workflow from local development to production deploymen
 - Production deployment via model serving endpoints
 - End-to-end workflow: Development → Testing → Evaluation → Deployment
 
-**Prerequisites:** Python programming, Databricks CLI, Unity Catalog access, Genie space setup
-
 ### 🤖 Tutorial 3: Multi-Agent with Genie (`langgraph-genie-deep-research/`)
 
 Build programmatic agents that leverage Databricks Genie for SQL generation
-
-**What you'll learn:**
 
 - LangGraph fundamentals for multi-agent orchestration
 - Integrating Databricks Genie for natural language to SQL
@@ -57,13 +48,9 @@ Build programmatic agents that leverage Databricks Genie for SQL generation
 - Parallel query execution and result synthesis
 - MLflow integration for agent deployment and monitoring
 
-**Prerequisites:** Python programming, basic SQL knowledge, familiarity with LangChain concepts
-
 ### 🔍 Tutorial 4: Advanced LangGraph System (`langgraph-research-assistant/`)
 
 Create sophisticated document retrieval and research agents
-
-**What you'll learn:**
 
 - Advanced LangGraph patterns for complex workflows  
 - Multi-index vector search implementation
@@ -71,13 +58,9 @@ Create sophisticated document retrieval and research agents
 - Agent handoff patterns and state management
 - Parallel document processing and synthesis techniques
 
-**Prerequisites:** Intermediate Python, understanding of vector embeddings, experience with document processing
-
 ### 🤖 Tutorial 5: OpenAI-Compatible Agent (`openai-genie-agent/`)
 
 Build production-ready agents using the OpenAI Response API format with comprehensive Databricks integration
-
-**What you'll learn:**
 
 - OpenAI Response API implementation patterns for agent development
 - Unity Catalog function integration as agent tools
@@ -87,7 +70,16 @@ Build production-ready agents using the OpenAI Response API format with comprehe
 - Tool-calling architectures with automatic function execution
 - Production deployment using Databricks Asset Bundles
 
-**Prerequisites:** Python programming, familiarity with OpenAI API patterns, Unity Catalog access, Genie space setup
+### 📚 Tutorial 6: OpenAI Knowledge Assistant (`openai-knowledge-assistant/`)
+
+Build intelligent knowledge assistants that leverage document retrieval with OpenAI-compatible APIs
+
+- OpenAI Response API patterns for knowledge-based agents
+- Vector Search integration for semantic document retrieval
+- Unity Catalog function tools for data access and analysis
+- MLflow-based agent monitoring and performance tracking
+- Document processing and knowledge base creation workflows
+- Streaming responses for interactive knowledge queries
 
 ## Setup Requirements
 
