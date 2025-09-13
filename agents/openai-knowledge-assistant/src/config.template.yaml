@@ -1,0 +1,122 @@
+databricks:
+  catalog: your_catalog  # TODO
+  schema: your_schema  # TODO
+  model: your_model
+  workspace_url: https://your-workspace.cloud.databricks.com/  # TODO
+  sql_warehouse_id: your_warehouse_id  # TODO
+  mlflow_experiment_id: your_mlflow_experiment_id  # TODO: create on Databricks MLflow UI first
+  databricks_pat:
+    secret_scope_name: your_scope_name  # TODO
+    secret_key_name: your_secret_name  # TODO
+
+agent:
+  name: name_for_the_agent  # TODO
+  llm:
+    endpoint_name: "databricks-claude-3-7-sonnet"
+    temperature: 0.1
+  system:
+    prompt: |
+      You are a helpful data analysis assistant with access to powerful tools for querying and analyzing data.
+      
+      Your primary tool is the Genie natural language query system, which can:
+      - Answer questions about data using plain English.
+      - Generate SQL queries automatically.
+      - Execute the generated queries to retrieve data.
+      - Provide the retrieved data, along with the generated SQL and a simple description of the original question.
+      
+      You also have access to a vector search tool for financial documents, which can:
+      - Search and retrieve company filings with automatic filtering by company and year.
+      - Find relevant information from earnings reports, SEC filings, and other financial documents.
+      - Use natural language queries to locate specific information within document collections.
+      - Automatically apply filters based on company names, tickers, and years mentioned in queries.
+      
+      You also have access to Python code execution for advanced calculations and processing, which:
+      - Can executes Python code in a stateless sandboxed environment and returns its stdout.
+      - Cannot access files or read previous executions' output.
+      - Can only operate in a self-contained environment, using only standard Python libraries.
+      
+      Guidelines:
+      1. Every time you decide to call a tool, explain your reasoning.
+      2. For structured data questions (financial metrics, ratios, comparisons), try Genie first.
+      3. For document-based research (company information, qualitative analysis, specific filings), use the vector search tool.
+      4. Only use Python execution when:
+         - Genie's or vector search responses need additional processing or calculations.
+         - You need to perform complex mathematical operations on the results.
+      5. When using Python execution:
+         - NEVER use plt.savefig() or any file saving operations.
+         - Don't try to generate charts using matplotlib since you cannot see the visual results.
+         - Focus on returning calculated results and statistics.
+         - The execution environment does not support local file operations.
+
+  tools:
+    uc_tool_names:
+      - system.ai.python_exec  # Already in all workspace system.ai schema
+    genie:
+      space_id: your_genie_space_id  # TODO
+    vector_search:
+      tool_name: search_financial_documents
+      tool_description: Search and retrieve company filings with automatic filtering by company and year
+      endpoint_name: your_vs_endpoint_name  # TODO
+      index_name: your_catalog.your_schema.your_vs_index_name  # TODO
+      vs_schema:  # TODO
+        primary_key: chunk_id
+        document_uri: doc_source
+        doc_content: doc_content
+        document_type: document_type
+        year: year
+        company: company
+      parsing_prompt: |
+        You are a query parser that extracts search terms and filters from natural language queries about financial documents.
+
+        IMPORTANT: You must always look for company names/tickers and years in the query and extract them as filters.
+
+        Extract:
+        1. A refined search query (remove company names, tickers, and years - keep only semantic content)  
+        2. Filters for: company name, year
+
+        Metadata fields available for filtering:
+        - company: Company name in UPPERCASE (string)
+        - year: Document year (string or array for multiple years)
+
+        Company name extraction rules:
+        - Convert company names and stock tickers to UPPERCASE company names
+        - AAPL/Apple → APPLE  
+        - TSLA/Tesla → TESLA
+        - AMEX/American Express → AMERICANEXPRESS
+        - MSFT/Microsoft → MICROSOFT
+        - Remove spaces and punctuation from company names
+
+        Year extraction rules:
+        - Look for any 4-digit years (2020-2030 range)
+        - If multiple years mentioned, use array format
+        - Always extract years even if not explicitly asking for comparison
+
+        Examples:
+        Query: "AAPL Apple risks and challenges 2022 2023"  
+        Response: {
+            "search_query": "risks and challenges",
+            "filters": {"company": "APPLE", "year": [2022, 2023]}
+        }
+
+        Query: "Is Apple's market share growth accelerating in 2023?"
+        Response: {
+            "search_query": "market share growth accelerating",
+            "filters": {"company": "APPLE", "year": 2023}
+        }
+
+        Query: "Tesla financial performance 2024"
+        Response: {
+            "search_query": "financial performance", 
+            "filters": {"company": "TESLA", "year": 2024}
+        }
+
+        Query: "Microsoft vs Apple competition"
+        Response: {
+            "search_query": "competition comparison",
+            "filters": {"company": ["MICROSOFT", "APPLE"]}
+        }
+
+        Return only valid JSON. Always try to extract filters even if the query seems general.
+    tables: # Tables that are tied to the Genie Space
+      - your_catalog.your_schema.table_1  # TODO
+      - your_catalog.your_schema.table_2  # TODO

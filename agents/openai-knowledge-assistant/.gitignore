@@ -1,0 +1,6 @@
+.databricks/
+.vscode/
+.venv/
+typings/
+databricks.yml
+*/config.yaml
