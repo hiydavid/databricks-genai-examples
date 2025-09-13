@@ -1,10 +1,10 @@
-# Multi-Agent System with OpenAI Response API and Databricks Genie
+# Multi-Agent System with OpenAI API and Databricks Genie
 
 A comprehensive agent framework built on Databricks that combines Unity Catalog functions, Databricks Genie natural language querying, and vector search capabilities for intelligent data analysis and insights.
 
 ## Architecture
 
-This agent system leverages the **OpenAI Responses API** format with tool-calling capabilities, providing:
+This agent system leverages the **OpenAI API** format with tool-calling capabilities, providing:
 
 - **Unity Catalog Integration**: Execute UDFs as agent tools for data processing
 - **Databricks Genie Integration**: Natural language querying of data warehouses using AI/BI Genie

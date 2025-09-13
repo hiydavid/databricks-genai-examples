@@ -73,7 +73,7 @@ Create sophisticated document retrieval and research agents
 
 **Prerequisites:** Intermediate Python, understanding of vector embeddings, experience with document processing
 
-### 🤖 Tutorial 5: OpenAI-Compatible Agent (`multiagent-openai/`)
+### 🤖 Tutorial 5: OpenAI-Compatible Agent (`openai-genie/`)
 
 Build production-ready agents using the OpenAI Response API format with comprehensive Databricks integration
 
@@ -98,25 +98,6 @@ All tutorials require access to:
 - **Databricks Model Serving** (for production deployment tutorials)
 - **Vector Search Endpoints** (for document-based tutorials)
 - **Appropriate workspace permissions** for creating schemas, tables, and endpoints
-
-## How to Use These Tutorials
-
-1. **Choose Your Learning Path**:
-   - **New to agent development?** Start with Tutorial 1 (`agentbricks/`)
-   - **Want to learn MLOps workflows?** Begin with Tutorial 2 (`agent-dabs/`)
-   - **Want to learn programmatic coordination?** Try Tutorial 3 (`multiagent-genie/`)
-   - **Ready for advanced patterns?** Try Tutorial 4 (`multiagent-langgraph/`)
-   - **Want OpenAI-compatible architecture?** Explore Tutorial 5 (`multiagent-openai/`)
-
-2. **Follow the Tutorial Structure**:
-   - Each tutorial includes step-by-step instructions
-   - Sample data and ingestion scripts are provided
-   - Configuration templates guide your setup
-
-3. **Practice and Experiment**:
-   - Modify the provided examples to understand concepts
-   - Try different prompts and configurations
-   - Deploy your agents for hands-on experience
 
 ## Core Databricks Technologies
 
