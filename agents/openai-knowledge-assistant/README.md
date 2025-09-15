@@ -12,6 +12,8 @@ This agent system leverages the **OpenAI Responses API** format with tool-callin
 - **MLflow Tracing**: Comprehensive observability and debugging
 - **Streaming Responses**: Real-time agent interactions
 
+![Multi-Agent System Visualized](./architecture.png)
+
 ## Features
 
 ### 🔧 **Tool System**
