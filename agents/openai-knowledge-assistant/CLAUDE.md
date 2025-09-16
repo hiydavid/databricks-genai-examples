@@ -9,6 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Test agent locally**: Run `src/driver.ipynb` in Jupyter/Databricks notebooks
 - **Install dependencies**: `pip install -r src/requirements.txt`
 - **Deploy with Databricks bundles**: `databricks bundle deploy --target dev`
+- **Run evaluations**: Execute evaluation cells in `src/driver.ipynb` using MLflow 3 genAI evaluation
 
 ### Configuration Setup
 
@@ -92,3 +93,45 @@ The system implements intelligent document retrieval with automatic filter extra
 - Vector search requires proper schema configuration in `config.yaml` with field mappings
 - The system supports both DataFrame and string responses from Genie
 - LLM parsing handles markdown code block extraction automatically
+
+## Evaluation Framework
+
+### Evaluation Dataset Structure
+
+The evaluation dataset (`src/evals/eval-questions.json`) follows the standard format:
+
+```json
+[
+  {
+    "inputs": {
+      "input": [{"role": "user", "content": "query"}]
+    },
+    "expectations": {
+      "expected_response": "expected answer",
+      "expected_facts": ["fact1", "fact2"]
+    }
+  }
+]
+```
+
+### MLflow 3 Integration
+
+The evaluation leverages MLflow 3's genAI evaluation with built-in scorers:
+
+- **Correctness**: Compares actual vs expected responses
+- **RelevanceToQuery**: Measures response relevance
+- **Safety**: Validates content safety
+- **RetrievalGroundedness**: Checks if answers are grounded in retrieved data
+- **RetrievalRelevance**: Measures document retrieval quality
+
+### Evaluation Workflow
+
+1. **Load evaluation dataset** from `src/evals/eval-questions.json`
+2. **Configure scorers** based on evaluation needs
+3. **Run evaluation** using `mlflow.genai.evaluate()` with the agent's predict function
+4. **Review results** in MLflow experiment tracking UI
+5. **Compare metrics** across agent iterations and configurations
+
+### Concurrency Configuration
+
+Set `MLFLOW_GENAI_EVAL_MAX_WORKERS=1` to avoid concurrency issues during evaluation runs.

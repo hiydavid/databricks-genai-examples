@@ -116,10 +116,20 @@ agent:
    ```python
    result = AGENT.predict({
        "input": [{
-           "role": "user", 
+           "role": "user",
            "content": "What are our sales trends this quarter?"
        }]
    })
+   ```
+
+3. **Evaluate the agent**: The system includes comprehensive evaluation capabilities:
+
+   ```python
+   eval_results = mlflow.genai.evaluate(
+       data=eval_dataset_list,
+       predict_fn=lambda input: AGENT.predict({"input": input}),
+       scorers=[Correctness(), RelevanceToQuery(), Safety()]
+   )
    ```
 
 ## Agent Capabilities
@@ -188,6 +198,51 @@ The system implements intelligent document retrieval with automatic filter extra
   - `"AAPL risks 2023"` → Search: `"risks"`, Filters: `{"company": "APPLE", "year": 2023}`
   - `"Tesla vs Ford competition 2024"` → Search: `"competition"`, Filters: `{"company": ["TESLA", "FORD"], "year": 2024}`
 
+## Evaluation
+
+The system includes a comprehensive evaluation framework using MLflow 3's genAI evaluation capabilities:
+
+### Evaluation Dataset
+
+The evaluation dataset (`src/evals/eval-questions.json`) includes test cases covering:
+
+- **Financial Data Queries**: Testing Genie integration with structured data
+- **Document Retrieval**: Testing vector search with company-specific information
+- **Complex Analysis**: Multi-step reasoning and calculation tasks
+
+### Built-in Scorers
+
+The evaluation uses multiple MLflow scorers:
+
+- **Correctness**: Validates factual accuracy against expected responses
+- **RelevanceToQuery**: Measures response relevance to user questions
+- **Safety**: Ensures responses meet safety guidelines
+- **RetrievalGroundedness**: Validates answers are grounded in retrieved data
+- **RetrievalRelevance**: Measures quality of document retrieval
+
+### Running Evaluations
+
+Execute evaluations in `driver.ipynb`:
+
+```python
+import json
+import mlflow
+from mlflow.genai.scorers import Correctness, RelevanceToQuery, Safety
+
+# Load evaluation dataset
+with open("./evals/eval-questions.json", "r") as f:
+    eval_dataset_list = json.load(f)
+
+# Run evaluation
+eval_results = mlflow.genai.evaluate(
+    data=eval_dataset_list,
+    predict_fn=lambda input: AGENT.predict({"input": input}),
+    scorers=[Correctness(), RelevanceToQuery(), Safety()]
+)
+```
+
+Results are automatically logged to your MLflow experiment for analysis and comparison across iterations.
+
 ## Development
 
 The agent supports hot reloading and comprehensive tracing:
@@ -195,6 +250,7 @@ The agent supports hot reloading and comprehensive tracing:
 - View traces in MLflow experiments for debugging
 - Monitor tool execution performance
 - Track conversation flows and decision points
+- Compare evaluation metrics across agent versions
 
 ## Documentation Reference
 

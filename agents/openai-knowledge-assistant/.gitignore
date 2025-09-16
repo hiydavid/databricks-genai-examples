@@ -4,3 +4,4 @@
 typings/
 databricks.yml
 */config.yaml
+__pycache__/
