@@ -1,0 +1,13 @@
+# This is a Databricks asset bundle definition for openai-multiagent-mcp.
+# The Databricks extension requires databricks.yml configuration file.
+# See https://docs.databricks.com/dev-tools/bundles/index.html for documentation.
+
+bundle:
+  name: openai-multiagent-mcp
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://your-workspace-123.11.azuredatabricks.net

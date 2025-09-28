@@ -1,0 +1,34 @@
+databricks:
+  catalog: your_catalog
+  schema: your_schema
+  model: your_model_name
+  workspace_url: your_workspace_url
+  sql_warehouse_id: your_sql_warehouse-id
+  mlflow_experiment_id: your_mlflow_experiment_id
+  databricks_pat:
+    secret_scope_name: your_secret_scope
+    secret_key_name: your_secret_key_name
+
+agent:
+  name: your_agent_name
+  llm:
+    endpoint_name: databricks-claude-3-7-sonnet
+    temperature: 0.1
+  system:
+    prompt: |
+      You are a helpful data analysis assistant with access to powerful tools for querying and analyzing data.
+      <TODO>
+
+  tools:
+    uc_functions:
+      schema_name: system/ai
+      function_name: system.ai.python_exec
+    vector_search:
+      user_name: your_user_name
+      endpoint_name: your_vs_endpoint_name
+      index_name: your_vs_index_name
+    genie:
+      space_id: your_genie_space_id
+    tables:
+      - your_catalog.your_schema.your_table_1
+      - your_catalog.your_schema.your_table_2

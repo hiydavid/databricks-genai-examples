@@ -1,0 +1,8 @@
+.databricks/
+.vscode/
+.venv/
+typings/
+databricks.yml
+*/config.yaml
+__pycache__/
+.databricks
