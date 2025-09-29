@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Development Commands
 
 ### Environment Setup
+
 ```bash
 # Install dependencies using uv (preferred) or pip
 uv pip install -r requirements.txt
@@ -13,6 +14,7 @@ pip install -r requirements.txt
 ```
 
 ### Databricks Bundle Deployment
+
 ```bash
 # Deploy to development environment (default)
 databricks bundle deploy
@@ -22,6 +24,7 @@ databricks bundle deploy --target dev
 ```
 
 ### Configuration Setup
+
 ```bash
 # Copy template files and customize
 cp databricks.template.yml databricks.yml
@@ -42,6 +45,7 @@ This is a **multi-agent system** built on Databricks that integrates **MCP (Mode
 ### MCP Server Configuration
 
 The system connects to three types of managed MCP servers:
+
 - **Unity Catalog Functions**: `/api/2.0/mcp/functions/{schema_name}` - Python code execution
 - **Vector Search**: `/api/2.0/mcp/vector-search/users/{user_name}` - Document search capabilities
 - **Genie**: `/api/2.0/mcp/genie/{space_id}` - Natural language data querying
@@ -51,6 +55,7 @@ Custom MCP servers can be added via OAuth authentication using service principal
 ### Configuration System
 
 **Two-layer configuration**:
+
 1. `databricks.yml`: Databricks bundle configuration (workspace, targets)
 2. `src/config.yaml`: Agent-specific configuration (LLM endpoints, tool settings, system prompts)
 
@@ -66,6 +71,7 @@ Both have corresponding `.template` files for easy setup.
 ### Tool Integration Pattern
 
 Tools are loaded dynamically using the `ToolInfo` class which wraps:
+
 - Tool name and OpenAI-compatible specification
 - Execution function that calls the appropriate MCP server
 - Automatic error handling and retry logic with backoff
@@ -80,6 +86,7 @@ Tools are loaded dynamically using the `ToolInfo` class which wraps:
 ### Agent Capabilities
 
 The agent combines multiple data analysis tools:
+
 - **Genie**: Natural language to SQL conversion and execution
 - **Vector Search**: Financial document retrieval and analysis
 - **Python Execution**: Advanced calculations and data processing via Unity Catalog functions
