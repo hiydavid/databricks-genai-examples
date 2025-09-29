@@ -2,14 +2,15 @@
 
 Hands-on tutorials for building multi-agent systems on Databricks using financial data analysis as the example domain.
 
-| Tutorial | Framework | Approach | Learning Objectives |
-|---|---|---|---|
-| **agent-bricks/** | Databricks Agent Bricks | UI-First | Learn multi-agent creation via Databricks UI |
-| **agent-dabs/** | LangGraph + MLflow + DABs | MLOps-First | Master local development to production deployment workflow |
-| **multiagent-genie/** | Genie + LangGraph | Code-First | Build SQL-focused agents with programmatic coordination |
-| **multiagent-langgraph/** | LangGraph + Vector Search + UC Tools | Code-First | Create document retrieval systems with advanced orchestration |
-| **multiagent-openai/** | OpenAI Response API + Genie + UC Tools | API-First | Master OpenAI-compatible agent architecture with Databricks integration |
-| **openai-knowledge-assistant/** | OpenAI Response API + Vector Search + Unity Catalog | Knowledge-First | Build intelligent knowledge assistants with document retrieval capabilities |
+| Tutorial | Framework | Learning Objectives |
+|---|---|---|
+| **agent-bricks/** | Databricks Agent Bricks | Learn multi-agent creation via Databricks UI |
+| **agent-dabs/** | LangGraph + DABs | Master local development to production deployment workflow |
+| **langgraph-genie-deep-research/** | LangGraph | Build SQL-focused agents with programmatic coordination |
+| **langgraph-research-assistant/** | LangGraph | Create document retrieval systems with advanced orchestration |
+| **openai-genie-agent/** | OpenAI Response API | Master OpenAI-compatible agent architecture with Databricks integration |
+| **openai-knowledge-assistant/** | OpenAI Response API | Build intelligent knowledge assistants with document retrieval capabilities |
+| **openai-multiagent-mcp/** | OpenAI Response API | Build tool-calling agent with Databricks Managed MCP Servers |
 
 ## Requirements
 
