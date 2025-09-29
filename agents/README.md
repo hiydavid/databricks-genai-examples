@@ -1,10 +1,6 @@
-# Agent Development Tutorials for Databricks
+# Agent Development Tutorials
 
-This directory contains **hands-on tutorials** that teach you how to build multi-agent systems on the Databricks platform. Each tutorial demonstrates different approaches and methodologies for creating, orchestrating, and deploying intelligent agent workflows.
-
-## Tutorial Overview
-
-These tutorials use **financial data analysis** as a practical domain to demonstrate agent development concepts. You'll learn different patterns for multi-agent coordination, from no-code UI-driven approaches to sophisticated programmatic orchestration using popular frameworks.
+Hands-on tutorials for building multi-agent systems on Databricks using financial data analysis as the example domain.
 
 | Tutorial | Framework | Approach | Learning Objectives |
 |---|---|---|---|
@@ -15,92 +11,20 @@ These tutorials use **financial data analysis** as a practical domain to demonst
 | **multiagent-openai/** | OpenAI Response API + Genie + UC Tools | API-First | Master OpenAI-compatible agent architecture with Databricks integration |
 | **openai-knowledge-assistant/** | OpenAI Response API + Vector Search + Unity Catalog | Knowledge-First | Build intelligent knowledge assistants with document retrieval capabilities |
 
-## Tutorials
+## Requirements
 
-### 🧱 Tutorial 1: Agent Bricks (`agent-bricks/`)
+- Databricks Workspace with Unity Catalog
+- ML Runtime Cluster
+- Model Serving (for production tutorials)
+- Vector Search Endpoints (for document tutorials)
+- Appropriate workspace permissions
 
-Learn to build agents using Databricks' no-code interface
+## Technologies
 
-- How to create Genie Spaces for structured data analysis
-- Building Knowledge Assistants with Vector Search integration
-- Configuring Multi-Agent Supervisors to coordinate between agents
-- Best practices for prompt engineering in the Databricks UI
-
-**Note**: Agent Bricks is currently in **Beta**. See the [official documentation](https://docs.databricks.com/aws/en/generative-ai/agent-bricks/multi-agent-supervisor) for latest updates.
-
-### 🚀 Tutorial 2: Agent Development with DABs (`agent-dabs/`)
-
-Learn the complete MLOps workflow from local development to production deployment using Databricks Asset Bundles
-
-- Local agent development with Python and LangGraph
-- MLflow integration for tracing, evaluation, and model management
-- Databricks Asset Bundles (DABs) for Infrastructure-as-Code
-- Production deployment via model serving endpoints
-- End-to-end workflow: Development → Testing → Evaluation → Deployment
-
-### 🤖 Tutorial 3: Multi-Agent with Genie (`langgraph-genie-deep-research/`)
-
-Build programmatic agents that leverage Databricks Genie for SQL generation
-
-- LangGraph fundamentals for multi-agent orchestration
-- Integrating Databricks Genie for natural language to SQL
-- Implementing supervisor patterns for agent coordination
-- Parallel query execution and result synthesis
-- MLflow integration for agent deployment and monitoring
-
-### 🔍 Tutorial 4: Advanced LangGraph System (`langgraph-research-assistant/`)
-
-Create sophisticated document retrieval and research agents
-
-- Advanced LangGraph patterns for complex workflows  
-- Multi-index vector search implementation
-- Self-querying retrievers with metadata filtering
-- Agent handoff patterns and state management
-- Parallel document processing and synthesis techniques
-
-### 🤖 Tutorial 5: OpenAI-Compatible Agent (`openai-genie-agent/`)
-
-Build production-ready agents using the OpenAI Response API format with comprehensive Databricks integration
-
-- OpenAI Response API implementation patterns for agent development
-- Unity Catalog function integration as agent tools
-- Databricks Genie integration for natural language data queries
-- MLflow-based agent tracing and observability
-- Streaming agent responses and real-time interactions
-- Tool-calling architectures with automatic function execution
-- Production deployment using Databricks Asset Bundles
-
-### 📚 Tutorial 6: OpenAI Knowledge Assistant (`openai-knowledge-assistant/`)
-
-Build intelligent knowledge assistants that leverage document retrieval with OpenAI-compatible APIs
-
-- OpenAI Response API patterns for knowledge-based agents
-- Vector Search integration for semantic document retrieval
-- Unity Catalog function tools for data access and analysis
-- MLflow-based agent monitoring and performance tracking
-- Document processing and knowledge base creation workflows
-- Streaming responses for interactive knowledge queries
-
-## Setup Requirements
-
-All tutorials require access to:
-
-- **Databricks Workspace** with Unity Catalog enabled
-- **ML Runtime Cluster** (for vector search and model operations)
-- **Databricks Model Serving** (for production deployment tutorials)
-- **Vector Search Endpoints** (for document-based tutorials)
-- **Appropriate workspace permissions** for creating schemas, tables, and endpoints
-
-## Core Databricks Technologies
-
-These tutorials will teach you to work with:
-
-- **LangGraph**: Multi-agent orchestration and state management
-- **Databricks Genie**: Natural language to SQL conversion  
-- **Vector Search**: Document retrieval and semantic search
-- **MLflow**: Model tracking, serving, and deployment
-- **Unity Catalog**: Data governance and access control
-- **Agent Bricks**: Databricks native agent framework (Beta)
-- **Databricks Asset Bundles (DABs)**: Infrastructure-as-Code for ML deployments
-
-Each tutorial is self-contained with detailed instructions, sample code, and practical exercises to reinforce learning.
+- **LangGraph**: Multi-agent orchestration
+- **Databricks Genie**: Natural language to SQL
+- **Vector Search**: Document retrieval
+- **MLflow**: Model tracking and deployment
+- **Unity Catalog**: Data governance
+- **Agent Bricks**: Native agent framework (Beta)
+- **Databricks Asset Bundles**: Infrastructure-as-Code
