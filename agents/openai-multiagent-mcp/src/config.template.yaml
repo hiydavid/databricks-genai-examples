@@ -12,7 +12,7 @@ databricks:
 agent:
   name: your_agent_name
   llm:
-    endpoint_name: databricks-claude-3-7-sonnet
+    endpoint_name: databricks-claude-sonnet-4-5
     temperature: 0.1
   system:
     prompt: |
