@@ -1,0 +1,61 @@
+[
+    {
+        "inputs": {
+            "input": [
+                {
+                    "role": "user",
+                    "content": "What was Apple's annual net income over the past 5 years?"
+                }
+            ]
+        },
+        "expectations": {
+            "expected_response": "| YEAR | NET_INCOME        |\n|------|-------------------|\n| 2022 | 99,803,000,000    |\n| 2021 | 94,680,000,000    |\n| 2020 | 57,411,000,000    |\n| 2019 | 55,256,000,000    |\n| 2018 | 59,531,000,000    |"
+        }
+    },
+    {
+        "inputs": {
+            "input": [
+                {
+                    "role": "user",
+                    "content": "What was the average debt-to-equity ratio for American Express over the past 5 years?"
+                }
+            ]
+        },
+        "expectations": {
+            "expected_response": "2.22"
+        }
+    },
+    {
+        "inputs": {
+            "input": [
+                {
+                    "role": "user",
+                    "content": "Which company had the highest average return on equity over the past 5 years: Apple of American Express?"
+                }
+            ]
+        },
+        "expectations": {
+            "expected_response": "Apple"
+        }
+    },
+    {
+        "inputs": {
+            "input": [
+                {
+                    "role": "user",
+                    "content": "What COVID-19 related risks did Apple face in 2022?"
+                }
+            ]
+        },
+        "expectations": {
+            "expected_facts": [
+                "Supply Chain Disruptions",
+                "Impact on Consumer Demand",
+                "Ongoing Uncertainty",
+                "Potential Future Impacts",
+                "Operational Challenges"
+
+            ]
+        }
+    }
+]

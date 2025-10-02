@@ -4,4 +4,4 @@ openai==1.109.1
 uv==0.8.22
 databricks-agents==1.6.0
 databricks-mcp==0.3.0
-mlflow==3.4.0
+mlflow[databricks]==3.4.0
