@@ -13,6 +13,7 @@ All materials are provided AS IS, without any guarantees or warranties, and are 
 * Multi-Agent Genie with LangGraph
 * Multi-Agent Genie with OpenAI Response API
 * Multi-Agent Knowledge Assistant with OpenAI Response API
+* Tool-Calling Agent with Databricks Managed MCPs
 * Agent Deployement with Databricks Asset Bundles
 
 ## Batch Inference
