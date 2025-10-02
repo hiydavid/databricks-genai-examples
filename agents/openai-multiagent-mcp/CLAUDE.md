@@ -91,3 +91,62 @@ The agent combines multiple data analysis tools:
 - **Vector Search**: Financial document retrieval and analysis
 - **Python Execution**: Advanced calculations and data processing via Unity Catalog functions
 - **Streaming Responses**: Real-time tool execution with progress tracking
+
+## Testing & Development Workflow
+
+### Interactive Development
+
+- Use [src/driver.ipynb](src/driver.ipynb) for interactive testing and development
+- The driver notebook demonstrates agent initialization, tool loading, and test queries
+- Test changes locally before deploying with `databricks bundle deploy`
+
+### Evaluation
+
+- Evaluation questions are in [src/evals/eval-questions.json](src/evals/eval-questions.json)
+- Questions cover financial data queries using both Genie and vector search tools
+
+## Configuration Details
+
+### databricks.yml
+
+- Defines Databricks bundle metadata and deployment targets
+- Specifies workspace URL and deployment mode (development/staging/prod)
+- Must be customized from databricks.template.yml before first deployment
+
+### src/config.yaml
+
+- Agent runtime configuration loaded via `mlflow.models.ModelConfig`
+- Four main sections:
+  - **databricks**: Catalog/schema, MLflow experiment, secrets configuration
+  - **agent.llm**: LLM endpoint name and parameters
+  - **agent.system**: System prompt defining agent behavior and tool usage guidelines
+  - **agent.tools**: MCP server configuration (UC functions schema, vector search endpoint, Genie space ID)
+- Changes to config.yaml require redeployment to take effect
+
+## Key Implementation Patterns
+
+### MLflow Model Registration
+
+The agent is registered as an MLflow model at module load time:
+
+```python
+mlflow.openai.autolog()
+AGENT = MCPToolCallingAgent(llm_endpoint=LLM_ENDPOINT_NAME, tools=mcp_tools)
+mlflow.models.set_model(AGENT)
+```
+
+This pattern enables automatic logging and deployment via Databricks Model Serving.
+
+### Async Tool Loading
+
+MCP tools are loaded asynchronously at initialization using `asyncio.run()`:
+
+- Managed tools use `DatabricksMCPClient` (synchronous)
+- Custom tools use `ClientSession` (async) with OAuth authentication
+- All tools are wrapped in `ToolInfo` objects with OpenAI-compatible specs
+
+### Error Handling
+
+- Backoff retry logic on LLM rate limits (`@backoff.on_exception`)
+- Tool loading failures are caught and logged without breaking initialization
+- Max iteration limit (default 10) prevents infinite tool-calling loops

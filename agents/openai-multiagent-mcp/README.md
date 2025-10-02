@@ -1,12 +1,35 @@
-# UNDER CONSTRUCTION
+# Multi-Agent System with Databricks Managed MCP Tools
 
-## Multi-Agent System with Databricks Managed MCP Tools
+An intelligent data analysis agent built on Databricks that integrates MCP (Model Context Protocol) tools with MLflow's ResponsesAgent framework.
 
-A comprehensive agent framework built on Databricks that combines Unity Catalog functions, Databricks Genie natural language querying, and vector search capabilities as managed MCP tools for intelligent data analysis and insights.
+[Documentation](https://docs.databricks.com/aws/en/notebooks/source/generative-ai/openai-mcp-tool-calling-agent.html) | [Architecture Diagram](architecture.md)
 
-[Doc](https://docs.databricks.com/aws/en/notebooks/source/generative-ai/openai-mcp-tool-calling-agent.html)
+## Features
 
-## Todo's
+### MCP Tool Integration
 
-1. work on deployment
-2. work on evals
+- **Genie**: Natural language to SQL conversion and execution
+- **Vector Search**: Financial document retrieval with automatic filtering
+- **Unity Catalog Functions**: Python code execution in sandboxed environment
+
+### MLflow Integration
+
+- Full request/response tracing with MLflow Traces
+- Model serving deployment via Databricks Model Serving
+- Automatic logging and experiment tracking
+
+### Agent Capabilities
+
+- Streaming responses with real-time tool execution
+- Multi-turn conversations with tool chaining
+- Automatic retry logic with backoff on rate limits
+- Support for both managed and custom MCP servers
+
+## Project Structure
+
+- `src/agent.py` - Main agent implementation and MCP tool integration
+- `src/config.yaml` - Agent configuration (LLM endpoint, tools, system prompt)
+- `src/driver.ipynb` - Interactive testing notebook
+- `databricks.yml` - Databricks bundle deployment configuration
+
+See [CLAUDE.md](CLAUDE.md) for detailed architecture and development guidance.
