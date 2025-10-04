@@ -37,18 +37,29 @@ SYSTEM_PROMPT = agent_config.get("system").get("prompt")
 LLM_ENDPOINT_NAME = agent_config.get("llm").get("endpoint_name")
 
 tools_conifg = agent_config.get("tools")
-UC_FUNCTIONS = tools_conifg.get("uc_functions").get("schema_name")
+UC_FUNCTIONS = tools_conifg.get("uc_functions")
 VECTOR_SEARCH_USER_NAME = tools_conifg.get("vector_search").get("user_name")
 GENIE_SPACE_ID = tools_conifg.get("genie").get("space_id")
 
 
 ############################################################
 ## Configure MCP Servers for your agent
-MANAGED_MCP_SERVER_URLS = [
-    f"{host}/api/2.0/mcp/functions/{UC_FUNCTIONS}",
-    f"{host}/api/2.0/mcp/vector-search/users/{VECTOR_SEARCH_USER_NAME}",
-    f"{host}/api/2.0/mcp/genie/{GENIE_SPACE_ID}",
-]
+MANAGED_MCP_SERVER_URLS = []
+
+# Add UC function MCP servers
+if UC_FUNCTIONS:
+    for uc_func in UC_FUNCTIONS:
+        schema_name = uc_func.get("schema_name")
+        if schema_name:
+            MANAGED_MCP_SERVER_URLS.append(f"{host}/api/2.0/mcp/functions/{schema_name}")
+
+# Add vector search MCP server
+if VECTOR_SEARCH_USER_NAME:
+    MANAGED_MCP_SERVER_URLS.append(f"{host}/api/2.0/mcp/vector-search/users/{VECTOR_SEARCH_USER_NAME}")
+
+# Add Genie MCP server
+if GENIE_SPACE_ID:
+    MANAGED_MCP_SERVER_URLS.append(f"{host}/api/2.0/mcp/genie/{GENIE_SPACE_ID}")
 
 # ----- Advanced (optional): Custom MCP Server with OAuth -----
 # For Databricks Apps hosting custom MCP servers, OAuth with a service principal is required.
