@@ -6,3 +6,4 @@ databricks.yml
 */config.yaml
 __pycache__/
 .databricks
+CLAUDE.md

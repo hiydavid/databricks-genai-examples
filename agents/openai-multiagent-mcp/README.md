@@ -10,7 +10,9 @@ An intelligent data analysis agent built on Databricks that integrates MCP (Mode
 
 - **Genie**: Natural language to SQL conversion and execution
 - **Vector Search**: Financial document retrieval with automatic filtering
-- **Unity Catalog Functions**: Python code execution in sandboxed environment
+- **Unity Catalog Functions**: Python code execution and web search capabilities in sandboxed environment
+  - `system.ai.python_exec`: Execute Python code for advanced calculations
+  - `users.first_last.search_web`: Search the web for current information not available in existing knowledge bases
 
 ### MLflow Integration
 
