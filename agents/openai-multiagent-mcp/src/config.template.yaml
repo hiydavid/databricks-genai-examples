@@ -21,8 +21,11 @@ agent:
 
   tools:
     uc_functions:
-      schema_name: system/ai
-      function_name: system.ai.python_exec
+      - schema_name: system/ai
+        function_name: system.ai.python_exec
+      - schema_name: users/first_last
+        function_name: users.first_last.search_web
+    uc_connection: your_uc_connection_for_web_search_api
     vector_search:
       user_name: your_user_name
       endpoint_name: your_vs_endpoint_name
