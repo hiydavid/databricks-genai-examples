@@ -33,5 +33,3 @@ An intelligent data analysis agent built on Databricks that integrates MCP (Mode
 - `src/config.yaml` - Agent configuration (LLM endpoint, tools, system prompt)
 - `src/driver.ipynb` - Interactive testing notebook
 - `databricks.yml` - Databricks bundle deployment configuration
-
-See [CLAUDE.md](CLAUDE.md) for detailed architecture and development guidance.
