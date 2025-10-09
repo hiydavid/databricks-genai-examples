@@ -8,17 +8,10 @@ Hands-on tutorials for building multi-agent systems on Databricks using financia
 | **agent-dabs/** | LangGraph + DABs | Master local development to production deployment workflow |
 | **langgraph-genie-deep-research/** | LangGraph | Build SQL-focused agents with programmatic coordination |
 | **langgraph-research-assistant/** | LangGraph | Create document retrieval systems with advanced orchestration |
-| **openai-genie-agent/** | OpenAI Response API | Master OpenAI-compatible agent architecture with Databricks integration |
-| **openai-knowledge-assistant/** | OpenAI Response API | Build intelligent knowledge assistants with document retrieval capabilities |
+| **openai-genie-agent/** | OpenAI Response API | Build data analysis agent with Databricks Genie |
+| **openai-knowledge-assistant/** | OpenAI Response API | Build knowledge assistants with document retrieval capabilities |
 | **openai-multiagent-mcp/** | OpenAI Response API | Build tool-calling agent with Databricks Managed MCP Servers |
-
-## Requirements
-
-- Databricks Workspace with Unity Catalog
-- ML Runtime Cluster
-- Model Serving (for production tutorials)
-- Vector Search Endpoints (for document tutorials)
-- Appropriate workspace permissions
+| (WIP) **text2sql-agent/** | OpenAI Response API | Build Text2SQL agent with Databricks Managed MCP Servers |
 
 ## Technologies
 
@@ -27,5 +20,6 @@ Hands-on tutorials for building multi-agent systems on Databricks using financia
 - **Vector Search**: Document retrieval
 - **MLflow**: Model tracking and deployment
 - **Unity Catalog**: Data governance
+- **Model Context Protocol (MCP)**: Agentic tools
 - **Agent Bricks**: Native agent framework (Beta)
 - **Databricks Asset Bundles**: Infrastructure-as-Code
