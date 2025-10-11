@@ -1,4 +1,5 @@
 .vscode
 .databricks
 .venv
+config.yml
 databricks.yml

@@ -1,0 +1,10 @@
+databricks:
+  catalog: your_catalog
+  schema: your_schema
+  model: your_model_name
+  workspace_url: your_workspace_url
+  sql_warehouse_id: your_sql_warehouse-id
+  mlflow_experiment_id: your_mlflow_experiment_id
+  databricks_pat:
+    secret_scope_name: your_secret_scope
+    secret_key_name: your_secret_key_name
