@@ -1,7 +1,7 @@
 databricks:
   catalog: your_catalog
   schema: your_schema
-  model: your_model_name
+  model: your_agent_name
   workspace_url: https://your-workspace.databricks.com  # Your Databricks workspace URL (required for UC Connection)
   sql_warehouse_id: your_sql_warehouse-id
   mlflow_experiment_id: your_mlflow_experiment_id
@@ -17,5 +17,8 @@ tools:
     - your_catalog.your_schema.table2
 
 agent:
+  llm: 
+    endpoint: databricks-claude-sonnet-4-5
+    temperature: 0.1
   system_prompt_path: ../../system_prompt.md
   
