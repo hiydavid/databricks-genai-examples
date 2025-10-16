@@ -2,9 +2,16 @@ databricks:
   catalog: your_catalog
   schema: your_schema
   model: your_model_name
-  workspace_url: your_workspace_url
+  workspace_url: https://your-workspace.databricks.com  # Your Databricks workspace URL (required for UC Connection)
   sql_warehouse_id: your_sql_warehouse-id
   mlflow_experiment_id: your_mlflow_experiment_id
   databricks_pat:
     secret_scope_name: your_secret_scope
     secret_key_name: your_secret_key_name
+
+tools:
+  uc_connection:
+    name: connection_name
+  tables:
+    - your_catalog.your_schema.table1
+    - your_catalog.your_schema.table2
