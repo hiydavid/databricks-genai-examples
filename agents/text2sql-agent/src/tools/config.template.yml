@@ -15,3 +15,7 @@ tools:
   tables:
     - your_catalog.your_schema.table1
     - your_catalog.your_schema.table2
+
+agent:
+  system_prompt_path: ../../system_prompt.md
+  
