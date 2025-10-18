@@ -17,8 +17,9 @@ tools:
     - your_catalog.your_schema.table2
 
 agent:
-  llm: 
+  llm:
     endpoint: databricks-claude-sonnet-4-5
     temperature: 0.1
+  max_iterations: 10  # Maximum number of tool calling iterations before stopping
   system_prompt_path: ../../system_prompt.md
   

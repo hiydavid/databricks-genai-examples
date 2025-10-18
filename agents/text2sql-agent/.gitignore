@@ -4,3 +4,4 @@
 config.yml
 databricks.yml
 CLAUDE.md
+__pycache__
