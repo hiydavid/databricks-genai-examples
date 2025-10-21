@@ -15,6 +15,12 @@ tools:
   tables:
     - your_catalog.your_schema.table1
     - your_catalog.your_schema.table2
+  uc_functions:
+    - get_table_metadata
+    - get_table_schema
+    - get_sample_data
+    - validate_query
+    - execute_query
 
 agent:
   llm:

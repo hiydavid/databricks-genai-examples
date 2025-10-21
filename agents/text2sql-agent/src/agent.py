@@ -82,30 +82,38 @@ def create_mcp_tools(
         mcp_tools = mcp_client.list_tools()
 
         for mcp_tool in mcp_tools:
-            tool_spec = {
-                "type": "function",
-                "function": {
-                    "name": mcp_tool.name,
-                    "parameters": mcp_tool.inputSchema,
-                    "description": mcp_tool.description or f"Tool: {mcp_tool.name}",
-                },
-            }
+            try:
+                tool_spec = {
+                    "type": "function",
+                    "function": {
+                        "name": mcp_tool.name,
+                        "parameters": mcp_tool.inputSchema,
+                        "description": mcp_tool.description or f"Tool: {mcp_tool.name}",
+                    },
+                }
 
-            def create_exec_fn(server_url, tool_name, ws):
-                def exec_fn(**kwargs):
-                    client = DatabricksMCPClient(
-                        server_url=server_url, workspace_client=ws
-                    )
-                    response = client.call_tool(tool_name, kwargs)
-                    return "".join([c.text for c in response.content])
+                def create_exec_fn(server_url, tool_name, ws):
+                    def exec_fn(**kwargs):
+                        client = DatabricksMCPClient(
+                            server_url=server_url, workspace_client=ws
+                        )
+                        response = client.call_tool(tool_name, kwargs)
+                        return "".join([c.text for c in response.content])
 
-                return exec_fn
+                    return exec_fn
 
-            exec_fn = create_exec_fn(server_url, mcp_tool.name, ws)
+                exec_fn = create_exec_fn(server_url, mcp_tool.name, ws)
 
-            tools.append(ToolInfo(name=mcp_tool.name, spec=tool_spec, exec_fn=exec_fn))
+                tools.append(ToolInfo(name=mcp_tool.name, spec=tool_spec, exec_fn=exec_fn))
+            except Exception as e:
+                print(f"Error loading tool '{mcp_tool.name}': {e}")
+                print(f"  Tool description: {mcp_tool.description}")
+                print(f"  Tool inputSchema: {mcp_tool.inputSchema}")
+                continue
     except Exception as e:
         print(f"Error loading tools from MCP server {server_url}: {e}")
+        import traceback
+        traceback.print_exc()
 
     return tools
 
@@ -154,7 +162,24 @@ class MCPToolCallingAgent(ResponsesAgent):
         """
         Execute tool calls, add them to the running message history, and return a ResponsesStreamEvent w/ tool output
         """
-        args = json.loads(tool_call["arguments"])
+        # Parse arguments - handle both dict and string
+        if isinstance(tool_call["arguments"], dict):
+            args = tool_call["arguments"]
+        else:
+            try:
+                args = json.loads(tool_call["arguments"])
+            except json.JSONDecodeError as e:
+                # Fallback: If JSON parsing fails due to concatenated objects (parallel tool calls),
+                # parse just the first valid JSON object
+                print(f"Warning: JSONDecodeError for tool '{tool_call.get('name')}' - attempting to parse first JSON object only")
+                decoder = json.JSONDecoder()
+                try:
+                    args, idx = decoder.raw_decode(tool_call["arguments"])
+                    print(f"  Successfully parsed first JSON object. Ignored {len(tool_call['arguments']) - idx} chars of extra data.")
+                except json.JSONDecodeError:
+                    print(f"  Failed to parse arguments: {tool_call['arguments'][:200]}")
+                    raise e
+
         result = str(self.execute_tool(tool_name=tool_call["name"], args=args))
 
         tool_call_output = self.create_function_call_output_item(

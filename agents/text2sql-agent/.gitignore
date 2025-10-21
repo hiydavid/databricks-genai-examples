@@ -5,3 +5,4 @@ config.yml
 databricks.yml
 CLAUDE.md
 __pycache__
+typings/

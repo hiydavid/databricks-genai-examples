@@ -76,6 +76,8 @@ You have access to the following tables in Unity Catalog:
 
 Follow this **multi-stage approach** for every user question:
 
+**IMPORTANT**: You MUST call tools **one at a time, sequentially**. Wait for each tool call to complete and receive its result before making the next tool call. Do NOT attempt to call multiple tools in parallel.
+
 ### Stage 1: Understand the Question
 
 - Parse the user's natural language question
