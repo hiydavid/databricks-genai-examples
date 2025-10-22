@@ -267,7 +267,12 @@ agent:
     endpoint: databricks-claude-sonnet-4  # LLM endpoint name
     temperature: 0.1                      # LLM temperature (0-1)
   max_iterations: 10                      # Max tool calls per query
-  system_prompt_path: ./system_prompt.md  # Path to system prompt
+  system_prompt:
+    prompt_registry:                      # Prompt Registry configuration (preferred)
+      name: text2sql_system_prompt        # Prompt name in Unity Catalog
+      version: 1                          # Specific version number
+      # alias: production                 # OR use alias (e.g., "production", "champion")
+    path: ./system_prompt.md              # Fallback file path if registry unavailable
 ```
 
 ### Critical Configuration: Table Allowlist
@@ -283,6 +288,57 @@ agent:
 - Keep the list minimal (principle of least privilege)
 - Never include system schemas: `information_schema`, `sys`, etc.
 - Document why each table is included
+
+### Prompt Registry Integration
+
+The agent supports loading system prompts from **MLflow Prompt Registry** for better version control and governance.
+
+**Benefits**:
+
+- **Version Control**: Track prompt changes separately from code
+- **A/B Testing**: Switch between prompt versions using aliases without code changes
+- **Governance**: Unity Catalog access controls on prompts
+- **Lineage**: Automatic tracking between prompt versions and model versions
+- **Evaluation**: Compare prompt performance using MLflow's evaluation tools
+
+**Setup**:
+
+1. Register your system prompt to Unity Catalog:
+
+   ```python
+   import mlflow
+
+   # Read the existing system prompt
+   with open("./system_prompt.md", "r") as f:
+       system_prompt_content = f.read()
+
+   # Register to Prompt Registry
+   prompt = mlflow.genai.register_prompt(
+       name="catalog.schema.text2sql_system_prompt",
+       template=system_prompt_content,
+       commit_message="Initial registration",
+       tags={"purpose": "text2sql_agent"}
+   )
+   ```
+
+2. Configure the agent to use Prompt Registry in `config.yml`:
+
+   ```yaml
+   agent:
+     system_prompt:
+       prompt_registry:
+         name: text2sql_system_prompt
+         version: 1  # or use alias: "production"
+       path: ./system_prompt.md  # fallback
+   ```
+
+3. The agent automatically loads from the registry with fallback to file if unavailable.
+
+**Loading Behavior**:
+
+- **Primary**: Load from Prompt Registry using `catalog.schema.{name}@{alias}` or version number
+- **Fallback**: Load from file path if registry prompt not found
+- **Error Handling**: Clear messages when neither registry nor file is available
 
 ---
 

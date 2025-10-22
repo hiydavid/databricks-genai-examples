@@ -1,8 +1,7 @@
-import asyncio
 import json
 import os
 import warnings
-from typing import Any, Callable, Generator, List, Optional
+from typing import Any, Callable, Generator, List
 from uuid import uuid4
 
 import backoff
@@ -21,6 +20,9 @@ from mlflow.types.responses import (
 from pydantic import BaseModel
 
 nest_asyncio.apply()
+
+mlflow.set_registry_uri("databricks-uc")
+mlflow.set_tracking_uri("databricks")
 
 ############################################################
 ## Load variables
@@ -42,11 +44,13 @@ LLM_ENDPOINT = agent_config.get("llm").get("endpoint")
 MAX_ITERATIONS = agent_config.get(
     "max_iterations", 10
 )  # Default to 10 if not specified
-SYSTEM_PROMPT_PATH = agent_config.get("system_prompt_path")
 
-# Load system prompt from file
-with open(SYSTEM_PROMPT_PATH, "r") as f:
-    SYSTEM_PROMPT = f.read()
+# Load system prompt from MLflow Prompt Registry
+PROMPT_REGISTRY = agent_config.get("system_prompt").get("prompt_registry")
+SYSTEM_PROMPT = mlflow.genai.load_prompt(
+    name_or_uri=f"{CATALOG}.{SCHEMA}.{PROMPT_REGISTRY["name"]}",
+    version=f"{PROMPT_REGISTRY["version"]}",
+).template
 
 # Tools configuration
 UC_FUNCTIONS_MCP_SCHEMA = f"{CATALOG}/{SCHEMA}"
@@ -104,7 +108,9 @@ def create_mcp_tools(
 
                 exec_fn = create_exec_fn(server_url, mcp_tool.name, ws)
 
-                tools.append(ToolInfo(name=mcp_tool.name, spec=tool_spec, exec_fn=exec_fn))
+                tools.append(
+                    ToolInfo(name=mcp_tool.name, spec=tool_spec, exec_fn=exec_fn)
+                )
             except Exception as e:
                 print(f"Error loading tool '{mcp_tool.name}': {e}")
                 print(f"  Tool description: {mcp_tool.description}")
@@ -113,6 +119,7 @@ def create_mcp_tools(
     except Exception as e:
         print(f"Error loading tools from MCP server {server_url}: {e}")
         import traceback
+
         traceback.print_exc()
 
     return tools
@@ -171,13 +178,19 @@ class MCPToolCallingAgent(ResponsesAgent):
             except json.JSONDecodeError as e:
                 # Fallback: If JSON parsing fails due to concatenated objects (parallel tool calls),
                 # parse just the first valid JSON object
-                print(f"Warning: JSONDecodeError for tool '{tool_call.get('name')}' - attempting to parse first JSON object only")
+                print(
+                    f"Warning: JSONDecodeError for tool '{tool_call.get('name')}' - attempting to parse first JSON object only"
+                )
                 decoder = json.JSONDecoder()
                 try:
                     args, idx = decoder.raw_decode(tool_call["arguments"])
-                    print(f"  Successfully parsed first JSON object. Ignored {len(tool_call['arguments']) - idx} chars of extra data.")
+                    print(
+                        f"  Successfully parsed first JSON object. Ignored {len(tool_call['arguments']) - idx} chars of extra data."
+                    )
                 except json.JSONDecodeError:
-                    print(f"  Failed to parse arguments: {tool_call['arguments'][:200]}")
+                    print(
+                        f"  Failed to parse arguments: {tool_call['arguments'][:200]}"
+                    )
                     raise e
 
         result = str(self.execute_tool(tool_name=tool_call["name"], args=args))
