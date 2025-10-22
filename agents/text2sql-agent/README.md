@@ -126,7 +126,6 @@ Even with multiple layers of validation in the application code (regex, SQL pars
 
 **Before using in production**:
 
-- Review and implement recommendations in [todo-recs.md](todo-recs.md)
 - Conduct a security audit with your security team
 - Test with adversarial queries from the security test suite
 - Implement comprehensive monitoring and alerting
@@ -279,7 +278,7 @@ agent:
 
 **The `tools.tables` list controls which tables the agent can ACCESS via schema discovery functions.**
 
-⚠️ **Important**: This allowlist is currently NOT enforced in `execute_query()`. This is a known vulnerability. See [todo-recs.md](todo-recs.md#fix-2-enforce-table-allowlist-in-execute_query) for the fix.
+⚠️ **Important**: This allowlist is currently NOT enforced in `execute_query()`. This is a known vulnerability.
 
 **Best Practices**:
 
@@ -355,7 +354,6 @@ All UC Functions are defined in [src/agent_tools.ipynb](src/agent_tools.ipynb).
 1. **SQL Injection Vulnerabilities** (CRITICAL):
    - Regex validation bypassable with comment injection: `DROP/**/TABLE`
    - CTE validation gaps allow write operations in WITH clauses
-   - See [todo-recs.md](todo-recs.md) for full analysis
 
 2. **Authorization Gaps** (HIGH):
    - Table allowlist not enforced in `execute_query()`
@@ -381,4 +379,4 @@ All UC Functions are defined in [src/agent_tools.ipynb](src/agent_tools.ipynb).
 
 ---
 
-**⚠️ REMINDER: This is experimental code. Do not use in production without implementing security recommendations from [todo-recs.md](todo-recs.md).**
+**⚠️ REMINDER: This is experimental code. Do not use in production without robust security review.**
