@@ -1,4 +1,4 @@
-# Text-to-SQL Agent with Unity Catalog
+# Text-to-SQL Agent with Unity Catalog & Managed MCP
 
 > ⚠️ **EXPERIMENTAL CODE**: This is a proof-of-concept implementation and should NOT be used in production without thorough security review and hardening. See [Security Considerations](#security-considerations) below.
 
