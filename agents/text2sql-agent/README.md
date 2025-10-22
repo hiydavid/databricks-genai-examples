@@ -13,7 +13,6 @@ A Databricks-native Text-to-SQL agent that converts natural language queries int
 - [Architecture](#architecture)
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
-- [Usage](#usage)
 - [UC Functions Reference](#uc-functions-reference)
 - [Known Limitations](#known-limitations)
 
