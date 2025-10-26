@@ -25,6 +25,10 @@ from pydantic import BaseModel
 
 nest_asyncio.apply()
 
+mlflow.set_registry_uri("databricks-uc")
+mlflow.set_tracking_uri("databricks")
+
+
 ############################################################
 ## Load variables
 workspace_client = WorkspaceClient()
