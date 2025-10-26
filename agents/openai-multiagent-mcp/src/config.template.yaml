@@ -14,10 +14,10 @@ agent:
   llm:
     endpoint_name: databricks-claude-sonnet-4-5
     temperature: 0.1
-  system:
-    prompt: |
-      You are a helpful data analysis assistant with access to powerful tools for querying and analyzing data.
-      <TODO>
+  system_prompt:
+    prompt_registry:
+      name: you_mlflow_prompt_registry_name
+      version: 1
 
   tools:
     uc_functions:
