@@ -188,7 +188,7 @@ Even with multiple layers of validation in the application code (regex, SQL pars
 
 2. **Schema Discovery**: Agent calls UC Functions to discover available tables and their schemas:
 
-   - `list_available_tables()` → Returns allowlisted tables
+   - `get_table_metadata()` → Returns table metadata including table PF/FK
    - `get_table_schema('income_statement')` → Returns column metadata
    - `get_sample_data('income_statement', 3)` → Returns sample rows
 
@@ -371,10 +371,9 @@ All UC Functions are defined in [src/agent_tools.ipynb](src/agent_tools.ipynb).
 
 ### Functional Limitations
 
-1. **Foreign Key Discovery**: `get_table_relationships()` not implemented
-2. **Complex Queries**: No support for window functions, recursive CTEs
-3. **Query Optimization**: No cost estimation or optimization hints
-4. **Error Handling**: Limited error messages (may expose internal details)
+1. **Complex Queries**: No support for window functions, recursive CTEs
+2. **Query Optimization**: No cost estimation or optimization hints
+3. **Error Handling**: Limited error messages (may expose internal details)
 
 ---
 
