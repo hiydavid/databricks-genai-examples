@@ -11,7 +11,8 @@ Hands-on tutorials for building multi-agent systems on Databricks using financia
 | **openai-genie-agent/** | OpenAI Response API | Build data analysis agent with Databricks Genie |
 | **openai-knowledge-assistant/** | OpenAI Response API | Build knowledge assistants with document retrieval capabilities |
 | **openai-multiagent-mcp/** | OpenAI Response API | Build tool-calling agent with Databricks Managed MCP Servers |
-| (WIP) **text2sql-agent/** | OpenAI Response API | Build Text2SQL agent with Databricks Managed MCP Servers |
+| **text2sql-agent/** | OpenAI Response API | Build Text2SQL agent with Databricks Managed MCP Servers |
+| **text2sql-agent-langchain/** | LangChain | Build Text2SQL agent with LangChain with Databrick SQL |
 
 ## Technologies
 
