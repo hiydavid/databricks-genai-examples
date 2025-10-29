@@ -174,8 +174,7 @@ claude-financial-analyst/
 │   │   ├── README.md                       # Skills overview and setup
 │   │   ├── financial_analysis.md           # Financial Analysis skill setup guide
 │   │   └── data_querying.md                # Data Querying skill setup guide
-│   ├── financial_analysis_guide.md         # Comprehensive financial analysis literature
-│   └── report_generation_recommendations.md # Report generation evaluation
+│   └── financial_analysis_guide.md         # Comprehensive financial analysis literature
 ├── notebooks/
 │   └── get_financial_data.ipynb            # Data collection pipeline
 ├── .gitignore                              # Ignores .claude/ and .mcp.json
