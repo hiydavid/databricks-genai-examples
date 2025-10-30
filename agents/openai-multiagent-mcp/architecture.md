@@ -14,6 +14,14 @@
 │                   (MLflow ResponsesAgent)                          │
 │                                                                    │
 │  ┌────────────────────────────────────────────────────────────┐    │
+│  │  MLflow Prompt Registry                                    │    │
+│  │  - {catalog}.{schema}.{prompt_name}                        │    │
+│  │  - Version-controlled system prompt                        │    │
+│  │  - Loaded at agent initialization                          │    │
+│  └────────────────────────────────────────────────────────────┘    │
+│                                 │                                  │
+│                                 ▼                                  │
+│  ┌────────────────────────────────────────────────────────────┐    │
 │  │  System Prompt + User Message                              │    │
 │  └────────────────────────────────────────────────────────────┘    │
 │                                 │                                  │
@@ -36,19 +44,19 @@
          ┌───────────┴───────┬───────┴───────┬──────┴────────┐
          │                   │               │               │
          ▼                   ▼               ▼               ▼
-┌────────────────┐  ┌────────────────┐  ┌────────────┐  ┌────────────┐
-│ MCP Server #1  │  │ MCP Server #2  │  │MCP Srv #3  │  │MCP Srv #4  │
-│                │  │                │  │(system/ai) │  │(users/     │
-│Databricks      │  │Vector Search   │  │            │  │first_last) │
-│Genie           │  │                │  │/api/2.0/   │  │            │
-│/api/2.0/mcp/   │  │/api/2.0/mcp/   │  │mcp/        │  │/api/2.0/   │
-│genie/          │  │vector-search/  │  │functions/  │  │mcp/        │
-│{space_id}      │  │users/{user}    │  │system/ai   │  │functions/  │
-│                │  │                │  │            │  │users/      │
-│                │  │                │  │            │  │first_last  │
-└────────┬───────┘  └────────┬───────┘  └─────┬──────┘  └─────┬──────┘
-         │                   │                │               │
-         ▼                   ▼                ▼               ▼
+┌───────────────┐  ┌────────────────┐  ┌────────────┐  ┌─────────────┐
+│ MCP Server #1 │  │ MCP Server #2  │  │MCP Srv #3  │  │MCP Srv #4   │
+│               │  │                │  │(system/ai) │  │(users/      │
+│Databricks     │  │Vector Search   │  │            │  │first_last)  │
+│Genie          │  │                │  │/api/2.0/   │  │             │
+│/api/2.0/mcp/  │  │/api/2.0/mcp/   │  │mcp/        │  │/api/2.0/    │
+│genie/         │  │vector-search/  │  │functions/  │  │mcp/         │
+│{space_id}     │  │users/{user}    │  │system/ai   │  │functions/   │
+│               │  │                │  │            │  │users/       │
+│               │  │                │  │            │  │first_last   │
+└────────┬──────┘  └────────┬───────┘  └─────┬──────┘  └─────┬───────┘
+         │                  │                │               │
+         ▼                  ▼                ▼               ▼
 ┌────────────────┐  ┌────────────────┐  ┌────────────┐  ┌────────────┐
 │Natural Language│  │Financial Docs  │  │Python      │  │Web Search  │
 │to SQL          │  │Vector Index    │  │Execution   │  │            │
@@ -88,6 +96,7 @@
 1. **User Request**: User submits a natural language query about data or documents
 
 2. **Agent Processing**: MCPToolCallingAgent receives the request and:
+   - Loads version-controlled system prompt from MLflow Prompt Registry (at initialization)
    - Combines system prompt with user message
    - Calls the LLM endpoint to determine appropriate actions
 
@@ -109,6 +118,10 @@
 ## Key Components
 
 - **MCPToolCallingAgent**: Extends MLflow's ResponsesAgent with MCP tool integration
+- **MLflow Prompt Registry**: Version-controlled system prompt storage in Unity Catalog
+  - Prompt name and version configured in `config.yaml`
+  - Loaded dynamically at agent initialization via `mlflow.genai.load_prompt()`
+  - Enables prompt updates without code redeployment
 - **ToolInfo**: Wraps each tool with OpenAI-compatible spec and execution function
 - **DatabricksMCPClient**: Handles authentication and communication with managed MCP servers
 - **MLflow Integration**: Automatic tracing of all LLM calls and tool executions
