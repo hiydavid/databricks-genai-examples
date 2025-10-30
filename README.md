@@ -15,7 +15,9 @@ All materials are provided AS IS, without any guarantees or warranties, and are 
 * Multi-Agent Knowledge Assistant with OpenAI Response API
 * Tool-Calling Agent with Databricks Managed MCPs
 * Agent Deployement with Databricks Asset Bundles
-* Text2SQL Agent with Databricks Managed MCPs
+* Text2SQL Agent with Databricks UC Managed MCP
+* Text2SQL Agent with LangChain
+* Claude Financial Analyst with Databricks DBSQL Managed MCP
 
 ## Batch Inference
 
