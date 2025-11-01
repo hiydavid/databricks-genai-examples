@@ -138,16 +138,6 @@ Financial data must be loaded into Databricks Unity Catalog before analysis:
 - Stock price data: Last 3 years from Yahoo Finance
 - Financial statements: Annual reports via Alpha Vantage
 
-### 4. Update Project Configuration
-
-Update `CLAUDE.md` to reference your catalog and schema:
-
-```markdown
-### Data Architecture
-
-Financial data is stored in Databricks Unity Catalog under `{your_catalog}.{your_schema}`:
-```
-
 ## Usage
 
 ### Starting the Agent
