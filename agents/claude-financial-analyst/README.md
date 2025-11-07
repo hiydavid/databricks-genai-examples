@@ -91,13 +91,11 @@ The project uses the `dbsql-mcp` MCP server to query Databricks. Configuration i
 {
   "mcpServers": {
     "dbsql-mcp": {
-      "command": "npx",
-      "args": [
-        "mcp-remote",
-        "https://your-workspace.cloud.databricks.com/api/2.0/mcp/sql",
-        "--header",
-        "Authorization: Bearer your-databricks-pat-token"
-      ],
+      "type": "http",
+      "url": "https://your-workspace.cloud.databricks.com/api/2.0/mcp/sql",
+      "headers": {
+        "Authorization": "Bearer ..."
+      }
     }
   }
 }
