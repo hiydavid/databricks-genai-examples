@@ -17,13 +17,16 @@ All materials are provided AS IS, without any guarantees or warranties, and are 
 * Agent Deployement with Databricks Asset Bundles
 * Text2SQL Agent with Databricks UC Managed MCP
 * Text2SQL Agent with LangChain
-* Claude Financial Analyst with Databricks DBSQL Managed MCP
 
 ## Batch Inference
 
 * CPU Model Serving Endpoint Batch Inference
 * Provisioned Throughput Endpoint Batch Inference with `ai_query`
 * Entity Resolution with `vector_search` and `ai_query`
+
+## Context Engineering
+* Claude Financial Analyst with Databricks DBSQL Managed MCP
+* (WIP) Claude with Databricks Skills
 
 ## Evals
 
