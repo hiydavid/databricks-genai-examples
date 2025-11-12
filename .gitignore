@@ -1,2 +1,9 @@
 .DS_Store
 .claude
+.mcp.json
+CLAUDE.md
+.env
+.env.*
+*.key
+*.pem
+.claude/
