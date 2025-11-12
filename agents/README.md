@@ -13,7 +13,6 @@ Hands-on tutorials for building multi-agent systems on Databricks using financia
 | **openai-multiagent-mcp/** | OpenAI Response API | Build tool-calling agent with Databricks Managed MCP Servers |
 | **text2sql-agent/** | OpenAI Response API | Build Text2SQL agent with Databricks Managed MCP Servers |
 | **text2sql-agent-langchain/** | LangChain | Build Text2SQL agent with LangChain with Databrick SQL |
-| **claude-financial-analyst/** | Claude Code | Turn Claude Code into a financial analyst with `SKILL` and Databricks SQL Managed MCP |
 
 ## Technologies
 
