@@ -155,7 +155,7 @@ Even with multiple layers of validation in the application code (regex, SQL pars
 │         Unity Catalog Functions             │
 │  ┌──────────────────────────────────────┐   │
 │  │ Schema Discovery Tools:              │   │
-│  │ - list_available_tables()            │   │
+│  │ - get_table_metadata(table_name)     │   │
 │  │ - get_table_schema(table_name)       │   │
 │  │ - get_sample_data(table_name)        │   │
 │  └──────────────────────────────────────┘   │
