@@ -1,2 +1,2 @@
-mlflow[databricks]==3.3.1
-databricks-agents==1.4.0
+mlflow[databricks]==3.6
+databricks-agents==1.8.2
