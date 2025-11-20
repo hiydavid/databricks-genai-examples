@@ -16,8 +16,9 @@ evals/
 │   ├── 02_eval-with-predefined-scorers.ipynb # Evaluation using built-in scorers
 │   ├── 03_eval-with-custom-guidelines.ipynb  # Custom evaluation guidelines
 │   ├── 04_eval-with-make-judge.ipynb         # LLM judges with make_judge API
-│   ├── 05_eval-with-code-scorers.ipynb       # Custom code-based fuzzy matching scorers
-│   ├── 06_eval-with-experts.ipynb            # Expert review with labeling sessions
+│   ├── 05_eval-with-agent-judge.ipynb        # Agent-as-Judge evaluation with trace access
+│   ├── 06_eval-with-code-scorers.ipynb       # Custom code-based fuzzy matching scorers
+│   ├── 07_eval-with-experts.ipynb            # Expert review with labeling sessions
 │   └── data/
 │       └── leases.csv                        # Sample lease documents dataset
 ├── pyproject.toml                            # Python dependencies and project configuration
@@ -49,19 +50,25 @@ The predefined scorers are adequate for most use cases. However, for entity extr
 
 In this notebook, we will run an evaluation using customer guidelines, where you'll be able to define individual scorers for each extraction field using simple natural language. See [this documentation to learn more on evaluating using custom LLM judges](https://docs.databricks.com/aws/en/mlflow3/genai/eval-monitor/custom-judge).
 
-### 4. LLM Judges with make_judge API (`04_eval-with-make-judge.ipynb`)
+### 4. LLM Judges with make_judge API (`04_eval-with-custom-judges.ipynb`)
 
 The `make_judge` API (available in MLflow>=3.4.0) provides a programmatic way to create custom LLM judges for specific evaluation criteria. This notebook demonstrates creating individual judges for each of the 10 entity extraction fields using natural language instructions.
 
 Each judge is configured with detailed evaluation criteria and uses Claude Sonnet 4 to assess whether extracted values match expected values. This approach combines the flexibility of custom evaluation logic with the power of LLM reasoning, making it ideal for complex domain-specific validation. See [this documentation to learn more on make_judge](https://mlflow.org/docs/latest/genai/eval-monitor/scorers/llm-judge/make-judge/).
 
-### 5. Custom Code-Based Scorers (`05_eval-with-code-scorers.ipynb`)
+### 5. Agent-as-Judge Evaluation (`05_eval-with-agent-judge.ipynb`)
+
+This notebook demonstrates the "Agent-as-Judge" pattern using the `make_judge` API with the `{{trace}}` variable. Unlike standard judges that only evaluate inputs and outputs, an agent judge can inspect the full execution trace of the agent.
+
+This allows for evaluating intermediate steps, tool usage, and internal reasoning processes. For example, you can verify if the agent used the correct tools, if it encountered errors, or if its reasoning trace is logical.
+
+### 6. Custom Code-Based Scorers (`06_eval-with-code-scorers.ipynb`)
 
 For deterministic evaluation scenarios, custom code-based scorers provide maximum control and transparency. In this notebook, we implement fuzzy matching scorers for each of the 10 entity extraction fields using Python's `difflib` library. Each scorer compares predicted and expected field values with a 70% similarity threshold, returning 1 for matches above the threshold and 0 otherwise.
 
 This approach is particularly useful for handling variations in formatting, abbreviations, and minor textual differences while maintaining precise, reproducible evaluation criteria. See [this documentation to learn more on evaluating using code-based scorers](https://docs.databricks.com/aws/en/mlflow3/genai/eval-monitor/custom-scorers).
 
-### 6. Expert Review with Labeling Sessions (`06_eval-with-experts.ipynb`)
+### 7. Expert Review with Labeling Sessions (`07_eval-with-experts.ipynb`)
 
 For cases where automated evaluation isn't sufficient, subject matter expert (SME) review provides human validation of model outputs. This notebook demonstrates how to create labeling sessions for expert reviewers to manually assess the accuracy of each extracted field.
 
@@ -84,9 +91,10 @@ The notebook creates individual label schemas for all 10 extraction fields, allo
    01_create-eval-dataset.ipynb →
    02_eval-with-predefined-scorers.ipynb →
    03_eval-with-custom-guidelines.ipynb →
-   04_eval-with-make-judge.ipynb →
-   05_eval-with-code-scorers.ipynb →
-   06_eval-with-experts.ipynb
+   04_eval-with-custom-judges.ipynb →
+   05_eval-with-agent-judge.ipynb →
+   06_eval-with-code-scorers.ipynb →
+   07_eval-with-experts.ipynb
    ```
 
 4. **View Results**:
