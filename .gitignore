@@ -8,3 +8,4 @@ CLAUDE.md
 *.pem
 .claude/
 __builtins__.pyi
+.vscode
