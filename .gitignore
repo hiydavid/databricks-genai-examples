@@ -9,3 +9,4 @@ CLAUDE.md
 .claude/
 __builtins__.pyi
 .vscode
+__pycache__
