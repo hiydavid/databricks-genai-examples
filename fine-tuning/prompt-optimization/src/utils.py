@@ -1,8 +1,8 @@
+import os
+
 import mlflow
 import yaml
-import os
 from openai import OpenAI
-from pyspark.sql import SparkSession
 
 
 def load_config(config_path: str = None):
@@ -22,6 +22,9 @@ def load_config(config_path: str = None):
 
 
 def setup_mlflow():
+    import os
+
+    os.environ["MLFLOW_GENAI_EVAL_MAX_WORKERS"] = "1"
     config = load_config()
     if "DATABRICKS_HOST" not in os.environ and "model_serving_base_url" in config:
         os.environ["DATABRICKS_HOST"] = config["model_serving_base_url"]
