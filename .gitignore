@@ -10,3 +10,7 @@ CLAUDE.md
 __builtins__.pyi
 .vscode
 __pycache__
+.venv
+.databricks
+databricks.yml
+typings/
