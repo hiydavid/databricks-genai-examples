@@ -36,7 +36,7 @@ All materials are provided AS IS, without any guarantees or warranties, and are 
 ## Fine-Tuning
 
 * Structured Extraction with LLM
-* (WIP) Prompt Optimization with GEPA on MLflow 3
+* Prompt Optimization with GEPA on MLflow 3
 
 ## Model Serving
 
