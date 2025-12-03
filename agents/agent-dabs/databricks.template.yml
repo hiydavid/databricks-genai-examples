@@ -48,5 +48,6 @@ targets:
     default: true
     workspace:
       host: https://your-workspace.cloud.databricks.com # TODO: Replace with your Databricks workspace URL
+      profile: DEFAULT
     variables:
       experiment_name: "/Users/${workspace.current_user.userName}/agent-dabs"
