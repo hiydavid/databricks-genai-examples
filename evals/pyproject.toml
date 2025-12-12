@@ -9,4 +9,6 @@ dependencies = [
     "jupyter>=1.1.1",
     "mlflow[databricks]>=3.6.0",
     "notebook>=7.4.7",
+    "openai>=1.40.0",
+    "pydantic>=2.0.0",
 ]

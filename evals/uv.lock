@@ -928,6 +928,8 @@ dependencies = [
     { name = "jupyter" },
     { name = "mlflow", extra = ["databricks"] },
     { name = "notebook" },
+    { name = "openai" },
+    { name = "pydantic" },
 ]
 
 [package.metadata]
@@ -936,6 +938,8 @@ requires-dist = [
     { name = "jupyter", specifier = ">=1.1.1" },
     { name = "mlflow", extras = ["databricks"], specifier = ">=3.6.0" },
     { name = "notebook", specifier = ">=7.4.7" },
+    { name = "openai", specifier = ">=1.40.0" },
+    { name = "pydantic", specifier = ">=2.0.0" },
 ]
 
 [[package]]
