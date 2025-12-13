@@ -14,3 +14,4 @@ __pycache__
 .databricks
 databricks.yml
 typings/
+.cursor/
