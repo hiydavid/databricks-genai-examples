@@ -7,16 +7,26 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install databricks-sdk databricks-mcp openai pydantic --quiet
+# MAGIC %pip install databricks-sdk databricks-mcp openai pydantic pyyaml --quiet
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
 
 import json
 import sys
+import os
+import yaml
 
-# Add src to path for imports
-sys.path.insert(0, "/Workspace/path/to/src")  # Updated during deployment
+# Auto-detect src path from notebook location
+SRC_PATH = os.path.abspath(os.path.join(os.getcwd(), ".."))
+sys.path.insert(0, SRC_PATH)
+
+# Load configuration
+config_path = os.path.join(SRC_PATH, "config.yaml")
+with open(config_path, "r") as f:
+    config = yaml.safe_load(f)
+
+print(f"Loaded config from: {config_path}")
 
 # COMMAND ----------
 
@@ -45,13 +55,13 @@ print(f"Output Path: {plan.full_output_path}")
 
 # COMMAND ----------
 
-# Configuration - UPDATE THESE VALUES
-LLM_ENDPOINT = "databricks-claude-sonnet-4"
+# Configuration - loaded from config.yaml
+LLM_ENDPOINT = config["llm"]["endpoint_name"]
+MCP_CATALOG = config["mcp"]["catalog"]
+MCP_SCHEMA = config["mcp"]["schema"]
 
-# MCP URL for web search - format: https://<workspace>/api/2.0/mcp/functions/{catalog}/{schema}
-# The MCP server should have a web search function available
-MCP_CATALOG = "{catalog}"  # UPDATE: your catalog
-MCP_SCHEMA = "{schema}"    # UPDATE: your schema
+print(f"LLM Endpoint: {LLM_ENDPOINT}")
+print(f"MCP: {MCP_CATALOG}.{MCP_SCHEMA}")
 
 # COMMAND ----------
 
