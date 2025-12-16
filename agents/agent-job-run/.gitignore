@@ -1,0 +1,8 @@
+
+.databricks
+.venv
+.vscode
+typings/
+
+# User-specific config (use config.template.yaml as reference)
+src/config.yaml
