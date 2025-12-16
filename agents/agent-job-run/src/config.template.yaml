@@ -1,0 +1,31 @@
+# Configuration Template for Async Agent Job Demo
+# Copy this file to config.yaml and update values for your environment
+
+# Databricks workspace settings
+databricks:
+  # Unity Catalog settings for output
+  catalog: "{your_catalog}"
+  schema: "{your_schema}"
+  volume: "{your_volume}"
+
+# LLM settings
+llm:
+  # Databricks Foundation Model endpoint
+  endpoint_name: "databricks-claude-sonnet-4"
+  temperature: 0.7
+
+# MCP settings for web search
+mcp:
+  # MCP server URL - format: https://<workspace>/api/2.0/mcp/functions/{catalog}/{schema}
+  # The MCP server should have a web search function (e.g., YOU.COM search)
+  catalog: "{mcp_catalog}"
+  schema: "{mcp_schema}"
+
+# Paths (update after deploying to workspace)
+paths:
+  # Workspace path to src directory
+  src_path: "/Workspace/Users/{your_email}/agent-job-run/src"
+  # Workspace path to researcher notebook
+  researcher_notebook: "/Workspace/Users/{your_email}/agent-job-run/src/notebooks/02_researcher_job"
+  # UC Volume path for output reports
+  output_volume: "/Volumes/{catalog}/{schema}/{volume}"
