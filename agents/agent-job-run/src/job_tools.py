@@ -32,6 +32,8 @@ def submit_research_job(
     plan_b64 = research_plan.to_base64()
 
     # Submit job with serverless compute
+    # Omit cluster specification to use serverless
+    # Dependencies are handled by %pip install in the notebook
     waiter = w.jobs.submit(
         run_name=f"async_research_{research_plan.topic[:30]}",
         tasks=[
@@ -40,22 +42,7 @@ def submit_research_job(
                 notebook_task=jobs.NotebookTask(
                     notebook_path=notebook_path,
                     base_parameters={"research_plan_b64": plan_b64},
-                ),
-                # Use serverless compute
-                environment_key="default",
-            )
-        ],
-        environments=[
-            jobs.JobEnvironment(
-                environment_key="default",
-                spec=jobs.Environment(
-                    client="1",
-                    dependencies=[
-                        "databricks-sdk",
-                        "databricks-mcp",
-                        "openai",
-                        "pydantic",
-                    ],
+                    source=jobs.Source.WORKSPACE,
                 ),
             )
         ],

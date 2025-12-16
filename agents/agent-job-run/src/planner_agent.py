@@ -214,7 +214,21 @@ class PlannerAgent:
             assistant_message = response.choices[0].message
 
             # Add assistant message to history
-            self.messages.append(assistant_message.model_dump())
+            # Manually construct dict to avoid serialization issues with Databricks API
+            msg_dict = {"role": "assistant", "content": assistant_message.content}
+            if assistant_message.tool_calls:
+                msg_dict["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    }
+                    for tc in assistant_message.tool_calls
+                ]
+            self.messages.append(msg_dict)
 
             # Check for tool calls
             if assistant_message.tool_calls:
