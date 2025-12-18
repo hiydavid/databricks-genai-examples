@@ -26,7 +26,7 @@ SYSTEM_PROMPT = """You are a research planning assistant. Your role is to help u
 
 4. **Execute**: When the user approves the plan, use the submit_research_plan tool to start async execution.
 
-5. **Monitor**: Users can ask about job status anytime. Use check_job_status to provide updates.
+5. **Monitor**: After submitting a job, proactively use list_active_jobs to check progress. Don't wait for users to ask - check status and report back.
 
 6. **Deliver Results**: When complete, use get_research_report to retrieve and present the findings.
 
@@ -101,8 +101,24 @@ class PlannerAgent:
             {
                 "type": "function",
                 "function": {
+                    "name": "list_active_jobs",
+                    "description": (
+                        "List all research jobs that have been submitted in this session with their current status. "
+                        "Use this to check on job progress without needing to know specific run IDs. "
+                        "Call this proactively after submitting a job to monitor its progress."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": [],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "check_job_status",
-                    "description": "Check the status of a running research job",
+                    "description": "Check detailed status of a specific research job by run ID",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -171,6 +187,12 @@ class PlannerAgent:
                     "output_path": result["output_path"],
                 }
             )
+
+        elif tool_name == "list_active_jobs":
+            if not self.active_jobs:
+                return json.dumps({"jobs": [], "message": "No research jobs have been submitted yet."})
+            jobs = self.get_active_jobs()
+            return json.dumps({"jobs": jobs, "count": len(jobs)})
 
         elif tool_name == "check_job_status":
             run_id = args["run_id"]
