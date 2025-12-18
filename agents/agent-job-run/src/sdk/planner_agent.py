@@ -246,6 +246,23 @@ class PlannerAgent:
         """Return active jobs from context."""
         return self.context.active_jobs
 
+    def get_active_jobs(self) -> list[dict]:
+        """Get all active jobs with their current status.
+
+        Returns:
+            List of job info dicts with run_id, topic, state, and output_path
+        """
+        jobs = []
+        for run_id, info in self.context.active_jobs.items():
+            status = check_job_status(run_id, self.ws)
+            jobs.append({
+                "run_id": run_id,
+                "topic": info["plan"].topic,
+                "state": status["state"],
+                "output_path": info["output_path"],
+            })
+        return jobs
+
     def reset_conversation(self):
         """Reset conversation history (keeps active jobs)."""
         self.conversation_history = []
