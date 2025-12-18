@@ -1,5 +1,14 @@
-"""Prompt templates for the agentic researcher."""
+"""Prompt templates for the agentic researcher.
 
+Note: In the SDK-based implementation (sdk/researcher_agent.py), ACTION_DECISION_PROMPT
+is no longer used. The agent naturally decides when to use tools via the SDK's native
+behavior. The prompt below is kept for the legacy implementation.
+
+FINDING_EXTRACTION_PROMPT is also not used in SDK - findings are recorded directly
+via the record_finding tool.
+"""
+
+# Legacy prompt - not used in SDK implementation
 ACTION_DECISION_PROMPT = """You are a research agent investigating: {topic}
 
 ## Current State

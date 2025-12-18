@@ -507,9 +507,9 @@ This report was generated using an agentic research system powered by Databricks
             Complete markdown research report
         """
         # Log trace inputs
-        mlflow.update_current_trace(
-            inputs={"topic": plan.topic, "questions": plan.research_questions}
-        )
+        span = mlflow.get_current_active_span()
+        if span:
+            span.set_inputs({"topic": plan.topic, "questions": plan.research_questions})
 
         # Initialize state
         state = ResearchState(
@@ -570,15 +570,15 @@ This report was generated using an agentic research system powered by Databricks
         report = self._generate_report(state, plan)
 
         # Log trace outputs
-        mlflow.update_current_trace(
-            outputs={
+        span = mlflow.get_current_active_span()
+        if span:
+            span.set_outputs({
                 "iterations": state.iterations,
                 "total_searches": state.total_searches,
                 "total_llm_calls": state.total_llm_calls,
                 "completion_confidence": state.completion_confidence,
                 "stop_reason": state.stop_reason,
-            }
-        )
+            })
 
         return report
 

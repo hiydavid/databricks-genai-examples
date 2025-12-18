@@ -7,7 +7,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install databricks-sdk databricks-mcp openai pydantic pyyaml nest_asyncio --quiet
+# MAGIC %pip install databricks-sdk databricks-mcp openai pydantic pyyaml nest_asyncio openai-agents databricks-openai --quiet
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -74,24 +74,22 @@ print(f"MCP Connection: {MCP_CONNECTION_NAME}")
 
 # COMMAND ----------
 
-# Initialize the researcher agent
+# Initialize the SDK-based researcher agent
 from databricks.sdk import WorkspaceClient
-from researcher_agent import ResearcherAgent
+from sdk.config import configure_sdk
+from sdk.researcher_agent import execute_research_sync
+from sdk.report import save_report
+
+# Configure OpenAI Agents SDK for Databricks
+configure_sdk()
 
 ws = WorkspaceClient()
-mcp_url = f"{ws.config.host}/api/2.0/mcp/external/{MCP_CONNECTION_NAME}"
+HOST = ws.config.host
 
-print(f"Initializing ResearcherAgent...")
+print(f"Configured SDK for Databricks")
 print(f"  LLM Endpoint: {LLM_ENDPOINT}")
-print(f"  MCP URL: {mcp_url}")
-
-researcher = ResearcherAgent(
-    llm_endpoint=LLM_ENDPOINT,
-    mcp_server_url=mcp_url,
-    workspace_client=ws,
-)
-
-print(f"Available MCP tools: {list(researcher.tools.keys())}")
+print(f"  MCP Connection: {MCP_CONNECTION_NAME}")
+print(f"  Host: {HOST}")
 
 # COMMAND ----------
 
@@ -100,11 +98,17 @@ print(f"Available MCP tools: {list(researcher.tools.keys())}")
 
 # COMMAND ----------
 
-# Execute the research plan
+# Execute the research plan using SDK-based agent
 print(f"Starting research on: {plan.topic}")
 print("-" * 50)
 
-report = researcher.execute_research_plan(plan)
+report = execute_research_sync(
+    plan=plan,
+    host=HOST,
+    mcp_connection=MCP_CONNECTION_NAME,
+    llm_endpoint=LLM_ENDPOINT,
+    workspace_client=ws,
+)
 
 print("-" * 50)
 print(f"Research complete. Report length: {len(report)} characters")
@@ -119,7 +123,7 @@ print(f"Research complete. Report length: {len(report)} characters")
 # Save report to Unity Catalog Volume
 output_path = plan.full_output_path
 
-researcher.save_report(report, output_path)
+save_report(report, output_path)
 print(f"Report saved to: {output_path}")
 
 # COMMAND ----------
