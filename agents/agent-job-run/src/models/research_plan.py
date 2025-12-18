@@ -20,7 +20,7 @@ class ResearchPlan(BaseModel):
     )
     output_filename: str = Field(description="Output filename, e.g., report_abc123.md")
     max_searches_per_question: int = Field(
-        default=3, description="Maximum web searches per research question"
+        default=3, description="Maximum web searches per research question (legacy)"
     )
     created_at: str = Field(
         default_factory=lambda: datetime.now().isoformat(),
@@ -28,6 +28,34 @@ class ResearchPlan(BaseModel):
     )
     user_id: Optional[str] = Field(
         default=None, description="Optional user identifier"
+    )
+
+    # Agentic parameters
+    max_iterations: int = Field(
+        default=20,
+        description="Soft cap on agent loop iterations",
+    )
+    max_total_searches: int = Field(
+        default=30,
+        description="Soft cap on total web searches across all questions",
+    )
+    reflection_interval: int = Field(
+        default=5,
+        description="Run reflection every N actions to assess progress",
+    )
+    min_confidence_threshold: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Minimum confidence (0-1) before agent can choose to stop",
+    )
+    allow_new_questions: bool = Field(
+        default=True,
+        description="Allow agent to generate new questions beyond original plan",
+    )
+    max_generated_questions: int = Field(
+        default=3,
+        description="Maximum new questions agent can generate",
     )
 
     def to_base64(self) -> str:

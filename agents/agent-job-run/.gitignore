@@ -3,6 +3,7 @@
 .venv
 .vscode
 typings/
+__pycache__
 
 # User-specific config (use config.template.yaml as reference)
 src/config.yaml

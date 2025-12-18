@@ -16,10 +16,15 @@ llm:
 
 # MCP settings for web search
 mcp:
-  # MCP server URL - format: https://<workspace>/api/2.0/mcp/functions/{catalog}/{schema}
-  # The MCP server should have a web search function (e.g., YOU.COM search)
-  catalog: "{mcp_catalog}"
-  schema: "{mcp_schema}"
+  # External MCP connection name registered in the MCP Catalog
+  # URL format: https://<workspace>/api/2.0/mcp/external/{connection_name}
+  # See: https://docs.databricks.com/aws/en/generative-ai/mcp/external-mcp
+  connection_name: "{your_mcp_connection_name}"
+
+# MLflow settings for tracing
+mlflow:
+  # Experiment path for storing traces (must be workspace path)
+  experiment_name: "/Users/{your_email}/agent-job-run-traces"
 
 # Paths (update after deploying to workspace)
 paths:
