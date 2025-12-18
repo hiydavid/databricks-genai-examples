@@ -17,6 +17,7 @@ import sys
 import os
 import yaml
 import nest_asyncio
+import mlflow
 
 # Enable nested event loops (required for MCP client in notebooks)
 nest_asyncio.apply()
@@ -31,6 +32,11 @@ with open(config_path, "r") as f:
     config = yaml.safe_load(f)
 
 print(f"Loaded config from: {config_path}")
+
+# Configure MLflow to send traces to Databricks
+mlflow.set_tracking_uri("databricks")
+mlflow.set_experiment(config["mlflow"]["experiment_name"])
+print(f"MLflow experiment: {config['mlflow']['experiment_name']}")
 
 # COMMAND ----------
 
