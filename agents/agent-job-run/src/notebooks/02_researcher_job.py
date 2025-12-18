@@ -17,7 +17,6 @@ import sys
 import os
 import yaml
 import nest_asyncio
-import mlflow
 
 # Enable nested event loops (required for MCP client in notebooks)
 nest_asyncio.apply()
@@ -32,11 +31,6 @@ with open(config_path, "r") as f:
     config = yaml.safe_load(f)
 
 print(f"Loaded config from: {config_path}")
-
-# Configure MLflow to send traces to Databricks
-mlflow.set_tracking_uri("databricks")
-mlflow.set_experiment(config["mlflow"]["experiment_name"])
-print(f"MLflow experiment: {config['mlflow']['experiment_name']}")
 
 # COMMAND ----------
 
@@ -80,8 +74,8 @@ from sdk.config import configure_sdk
 from sdk.researcher_agent import execute_research_sync
 from sdk.report import save_report
 
-# Configure OpenAI Agents SDK for Databricks
-configure_sdk()
+# Configure OpenAI Agents SDK for Databricks with MLflow experiment
+configure_sdk(experiment_name=config["mlflow"]["experiment_name"])
 
 ws = WorkspaceClient()
 HOST = ws.config.host
@@ -89,6 +83,7 @@ HOST = ws.config.host
 print(f"Configured SDK for Databricks")
 print(f"  LLM Endpoint: {LLM_ENDPOINT}")
 print(f"  MCP Connection: {MCP_CONNECTION_NAME}")
+print(f"  MLflow Experiment: {config['mlflow']['experiment_name']}")
 print(f"  Host: {HOST}")
 
 # COMMAND ----------
