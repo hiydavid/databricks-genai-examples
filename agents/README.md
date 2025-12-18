@@ -6,6 +6,7 @@ Hands-on tutorials for building multi-agent systems on Databricks using financia
 |---|---|---|
 | **agent-bricks/** | Databricks Agent Bricks | Learn multi-agent creation via Databricks UI |
 | **agent-dabs/** | LangGraph + DABs | Master local development to production deployment workflow |
+| **agent-job-run/** | Lakeflow Jobs | Build async agentic workflows with non-blocking job execution |
 | **langgraph-genie-deep-research/** | LangGraph | Build SQL-focused agents with programmatic coordination |
 | **langgraph-research-assistant/** | LangGraph | Create document retrieval systems with advanced orchestration |
 | **openai-genie-agent/** | OpenAI Response API | Build data analysis agent with Databricks Genie |
@@ -24,3 +25,4 @@ Hands-on tutorials for building multi-agent systems on Databricks using financia
 - **Model Context Protocol (MCP)**: Agentic tools
 - **Agent Bricks**: Native agent framework (Beta)
 - **Databricks Asset Bundles**: Infrastructure-as-Code
+- **Lakeflow Jobs**: Async workflow execution
