@@ -1,6 +1,6 @@
 # (WIP) Async Agentic Workflow with Databricks Lakeflow Jobs
 
-`**THIS IS EXPERIMENAL AND UNDER ACTIVE DEVELOPMENT**`
+> **Note**: This demo is designed to run on **Databricks notebooks**. Clone or import this repo directly into your Databricks workspace.
 
 This demo shows how to use **Databricks Lakeflow Jobs** to execute async agentic workflows that can run longer than 5 minutes without blocking the main agent.
 
@@ -156,4 +156,4 @@ mcp_client = DatabricksMCPClient(
   - Foundation Model API access (e.g., `databricks-claude-sonnet-4`)
   - Unity Catalog with Volume support
   - MCP server with web search function
-- Python 3.11+
+  - DBR 14.3+ or MLR 14.3+ (for Python 3.11+ support)
