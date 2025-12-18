@@ -17,6 +17,7 @@ All materials are provided AS IS, without any guarantees or warranties, and are 
 * Agent Deployement with Databricks Asset Bundles
 * Text2SQL Agent with Databricks UC Managed MCP
 * Text2SQL Agent with LangChain
+* Async Agentic Task with Lakeflow Jobs
 
 ## Batch Inference
 
