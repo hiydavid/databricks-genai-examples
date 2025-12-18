@@ -53,20 +53,22 @@ Upload the `src/` directory to your Databricks workspace:
 /Workspace/Users/{your_email}/agent-job-run/src/
 ```
 
-### 2. Configure MCP Server
+### 2. Configure External MCP Server
 
-Set up a managed MCP server with web search capability. The MCP URL format is:
+Register an external MCP server with web search capability in the MCP Catalog. The URL format is:
 
 ```text
-https://<workspace>/api/2.0/mcp/functions/{catalog}/{schema}
+https://<workspace>/api/2.0/mcp/external/{connection_name}
 ```
+
+See [External MCP documentation](https://docs.databricks.com/aws/en/generative-ai/mcp/external-mcp) for setup instructions.
 
 ### 3. Update Configuration
 
 Copy `src/config.template.yaml` to `src/config.yaml` and update:
 
 - `llm.endpoint_name`: Your Databricks Foundation Model endpoint
-- `mcp.catalog/schema`: Your MCP server location
+- `mcp.connection_name`: Your external MCP server connection name from MCP Catalog
 - `paths.researcher_notebook`: Workspace path to `02_researcher_job.py`
 - `paths.output_volume`: UC Volume path (auto-created if it doesn't exist)
 
@@ -139,13 +141,13 @@ workspace_client.volumes.create(
 
 ### MCP Tool Integration
 
-The Researcher Agent uses Databricks MCP for web search:
+The Researcher Agent uses Databricks external MCP for web search:
 
 ```python
 from databricks_mcp import DatabricksMCPClient
 
 mcp_client = DatabricksMCPClient(
-    server_url=f"{ws.config.host}/api/2.0/mcp/functions/{catalog}/{schema}",
+    server_url=f"{ws.config.host}/api/2.0/mcp/external/{connection_name}",
     workspace_client=ws,
 )
 ```

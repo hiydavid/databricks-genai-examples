@@ -61,11 +61,10 @@ print(f"Output Path: {plan.full_output_path}")
 
 # Configuration - loaded from config.yaml
 LLM_ENDPOINT = config["llm"]["endpoint_name"]
-MCP_CATALOG = config["mcp"]["catalog"]
-MCP_SCHEMA = config["mcp"]["schema"]
+MCP_CONNECTION_NAME = config["mcp"]["connection_name"]
 
 print(f"LLM Endpoint: {LLM_ENDPOINT}")
-print(f"MCP: {MCP_CATALOG}.{MCP_SCHEMA}")
+print(f"MCP Connection: {MCP_CONNECTION_NAME}")
 
 # COMMAND ----------
 
@@ -74,7 +73,7 @@ from databricks.sdk import WorkspaceClient
 from researcher_agent import ResearcherAgent
 
 ws = WorkspaceClient()
-mcp_url = f"{ws.config.host}/api/2.0/mcp/functions/{MCP_CATALOG}/{MCP_SCHEMA}"
+mcp_url = f"{ws.config.host}/api/2.0/mcp/external/{MCP_CONNECTION_NAME}"
 
 print(f"Initializing ResearcherAgent...")
 print(f"  LLM Endpoint: {LLM_ENDPOINT}")
