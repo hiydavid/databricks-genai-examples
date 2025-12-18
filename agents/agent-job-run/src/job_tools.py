@@ -3,9 +3,43 @@
 from typing import Optional
 
 from databricks.sdk import WorkspaceClient
+from databricks.sdk.service import catalog as catalog_service
 from databricks.sdk.service import jobs
 
 from models.research_plan import ResearchPlan
+
+
+def ensure_volume_exists(
+    volume_path: str,
+    workspace_client: WorkspaceClient,
+) -> None:
+    """
+    Ensure the UC Volume exists, creating it if necessary.
+
+    Args:
+        volume_path: Full volume path like /Volumes/catalog/schema/volume
+        workspace_client: WorkspaceClient instance
+    """
+    # Parse volume path: /Volumes/{catalog}/{schema}/{volume}/...
+    parts = volume_path.strip("/").split("/")
+    if len(parts) < 4 or parts[0] != "Volumes":
+        raise ValueError(f"Invalid volume path format: {volume_path}")
+
+    catalog_name = parts[1]
+    schema_name = parts[2]
+    volume_name = parts[3]
+
+    # Check if volume exists
+    try:
+        workspace_client.volumes.read(f"{catalog_name}.{schema_name}.{volume_name}")
+    except Exception:
+        # Volume doesn't exist, create it
+        workspace_client.volumes.create(
+            catalog_name=catalog_name,
+            schema_name=schema_name,
+            name=volume_name,
+            volume_type=catalog_service.VolumeType.MANAGED,
+        )
 
 
 def submit_research_job(
@@ -27,6 +61,9 @@ def submit_research_job(
         dict with run_id, status, output_path, and run_page_url
     """
     w = workspace_client or WorkspaceClient()
+
+    # Ensure output volume exists before submitting job
+    ensure_volume_exists(research_plan.output_volume_path, w)
 
     # Encode plan for passing via job parameters
     plan_b64 = research_plan.to_base64()

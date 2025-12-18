@@ -237,7 +237,10 @@ class PlannerAgent:
 
             # Add assistant message to history
             # Manually construct dict to avoid serialization issues with Databricks API
-            msg_dict = {"role": "assistant", "content": assistant_message.content}
+            # Note: content must be omitted (not empty string) when there are tool_calls
+            msg_dict = {"role": "assistant"}
+            if assistant_message.content:
+                msg_dict["content"] = assistant_message.content
             if assistant_message.tool_calls:
                 msg_dict["tool_calls"] = [
                     {
