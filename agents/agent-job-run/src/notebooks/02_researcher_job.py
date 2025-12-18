@@ -7,7 +7,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install databricks-sdk databricks-mcp openai pydantic pyyaml --quiet
+# MAGIC %pip install databricks-sdk databricks-mcp openai pydantic pyyaml nest_asyncio --quiet
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -16,6 +16,10 @@ import json
 import sys
 import os
 import yaml
+import nest_asyncio
+
+# Enable nested event loops (required for MCP client in notebooks)
+nest_asyncio.apply()
 
 # Auto-detect src path from notebook location
 SRC_PATH = os.path.abspath(os.path.join(os.getcwd(), ".."))
