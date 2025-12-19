@@ -64,10 +64,11 @@ def submit_research_plan(
         output_filename=f"report_{uuid4().hex[:8]}.md",
     )
 
+    # Create fresh WorkspaceClient to avoid pickle issues with dbutils
     result = submit_research_job(
         research_plan=plan,
         notebook_path=ctx.context.notebook_path,
-        workspace_client=ctx.context.ws,
+        workspace_client=WorkspaceClient(),
     )
 
     # Track the job
@@ -99,9 +100,11 @@ def list_active_jobs(ctx: RunContextWrapper[PlannerContext]) -> str:
     if not ctx.context.active_jobs:
         return json.dumps({"jobs": [], "message": "No research jobs have been submitted yet."})
 
+    # Create fresh WorkspaceClient to avoid pickle issues with dbutils
+    ws = WorkspaceClient()
     jobs = []
     for run_id, info in ctx.context.active_jobs.items():
-        status = check_job_status(run_id, ctx.context.ws)
+        status = check_job_status(run_id, ws)
         jobs.append({
             "run_id": run_id,
             "topic": info["plan"].topic,
@@ -119,7 +122,8 @@ def check_job_status_tool(ctx: RunContextWrapper[PlannerContext], run_id: int) -
     Args:
         run_id: The Databricks job run ID
     """
-    status = check_job_status(run_id, ctx.context.ws)
+    # Create fresh WorkspaceClient to avoid pickle issues with dbutils
+    status = check_job_status(run_id, WorkspaceClient())
     return json.dumps(status)
 
 
@@ -136,7 +140,8 @@ def get_research_report(ctx: RunContextWrapper[PlannerContext], run_id: int) -> 
     if not output_path:
         return json.dumps({"error": f"No output path found for run_id {run_id}"})
 
-    report = get_job_output(run_id, output_path, ctx.context.ws)
+    # Create fresh WorkspaceClient to avoid pickle issues with dbutils
+    report = get_job_output(run_id, output_path, WorkspaceClient())
     return report
 
 
@@ -172,6 +177,9 @@ class PlannerAgent:
     """High-level wrapper for the SDK-based planner agent.
 
     Provides a simple chat interface similar to the legacy implementation.
+
+    Note: WorkspaceClient is intentionally NOT stored to avoid pickle/serialization
+    issues with dbutils. Each operation creates a fresh client as needed.
     """
 
     def __init__(
@@ -179,7 +187,6 @@ class PlannerAgent:
         llm_endpoint: str,
         researcher_notebook_path: str,
         output_volume_path: str,
-        workspace_client: WorkspaceClient | None = None,
     ):
         """Initialize the planner agent.
 
@@ -187,13 +194,10 @@ class PlannerAgent:
             llm_endpoint: Databricks Foundation Model endpoint name
             researcher_notebook_path: Workspace path to the researcher job notebook
             output_volume_path: UC Volume path for output
-            workspace_client: Optional WorkspaceClient instance
         """
-        self.ws = workspace_client or WorkspaceClient()
         self.llm_endpoint = llm_endpoint
 
         self.context = PlannerContext(
-            ws=self.ws,
             notebook_path=researcher_notebook_path,
             output_volume_path=output_volume_path,
         )
@@ -252,9 +256,11 @@ class PlannerAgent:
         Returns:
             List of job info dicts with run_id, topic, state, and output_path
         """
+        # Create fresh WorkspaceClient to avoid pickle issues with dbutils
+        ws = WorkspaceClient()
         jobs = []
         for run_id, info in self.context.active_jobs.items():
-            status = check_job_status(run_id, self.ws)
+            status = check_job_status(run_id, ws)
             jobs.append({
                 "run_id": run_id,
                 "topic": info["plan"].topic,

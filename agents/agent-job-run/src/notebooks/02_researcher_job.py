@@ -7,16 +7,20 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install databricks-sdk databricks-mcp openai pydantic pyyaml nest_asyncio openai-agents databricks-openai --quiet
-# MAGIC dbutils.library.restartPython()
+# MAGIC %pip install -r ../requirements.txt --quiet
+
+# COMMAND ----------
+
+dbutils.library.restartPython()
 
 # COMMAND ----------
 
 import json
-import sys
 import os
-import yaml
+import sys
+
 import nest_asyncio
+import yaml
 
 # Enable nested event loops (required for MCP client in notebooks)
 nest_asyncio.apply()
@@ -70,9 +74,10 @@ print(f"MCP Connection: {MCP_CONNECTION_NAME}")
 
 # Initialize the SDK-based researcher agent
 from databricks.sdk import WorkspaceClient
+
 from sdk.config import configure_sdk
-from sdk.researcher_agent import execute_research_sync
 from sdk.report import save_report
+from sdk.researcher_agent import execute_research_sync
 
 # Configure OpenAI Agents SDK for Databricks with MLflow experiment
 configure_sdk(experiment_name=config["mlflow"]["experiment_name"])

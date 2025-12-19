@@ -7,7 +7,7 @@ sending it to the LLM.
 from dataclasses import dataclass, field
 from typing import Optional
 
-from databricks.sdk import WorkspaceClient
+from databricks.sdk import WorkspaceClient  # Still needed for ResearchContext
 
 from models.research_plan import ResearchPlan
 from models.research_state import ResearchState
@@ -31,9 +31,13 @@ class ResearchContext:
 
 @dataclass
 class PlannerContext:
-    """Context for planner agent."""
+    """Context for planner agent.
 
-    ws: WorkspaceClient
+    Note: WorkspaceClient is intentionally NOT stored here to avoid
+    pickle/serialization issues with dbutils. Tools create their own
+    WorkspaceClient instances as needed.
+    """
+
     notebook_path: str
     output_volume_path: str
     active_jobs: dict = field(default_factory=dict)
