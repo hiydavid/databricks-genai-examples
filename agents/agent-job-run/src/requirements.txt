@@ -1,0 +1,6 @@
+databricks-sdk>=0.76.0
+databricks-openai>=0.8.0
+openai-agents>=0.6.3
+pydantic>=2.12.0
+pyyaml>=6.0
+nest-asyncio>=1.5.6
