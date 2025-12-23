@@ -8,43 +8,39 @@ bundle:
   name: genie-migration
 
 variables:
-  # SQL Warehouse ID for Genie Space in target workspace
+  # TODO: SQL Warehouse ID for Genie Space in target workspace
   warehouse_id:
     description: "SQL Warehouse ID for Genie Space"
+    default: ""
 
-  # Workspace path where Genie Space will be created
+  # TODO: Workspace path where Genie Space will be created
   genie_parent_path:
     description: "Workspace path for Genie Space"
     default: "/Shared/genie_spaces"
 
-  # Genie Space config file to deploy
+  # TODO: Genie Space config file to deploy
   genie_config:
     description: "Path to Genie Space JSON config file"
     default: "genie_spaces/sample_space.json"
 
-  # Space ID for idempotent updates (set after first deploy)
+  # TODO: Space ID for idempotent updates (set after first deploy)
   space_id:
     description: "Existing Genie Space ID to update"
     default: ""
 
-  # Source space ID for export operations
+  # TODO: Source space ID for export operations
   source_space_id:
     description: "Source Genie Space ID to export"
     default: ""
 
-  # Output path for exports
+  # TODO: Output path for exports
   export_output:
     description: "Output path for exported Genie Space config"
     default: "/Workspace/genie_spaces/exported_space.json"
 
-  # Production workspace host (for prod target)
+  # TODO: Production workspace host (for prod target)
   prod_workspace_host:
     description: "Production workspace URL"
-    default: ""
-
-  # Production warehouse ID (for prod target)
-  prod_warehouse_id:
-    description: "Production SQL Warehouse ID"
     default: ""
 
 artifacts:
@@ -122,4 +118,4 @@ targets:
     workspace:
       host: ${var.prod_workspace_host}
     variables:
-      warehouse_id: ${var.prod_warehouse_id}
+      warehouse_id: ${var.warehouse_id}
