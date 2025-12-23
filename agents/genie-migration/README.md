@@ -30,7 +30,7 @@ As of December 2025, Databricks Asset Bundles don't natively support Genie Space
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  4. databricks workspace export \                                           │
 │       /Workspace/Shared/genie_exports/<title>.json \                        │
-│       ./genie_spaces/<filename>.json                                        │
+│       --file ./genie_spaces/<filename>.json                                 │
 │                                                                             │
 │  5. git add genie_spaces/<filename>.json                                    │
 │  6. git commit -m "Export Genie Space: <title>"                             │
@@ -42,8 +42,9 @@ As of December 2025, Databricks Asset Bundles don't natively support Genie Space
 │                           TARGET WORKSPACE                                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  8. databricks bundle validate --target prod                                │
-│  9. databricks bundle deploy --target prod                                  │
-│     → Syncs genie_spaces/*.json to workspace                                │
+│  9. databricks bundle deploy --target prod \                                │
+│       --var genie_config=/Workspace/Shared/.bundle/.../genie_spaces/x.json  │
+│     → Syncs files + sets job parameters                                     │
 │ 10. databricks bundle run deploy_genie_space --target prod                  │
 │     → Creates/updates Genie Space from synced JSON                          │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -86,7 +87,9 @@ targets:
 
 1. **Add SP to workspace**: Admin Settings → Service principals → Add
 2. **Grant SP entitlements**: "Workspace access" and "Databricks SQL access"
-3. **Grant SP permissions**:
+3. **Grant yourself "User" role on SP**: SP → Permissions → Grant access → Add yourself with "User" role
+   - Required to create jobs with `run_as` referencing this SP
+4. **Grant SP permissions**:
    - Source: CAN EDIT on Genie Space (required for export)
    - Target: CAN USE on SQL Warehouse (required for deploy)
 
@@ -105,7 +108,7 @@ databricks bundle run export_genie_space --target dev
 # Download exported JSON to local repo
 databricks workspace export \
     /Workspace/Shared/genie_exports/<title>.json \
-    ./genie_spaces/<filename>.json
+    --file ./genie_spaces/<filename>.json
 ```
 
 ### Deploy (Target Workspace)
@@ -117,15 +120,19 @@ git commit -m "Export Genie Space"
 git push
 
 # Validate and deploy bundle (syncs JSON to workspace)
+# NOTE: --var must be on deploy, not run (base_parameters are set at deploy time)
 databricks bundle validate --target prod
-databricks bundle deploy --target prod
+databricks bundle deploy --target prod \
+    --var genie_config=/Workspace/Shared/.bundle/genie-migration/prod/files/genie_spaces/<filename>.json
 
 # Run deploy job (first time - creates new space)
 databricks bundle run deploy_genie_space --target prod
 
 # Run deploy job (subsequent - updates existing space)
-databricks bundle run deploy_genie_space --target prod \
+databricks bundle deploy --target prod \
+    --var genie_config=/Workspace/Shared/.bundle/genie-migration/prod/files/genie_spaces/<filename>.json \
     --var space_id=<existing-space-id>
+databricks bundle run deploy_genie_space --target prod
 ```
 
 ## Project Structure
