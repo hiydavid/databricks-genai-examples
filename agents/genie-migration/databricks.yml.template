@@ -18,10 +18,10 @@ variables:
     description: "Workspace path for Genie Space"
     default: "/Shared/genie_spaces"
 
-  # TODO: Genie Space config file to deploy
+  # TODO: Genie Space config file to deploy (relative to bundle files root)
   genie_config:
     description: "Path to Genie Space JSON config file"
-    default: "genie_spaces/sample_space.json"
+    default: "/Workspace/Shared/.bundle/genie-migration/${bundle.target}/files/genie_spaces/sample_space.json"
 
   # TODO: Space ID for idempotent updates (set after first deploy)
   space_id:
@@ -33,14 +33,19 @@ variables:
     description: "Source Genie Space ID to export"
     default: ""
 
-  # TODO: Output path for exports
+  # TODO: Output path for exports (directory - filename will be generated from space title)
   export_output:
-    description: "Output path for exported Genie Space config"
-    default: "/Workspace/genie_spaces/exported_space.json"
+    description: "Output directory for exported Genie Space config"
+    default: "/Workspace/Shared/genie_exports"
 
   # TODO: Production workspace host (for prod target)
   prod_workspace_host:
     description: "Production workspace URL"
+    default: ""
+
+  # TODO: Service Principal application ID for job execution (required for SP auth)
+  run_as_service_principal:
+    description: "Service Principal application ID to run jobs as"
     default: ""
 
 artifacts:
@@ -53,6 +58,8 @@ resources:
     export_genie_space:
       name: "genie-export-${bundle.target}"
       description: "Export a Genie Space configuration to JSON"
+      run_as:
+        service_principal_name: ${var.run_as_service_principal}
       tasks:
         - task_key: export
           python_wheel_task:
@@ -68,13 +75,15 @@ resources:
           spec:
             client: "1"
             dependencies:
-              - databricks-sdk>=0.20.0
+              - databricks-sdk>=0.76.0
       timeout_seconds: 600
       max_concurrent_runs: 1
 
     deploy_genie_space:
       name: "genie-deploy-${bundle.target}"
       description: "Deploy a Genie Space from JSON configuration"
+      run_as:
+        service_principal_name: ${var.run_as_service_principal}
       tasks:
         - task_key: deploy
           python_wheel_task:
@@ -91,22 +100,24 @@ resources:
           spec:
             client: "1"
             dependencies:
-              - databricks-sdk>=0.20.0
+              - databricks-sdk>=0.76.0
       timeout_seconds: 600
       max_concurrent_runs: 1
 
 targets:
   # Development target - configure via DATABRICKS_HOST env var or update host below
   dev:
-    mode: development
     default: true
-    # Uncomment and set your dev workspace URL:
-    # workspace:
-    #   host: https://adb-<workspace-id>.<region>.azuredatabricks.net
+    workspace:
+      # Uncomment and set your dev workspace URL:
+      # host: https://adb-<workspace-id>.<region>.azuredatabricks.net
+      # Deploy to /Shared so Service Principal can access the files
+      root_path: /Shared/.bundle/${bundle.name}/${bundle.target}
 
   # Production target - set via variables or CI/CD
   prod:
     workspace:
       host: ${var.prod_workspace_host}
+      root_path: /Shared/.bundle/${bundle.name}/${bundle.target}
     variables:
       warehouse_id: ${var.warehouse_id}

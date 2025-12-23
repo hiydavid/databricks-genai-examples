@@ -1,4 +1,8 @@
 # Databricks notebook source
+# MAGIC %pip install databricks-sdk>=0.76.0 --quiet
+# MAGIC dbutils.library.restartPython()
+
+# COMMAND ----------
 """
 Deploy a Databricks Genie Space from a JSON configuration file.
 
@@ -98,22 +102,22 @@ def load_config(client: WorkspaceClient, config_path: str) -> dict:
     Returns:
         The parsed configuration dictionary
     """
-    # Try reading from workspace first
-    if config_path.startswith("/Workspace") or config_path.startswith("/"):
-        try:
-            content = client.workspace.download(config_path)
-            return json.loads(content.read().decode("utf-8"))
-        except Exception:
-            pass
-
-    # Fall back to local/bundle path (relative to current working directory)
-    # This handles bundle-relative paths like "genie_spaces/my_space.json"
     import os
 
-    # When running as a job, the working directory contains the synced bundle files
+    # Try local filesystem first (works for /Workspace paths in notebooks)
     if os.path.exists(config_path):
+        print(f"  Loading config from local path: {config_path}")
         with open(config_path, "r", encoding="utf-8") as f:
             return json.load(f)
+
+    # Try workspace download via SDK
+    if config_path.startswith("/Workspace") or config_path.startswith("/"):
+        try:
+            print(f"  Loading config via workspace API: {config_path}")
+            content = client.workspace.download(config_path)
+            return json.loads(content.read().decode("utf-8"))
+        except Exception as e:
+            print(f"  Workspace download failed: {e}")
 
     raise FileNotFoundError(f"Config file not found: {config_path}")
 

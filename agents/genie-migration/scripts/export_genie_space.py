@@ -1,4 +1,8 @@
 # Databricks notebook source
+# MAGIC %pip install databricks-sdk>=0.76.0 --quiet
+# MAGIC dbutils.library.restartPython()
+
+# COMMAND ----------
 """
 Export a Databricks Genie Space to a JSON file for version control.
 
@@ -15,6 +19,9 @@ Parameters (via job or widget):
 
 import json
 from datetime import datetime, timezone
+
+import os
+import re
 
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.dashboards import GenieSpace
@@ -82,19 +89,28 @@ def export_genie_space(space_id: str, output_path: str) -> dict:
         "serialized_space": space.serialized_space
     }
 
+    # Generate safe filename from title
+    safe_title = re.sub(r'[^\w\-]', '_', space.title.lower())
+
     # Ensure output path ends with .json
     if not output_path.endswith(".json"):
-        final_path = f"{output_path}/{space.title.replace(' ', '_').lower()}.json"
+        final_path = f"{output_path}/{safe_title}.json"
     else:
         final_path = output_path
 
-    # Write to workspace file
+    # Write to workspace file using native file I/O
+    # Convert /Workspace path to local filesystem path
     json_content = json.dumps(export_data, indent=2, ensure_ascii=False)
-    w.workspace.upload(
-        path=final_path,
-        content=json_content.encode("utf-8"),
-        overwrite=True
-    )
+
+    if final_path.startswith("/Workspace"):
+        # Workspace files are accessible via local filesystem in notebooks
+        local_path = final_path
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+        with open(local_path, "w", encoding="utf-8") as f:
+            f.write(json_content)
+    else:
+        # For non-workspace paths, use dbutils
+        dbutils.fs.put(f"file:{final_path}", json_content, overwrite=True)
 
     print(f"\nExported Genie Space:")
     print(f"  Title: {space.title}")
