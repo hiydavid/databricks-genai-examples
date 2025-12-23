@@ -18,12 +18,12 @@ variables:
     description: "Workspace path for Genie Space"
     default: "/Shared/genie_spaces"
 
-  # TODO: Genie Space config file to deploy (relative to bundle files root)
+  # Genie Space config file to deploy (must be provided via --var)
   genie_config:
     description: "Path to Genie Space JSON config file"
-    default: "/Workspace/Shared/.bundle/genie-migration/${bundle.target}/files/genie_spaces/sample_space.json"
+    default: ""
 
-  # TODO: Space ID for idempotent updates (set after first deploy)
+  # Space ID for idempotent updates (set after first deploy)
   space_id:
     description: "Existing Genie Space ID to update"
     default: ""
@@ -33,25 +33,15 @@ variables:
     description: "Source Genie Space ID to export"
     default: ""
 
-  # TODO: Output path for exports (directory - filename will be generated from space title)
+  # Output path for exports (directory - filename will be generated from space title)
   export_output:
     description: "Output directory for exported Genie Space config"
     default: "/Workspace/Shared/genie_exports"
-
-  # TODO: Production workspace host (for prod target)
-  prod_workspace_host:
-    description: "Production workspace URL"
-    default: ""
 
   # TODO: Service Principal application ID for job execution (required for SP auth)
   run_as_service_principal:
     description: "Service Principal application ID to run jobs as"
     default: ""
-
-artifacts:
-  genie_migration_wheel:
-    type: whl
-    path: .
 
 resources:
   jobs:
@@ -62,20 +52,11 @@ resources:
         service_principal_name: ${var.run_as_service_principal}
       tasks:
         - task_key: export
-          python_wheel_task:
-            package_name: genie_migration
-            entry_point: genie-export
-            parameters:
-              - "--space-id=${var.source_space_id}"
-              - "--output=${var.export_output}"
-              - "--verbose"
-          environment_key: default
-      environments:
-        - environment_key: default
-          spec:
-            client: "1"
-            dependencies:
-              - databricks-sdk>=0.76.0
+          notebook_task:
+            notebook_path: scripts/export_genie_space.py
+            base_parameters:
+              space_id: ${var.source_space_id}
+              output_path: ${var.export_output}
       timeout_seconds: 600
       max_concurrent_runs: 1
 
@@ -86,21 +67,13 @@ resources:
         service_principal_name: ${var.run_as_service_principal}
       tasks:
         - task_key: deploy
-          python_wheel_task:
-            package_name: genie_migration
-            entry_point: genie-deploy
-            parameters:
-              - "--config=${var.genie_config}"
-              - "--warehouse-id=${var.warehouse_id}"
-              - "--parent-path=${var.genie_parent_path}"
-              - "--verbose"
-          environment_key: default
-      environments:
-        - environment_key: default
-          spec:
-            client: "1"
-            dependencies:
-              - databricks-sdk>=0.76.0
+          notebook_task:
+            notebook_path: scripts/deploy_genie_space.py
+            base_parameters:
+              config_path: ${var.genie_config}
+              warehouse_id: ${var.warehouse_id}
+              parent_path: ${var.genie_parent_path}
+              space_id: ${var.space_id}
       timeout_seconds: 600
       max_concurrent_runs: 1
 
@@ -109,15 +82,14 @@ targets:
   dev:
     default: true
     workspace:
-      # Uncomment and set your dev workspace URL:
+      # TODO: Uncomment and set your dev workspace URL:
       # host: https://adb-<workspace-id>.<region>.azuredatabricks.net
       # Deploy to /Shared so Service Principal can access the files
       root_path: /Shared/.bundle/${bundle.name}/${bundle.target}
 
-  # Production target - set via variables or CI/CD
+  # Production target - host must be hardcoded (variables don't work here)
   prod:
     workspace:
-      host: ${var.prod_workspace_host}
+      # TODO: Set your production workspace URL:
+      host: https://adb-<workspace-id>.<region>.azuredatabricks.net
       root_path: /Shared/.bundle/${bundle.name}/${bundle.target}
-    variables:
-      warehouse_id: ${var.warehouse_id}

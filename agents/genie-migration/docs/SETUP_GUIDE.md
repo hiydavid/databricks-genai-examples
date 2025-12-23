@@ -77,8 +77,10 @@ You now have:
 1. Go to **Admin Settings** → **Identity and access** → **Service principals**
 2. Click **Add** → enter the Application ID
 3. Enable **Workspace access** and **Databricks SQL access**
-4. Go to **SQL Warehouses** → your warehouse → **Permissions** → Add SP with **Can Use**
-5. Create the folder `/Workspace/Shared/genie-spaces` and give SP **Can Manage** permission
+4. **Grant yourself "User" role on the SP**: Click on the SP → **Permissions** → **Grant access** → Add yourself with **User** role
+   > This is required to create jobs with `run_as` that reference this SP
+5. Go to **SQL Warehouses** → your warehouse → **Permissions** → Add SP with **Can Use**
+6. Create the folder `/Workspace/Shared/genie-spaces` and give SP **Can Manage** permission
 
 ---
 
@@ -90,16 +92,21 @@ Run the export job via DAB to extract the Genie Space configuration.
 # Configure CLI to point to SOURCE workspace
 databricks configure --host https://source-workspace.azuredatabricks.net
 
-# Deploy the bundle
-databricks bundle deploy --target dev
+# Deploy the bundle with source_space_id
+# NOTE: --var must be on deploy, not run (base_parameters are set at deploy time)
+databricks bundle deploy --target dev \
+    --var source_space_id="abc-123-your-source-space-id"
 
 # Run export job
-databricks bundle run export_genie_space \
-    --var source_space_id="abc-123-your-source-space-id" \
-    --var export_output="/Workspace/genie_spaces/my_space.json"
+databricks bundle run export_genie_space --target dev
+
+# Download exported JSON to local repo
+databricks workspace export \
+    /Workspace/Shared/genie_exports/<title>.json \
+    --file ./genie_spaces/my_space.json
 ```
 
-Then download the exported JSON from `/Workspace/genie_spaces/my_space.json` and commit to git.
+Then commit the downloaded JSON to git.
 
 **Where to find the source space ID**: Open the Genie Space → look at the URL:
 `https://source-workspace.azuredatabricks.net/genie/abc-123-your-source-space-id`
@@ -138,13 +145,13 @@ Run the deploy job via DAB. Since no space_id is provided, it creates a new spac
 # Configure CLI to point to DESTINATION workspace
 databricks configure --host https://dest-workspace.azuredatabricks.net
 
-# Deploy the bundle
-databricks bundle deploy --target dev
+# Deploy the bundle with genie_config pointing to bundle location
+# NOTE: --var must be on deploy, not run (base_parameters are set at deploy time)
+databricks bundle deploy --target dev \
+    --var genie_config="/Workspace/Shared/.bundle/genie-migration/dev/files/genie_spaces/my_space.json"
 
 # Run deploy job (creates new space since space_id is empty)
-databricks bundle run deploy_genie_space \
-    --var warehouse_id="your-dest-warehouse-id" \
-    --var genie_config="genie_spaces/my_space.json"
+databricks bundle run deploy_genie_space --target dev
 ```
 
 ### Via Azure DevOps Pipeline
@@ -173,10 +180,12 @@ SPACE_ID=xyz-789-new-dest-space-id
 Now that you have the destination space ID, future deployments will **update** the existing space instead of creating new ones.
 
 ```bash
-databricks bundle run deploy_genie_space \
-    --var warehouse_id="your-dest-warehouse-id" \
-    --var genie_config="genie_spaces/my_space.json" \
+# Deploy with both genie_config and space_id
+databricks bundle deploy --target dev \
+    --var genie_config="/Workspace/Shared/.bundle/genie-migration/dev/files/genie_spaces/my_space.json" \
     --var space_id="xyz-789-new-dest-space-id"
+
+databricks bundle run deploy_genie_space --target dev
 ```
 
 Output:
