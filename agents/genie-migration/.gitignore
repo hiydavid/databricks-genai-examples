@@ -19,4 +19,6 @@ __pycache__/
 
 # Local development
 *.local.json
-my_space.json
+
+# Note: Genie Space JSON configs in genie_spaces/ SHOULD be committed
+# Only ignore files with sensitive overrides
