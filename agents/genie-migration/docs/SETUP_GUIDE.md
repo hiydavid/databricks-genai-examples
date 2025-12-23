@@ -84,14 +84,14 @@ You now have:
 
 ## Step 3: Export from Source Workspace
 
-### Option A: Run via DAB (Recommended)
+Run the export job via DAB to extract the Genie Space configuration.
 
 ```bash
 # Configure CLI to point to SOURCE workspace
 databricks configure --host https://source-workspace.azuredatabricks.net
 
 # Deploy the bundle
-databricks bundle deploy --target dev --var warehouse_id=dummy
+databricks bundle deploy --target dev
 
 # Run export job
 databricks bundle run export_genie_space \
@@ -101,26 +101,8 @@ databricks bundle run export_genie_space \
 
 Then download the exported JSON from `/Workspace/genie_spaces/my_space.json` and commit to git.
 
-### Option B: Run Locally
-
-```bash
-# Point to SOURCE workspace
-export DATABRICKS_HOST="https://source-workspace.azuredatabricks.net"
-export ARM_TENANT_ID="your-tenant-id"
-export ARM_CLIENT_ID="your-client-id"
-export ARM_CLIENT_SECRET="your-client-secret"
-
-# Export (replace with your source Genie Space ID)
-python scripts/export_genie_space.py \
-    --space-id "abc-123-your-source-space-id" \
-    --output "genie_spaces/my_space.json" \
-    --verbose
-```
-
 **Where to find the source space ID**: Open the Genie Space → look at the URL:
 `https://source-workspace.azuredatabricks.net/genie/abc-123-your-source-space-id`
-
-Commit the exported JSON to your git repo.
 
 ---
 
@@ -132,6 +114,7 @@ Create a variable group for your **destination** workspace.
 2. Click **+ Variable group**
 3. Name it: `databricks-dev` (the pipeline expects `databricks-<environment>`)
 4. Add these variables:
+
 | Variable | Value | Secret? | Description |
 | ---------- | ------- | --------- | ------------- |
 | `DATABRICKS_HOST` | `https://dest-workspace.azuredatabricks.net` | No | **Destination** workspace URL |
@@ -149,14 +132,14 @@ Create a variable group for your **destination** workspace.
 
 ## Step 5: First Deployment (Creates New Space)
 
-### Option A: With DAB (Recommended)
+Run the deploy job via DAB. Since no space_id is provided, it creates a new space.
 
 ```bash
 # Configure CLI to point to DESTINATION workspace
 databricks configure --host https://dest-workspace.azuredatabricks.net
 
-# Deploy the bundle (builds wheel + creates job definitions)
-databricks bundle deploy --target dev --var warehouse_id="your-dest-warehouse-id"
+# Deploy the bundle
+databricks bundle deploy --target dev
 
 # Run deploy job (creates new space since space_id is empty)
 databricks bundle run deploy_genie_space \
@@ -164,30 +147,13 @@ databricks bundle run deploy_genie_space \
     --var genie_config="genie_spaces/my_space.json"
 ```
 
-### Option B: Runing Locally
-
-```bash
-# Point to DESTINATION workspace
-export DATABRICKS_HOST="https://dest-workspace.azuredatabricks.net"
-export ARM_TENANT_ID="your-tenant-id"
-export ARM_CLIENT_ID="your-client-id"
-export ARM_CLIENT_SECRET="your-client-secret"
-
-# Deploy (creates new space since no --space-id provided)
-python scripts/deploy_genie_space.py \
-    --config "genie_spaces/my_space.json" \
-    --warehouse-id "your-dest-warehouse-id" \
-    --parent-path "/Workspace/Shared/genie-spaces" \
-    --verbose
-```
-
-### Option C: Run via Azure DevOps Pipeline
+### Via Azure DevOps Pipeline
 
 Push your code and run the pipeline. Since `GENIE_SPACE_ID` is empty, it will create a new space.
 
 ### After First Deployment
 
-The script outputs:
+The job outputs:
 
 ```text
 Created Genie Space: xyz-789-new-dest-space-id
@@ -206,23 +172,11 @@ SPACE_ID=xyz-789-new-dest-space-id
 
 Now that you have the destination space ID, future deployments will **update** the existing space instead of creating new ones.
 
-### Via DAB (Recommended)
-
 ```bash
 databricks bundle run deploy_genie_space \
     --var warehouse_id="your-dest-warehouse-id" \
     --var genie_config="genie_spaces/my_space.json" \
     --var space_id="xyz-789-new-dest-space-id"
-```
-
-### Via Local Script
-
-```bash
-python scripts/deploy_genie_space.py \
-    --config "genie_spaces/my_space.json" \
-    --warehouse-id "your-dest-warehouse-id" \
-    --space-id "xyz-789-new-dest-space-id" \
-    --verbose
 ```
 
 Output:
@@ -237,8 +191,8 @@ Updated Genie Space: xyz-789-new-dest-space-id
 
 | ID | Where | When You Use It |
 | ---- | ------- | ----------------- |
-| **Source Space ID** | Source workspace | When running `export_genie_space.py --space-id` |
-| **Destination Space ID** | Destination workspace | When running `deploy_genie_space.py --space-id` (after first deploy) |
+| **Source Space ID** | Source workspace | When running export job with `--var source_space_id` |
+| **Destination Space ID** | Destination workspace | When running deploy job with `--var space_id` (after first deploy) |
 
 These are **different IDs** for **different spaces** in **different workspaces**.
 
