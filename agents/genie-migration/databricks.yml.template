@@ -59,17 +59,14 @@ resources:
             package_name: genie_migration
             entry_point: genie-export
             parameters:
-              - "--space-id"
-              - "${var.source_space_id}"
-              - "--output"
-              - "${var.export_output}"
+              - "--space-id=${var.source_space_id}"
+              - "--output=${var.export_output}"
               - "--verbose"
-          libraries:
-            - whl: ./dist/*.whl
           environment_key: default
       environments:
         - environment_key: default
           spec:
+            client: "1"
             dependencies:
               - databricks-sdk>=0.20.0
       timeout_seconds: 600
@@ -84,21 +81,15 @@ resources:
             package_name: genie_migration
             entry_point: genie-deploy
             parameters:
-              - "--config"
-              - "${var.genie_config}"
-              - "--warehouse-id"
-              - "${var.warehouse_id}"
-              - "--parent-path"
-              - "${var.genie_parent_path}"
-              - "--space-id"
-              - "${var.space_id}"
+              - "--config=${var.genie_config}"
+              - "--warehouse-id=${var.warehouse_id}"
+              - "--parent-path=${var.genie_parent_path}"
               - "--verbose"
-          libraries:
-            - whl: ./dist/*.whl
           environment_key: default
       environments:
         - environment_key: default
           spec:
+            client: "1"
             dependencies:
               - databricks-sdk>=0.20.0
       timeout_seconds: 600
