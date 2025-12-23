@@ -5,7 +5,7 @@ description = "Databricks Genie Space migration tools"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "databricks-sdk>=0.20.0",
+    "databricks-sdk>=0.76.0",
 ]
 
 [dependency-groups]

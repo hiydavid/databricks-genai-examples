@@ -1,4 +1,8 @@
 # Databricks notebook source
+# MAGIC %pip install databricks-sdk>=0.76.0 --quiet
+# MAGIC dbutils.library.restartPython()
+
+# COMMAND ----------
 """
 Deploy a Databricks Genie Space from a JSON configuration file.
 

@@ -1,4 +1,8 @@
 # Databricks notebook source
+# MAGIC %pip install databricks-sdk>=0.76.0 --quiet
+# MAGIC dbutils.library.restartPython()
+
+# COMMAND ----------
 """
 Export a Databricks Genie Space to a JSON file for version control.
 
@@ -18,6 +22,7 @@ from datetime import datetime, timezone
 
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.dashboards import GenieSpace
+from databricks.sdk.service.workspace import ImportFormat
 
 # COMMAND ----------
 # Parameters
@@ -93,6 +98,7 @@ def export_genie_space(space_id: str, output_path: str) -> dict:
     w.workspace.upload(
         path=final_path,
         content=json_content.encode("utf-8"),
+        format=ImportFormat.AUTO,
         overwrite=True
     )
 
