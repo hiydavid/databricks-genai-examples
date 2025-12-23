@@ -1,0 +1,22 @@
+# Databricks
+.databricks
+typings/
+
+# Python
+.venv
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# IDE
+.vscode
+.idea/
+
+# Environment files (may contain secrets)
+.env
+.env.*
+*.env
+
+# Local development
+*.local.json
+my_space.json

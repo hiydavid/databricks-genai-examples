@@ -1,0 +1,11 @@
+{
+  "_metadata": {
+    "exported_at": "2025-12-22T00:00:00+00:00",
+    "source_space_id": "your-source-space-id",
+    "source_workspace": "https://source-workspace.azuredatabricks.net",
+    "export_version": "1.0"
+  },
+  "title": "Sample Genie Space",
+  "description": "A sample Genie Space for demonstration purposes",
+  "serialized_space": "{\"version\":1,\"config\":{\"sample_questions\":[{\"id\":\"q1\",\"question\":\"What are the top 10 products by revenue?\"},{\"id\":\"q2\",\"question\":\"Show me sales trends by month\"},{\"id\":\"q3\",\"question\":\"Which customers have the highest lifetime value?\"},{\"id\":\"q4\",\"question\":\"What is our average order value?\"},{\"id\":\"q5\",\"question\":\"Show inventory levels by category\"}]},\"data_sources\":{\"tables\":[\"catalog.schema.products\",\"catalog.schema.orders\",\"catalog.schema.customers\"]},\"instructions\":\"This space provides access to product, order, and customer data. Revenue is calculated as quantity * unit_price. Always filter out cancelled orders unless explicitly requested.\"}"
+}

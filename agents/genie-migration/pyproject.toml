@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "genie-migration"
+version = "0.1.0"
+description = "Databricks Genie Space migration tools"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "databricks-sdk>=0.20.0",
+]
+
+[project.scripts]
+genie-export = "scripts.export_genie_space:main"
+genie-deploy = "scripts.deploy_genie_space:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["scripts*"]

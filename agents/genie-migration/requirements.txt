@@ -1,0 +1,12 @@
+# Genie Space Migration Dependencies
+#
+# Install with: pip install -r requirements.txt
+
+# Databricks SDK for Python
+# Provides unified authentication and Genie API access
+# https://databricks-sdk-py.readthedocs.io/
+databricks-sdk>=0.20.0
+
+# Databricks CLI (for asset bundle operations)
+# https://docs.databricks.com/dev-tools/cli/index.html
+databricks-cli>=0.18.0
