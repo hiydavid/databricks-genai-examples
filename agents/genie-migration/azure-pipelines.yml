@@ -1,0 +1,206 @@
+# Azure DevOps Pipeline for Genie Space Deployment
+#
+# This pipeline deploys Databricks Asset Bundles and Genie Spaces
+# using Service Principal authentication (no PAT tokens required).
+#
+# Prerequisites:
+# 1. Create a variable group in Azure DevOps with:
+#    - DATABRICKS_HOST: https://<workspace>.azuredatabricks.net
+#    - ARM_TENANT_ID: Azure AD tenant ID
+#    - ARM_CLIENT_ID: Service principal application ID
+#    - ARM_CLIENT_SECRET: Service principal secret (mark as secret)
+#    - WAREHOUSE_ID: SQL Warehouse ID for Genie Space
+#    - GENIE_SPACE_ID: (optional) Existing space ID to update. Leave empty for first deploy.
+#
+# 2. Grant the service principal:
+#    - Workspace access on target Databricks workspace
+#    - CAN EDIT on source Genie Space (for export)
+#    - USE CATALOG, USE SCHEMA, SELECT on underlying data
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - agents/genie-migration/**
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - agents/genie-migration/**
+
+parameters:
+  - name: environment
+    displayName: "Target Environment"
+    type: string
+    default: dev
+    values:
+      - dev
+      - prod
+
+  - name: genie_config
+    displayName: "Genie Space Config File"
+    type: string
+    default: "genie_spaces/sample_space.json"
+
+  - name: parent_path
+    displayName: "Workspace Path for Genie Space"
+    type: string
+    default: "/Shared/genie_spaces"
+
+variables:
+  - group: databricks-${{ parameters.environment }}
+  - name: TARGET
+    value: ${{ parameters.environment }}
+  - name: PYTHON_VERSION
+    value: "3.10"
+  - name: WORKING_DIR
+    value: "agents/genie-migration"
+
+stages:
+  # Validation stage - runs on PRs
+  - stage: Validate
+    displayName: "Validate Bundle"
+    condition: eq(variables['Build.Reason'], 'PullRequest')
+    jobs:
+      - job: ValidateBundle
+        displayName: "Validate DAB Configuration"
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(PYTHON_VERSION)
+            displayName: "Set up Python"
+
+          - script: |
+              pip install databricks-cli databricks-sdk
+            displayName: "Install Databricks tools"
+
+          - script: |
+              cd $(WORKING_DIR)
+              databricks bundle validate --target $(TARGET)
+            displayName: "Validate bundle configuration"
+            env:
+              DATABRICKS_HOST: $(DATABRICKS_HOST)
+              ARM_TENANT_ID: $(ARM_TENANT_ID)
+              ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+              ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+
+          - script: |
+              cd $(WORKING_DIR)
+              python -m py_compile scripts/export_genie_space.py
+              python -m py_compile scripts/deploy_genie_space.py
+            displayName: "Validate Python scripts"
+
+  # Deploy stage - runs on main branch
+  - stage: Deploy
+    displayName: "Deploy to ${{ parameters.environment }}"
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployGenie
+        displayName: "Deploy Genie Space"
+        pool:
+          vmImage: ubuntu-latest
+        environment: ${{ parameters.environment }}
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: $(PYTHON_VERSION)
+                  displayName: "Set up Python"
+
+                - script: |
+                    pip install databricks-cli databricks-sdk
+                  displayName: "Install Databricks tools"
+
+                - script: |
+                    cd $(WORKING_DIR)
+                    databricks bundle validate --target $(TARGET)
+                  displayName: "Validate bundle"
+                  env:
+                    DATABRICKS_HOST: $(DATABRICKS_HOST)
+                    ARM_TENANT_ID: $(ARM_TENANT_ID)
+                    ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+                    ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+
+                - script: |
+                    cd $(WORKING_DIR)
+                    databricks bundle deploy --target $(TARGET)
+                  displayName: "Deploy DAB resources"
+                  env:
+                    DATABRICKS_HOST: $(DATABRICKS_HOST)
+                    ARM_TENANT_ID: $(ARM_TENANT_ID)
+                    ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+                    ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+
+                - script: |
+                    cd $(WORKING_DIR)
+                    # Build deploy command - use --space-id if provided, otherwise --parent-path
+                    DEPLOY_CMD="python scripts/deploy_genie_space.py"
+                    DEPLOY_CMD="$DEPLOY_CMD --config ${{ parameters.genie_config }}"
+                    DEPLOY_CMD="$DEPLOY_CMD --warehouse-id $(WAREHOUSE_ID)"
+
+                    if [ -n "$(GENIE_SPACE_ID)" ]; then
+                      echo "Updating existing space: $(GENIE_SPACE_ID)"
+                      DEPLOY_CMD="$DEPLOY_CMD --space-id $(GENIE_SPACE_ID)"
+                    else
+                      echo "Creating new space in: ${{ parameters.parent_path }}"
+                      DEPLOY_CMD="$DEPLOY_CMD --parent-path ${{ parameters.parent_path }}"
+                    fi
+
+                    DEPLOY_CMD="$DEPLOY_CMD --verbose"
+                    eval $DEPLOY_CMD
+                  displayName: "Deploy Genie Space"
+                  env:
+                    DATABRICKS_HOST: $(DATABRICKS_HOST)
+                    ARM_TENANT_ID: $(ARM_TENANT_ID)
+                    ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+                    ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+
+  # Optional: Export stage for capturing existing spaces
+  - stage: Export
+    displayName: "Export Genie Space (Manual)"
+    condition: false  # Set to true or trigger manually when needed
+    jobs:
+      - job: ExportSpace
+        displayName: "Export Genie Space to JSON"
+        pool:
+          vmImage: ubuntu-latest
+        variables:
+          - name: SPACE_ID
+            value: ""  # Set via pipeline variable when running manually
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(PYTHON_VERSION)
+            displayName: "Set up Python"
+
+          - script: |
+              pip install databricks-sdk
+            displayName: "Install Databricks SDK"
+
+          - script: |
+              cd $(WORKING_DIR)
+              python scripts/export_genie_space.py \
+                --space-id "$(SPACE_ID)" \
+                --output "genie_spaces/exported_space.json" \
+                --verbose
+            displayName: "Export Genie Space"
+            env:
+              DATABRICKS_HOST: $(DATABRICKS_HOST)
+              ARM_TENANT_ID: $(ARM_TENANT_ID)
+              ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+              ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+
+          - publish: $(WORKING_DIR)/genie_spaces/exported_space.json
+            artifact: exported-genie-space
+            displayName: "Publish exported config"

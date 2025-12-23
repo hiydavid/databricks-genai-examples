@@ -1,0 +1,2 @@
+# This directory contains exported Genie Space configurations.
+# Export a space using: python scripts/export_genie_space.py --space-id <ID> --output genie_spaces/<name>.json

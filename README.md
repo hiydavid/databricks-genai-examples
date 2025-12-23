@@ -18,6 +18,7 @@ All materials are provided AS IS, without any guarantees or warranties, and are 
 * Text2SQL Agent with Databricks UC Managed MCP
 * Text2SQL Agent with LangChain
 * Async Agentic Task with Lakeflow Jobs
+* Genie Space Migration with DABs
 
 ## Batch Inference
 
