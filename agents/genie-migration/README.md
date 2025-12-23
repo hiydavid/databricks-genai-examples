@@ -20,7 +20,7 @@ See [docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md) for the complete setup walkthroug
 
 ```bash
 # Deploy bundle to your workspace
-databricks bundle deploy --target dev --var warehouse_id=<your-warehouse-id>
+databricks bundle deploy --target dev
 
 # Export a Genie Space
 databricks bundle run export_genie_space \
@@ -41,13 +41,13 @@ databricks bundle run deploy_genie_space \
 ## Project Structure
 
 ```text
-├── databricks.yml              # DAB bundle configuration (jobs, artifacts)
-├── pyproject.toml              # Python package config with entry points
+├── databricks.yml              # DAB bundle configuration (jobs)
+├── pyproject.toml              # Python dependencies for local dev
 ├── azure-pipelines.yml         # Azure DevOps CI/CD pipeline
 ├── scripts/
 │   ├── __init__.py             # Package marker
-│   ├── export_genie_space.py   # Export from source workspace
-│   └── deploy_genie_space.py   # Deploy to destination workspace
+│   ├── export_genie_space.py   # Export notebook (runs on Databricks)
+│   └── deploy_genie_space.py   # Deploy notebook (runs on Databricks)
 ├── genie_spaces/               # Exported Genie Space JSON configs
 │   └── sample_space.json       # Example config structure
 ├── docs/
