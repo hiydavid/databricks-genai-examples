@@ -85,6 +85,8 @@ targets:
 
 ### 2. Service Principal Setup (Both Workspaces)
 
+Supports both **Databricks managed SPs** and **Microsoft Entra ID SPs**. See [docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md) for detailed creation steps.
+
 1. **Add SP to workspace**: Admin Settings → Service principals → Add
 2. **Grant SP entitlements**: "Workspace access" and "Databricks SQL access"
 3. **Grant yourself "User" role on SP**: SP → Permissions → Grant access → Add yourself with "User" role
