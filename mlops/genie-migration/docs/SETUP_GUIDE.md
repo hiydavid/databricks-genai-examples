@@ -92,7 +92,8 @@ You now have:
 4. **Grant yourself "User" role on the SP**: Click on the SP → **Permissions** → **Grant access** → Add yourself with **User** role
    > This is required to create jobs with `run_as` that reference this SP
 5. Go to **SQL Warehouses** → your warehouse → **Permissions** → Add SP with **Can Use**
-6. Create the folder `/Workspace/Shared/genie_spaces` and give SP **Can Manage** permission
+6. **Grant SP access to the target folder**: Navigate to the `target_parent_path` folder (e.g., `/Workspace/Shared/genie_spaces`) → Right-click → **Permissions** → Add SP with **Can Manage**
+   > This is required for the SP to create Genie Spaces in this folder
 
 ---
 
@@ -133,12 +134,12 @@ Run the deploy job via DAB. Since no space_id is provided, it creates a new spac
 # Configure CLI to point to DESTINATION workspace
 databricks configure --host https://dest-workspace.azuredatabricks.net
 
-# Deploy the bundle with genie_config pointing to bundle location
+# Deploy the bundle with deploy_config_path pointing to bundle location
 # NOTE: --var must be on deploy, not run (base_parameters are set at deploy time)
 databricks bundle deploy --target dev \
-    --var genie_config="/Workspace/Shared/.bundle/genie-migration/dev/files/genie_spaces/my_space.json"
+    --var deploy_config_path="/Workspace/Shared/.bundle/genie-migration/dev/files/genie_spaces/my_space.json"
 
-# Run deploy job (creates new space since space_id is empty)
+# Run deploy job (creates new space since target_space_id is empty)
 databricks bundle run deploy_genie_space --target dev
 ```
 
@@ -164,10 +165,10 @@ SPACE_ID=xyz-789-new-dest-space-id
 Now that you have the destination space ID, future deployments will **update** the existing space instead of creating new ones.
 
 ```bash
-# Deploy with both genie_config and space_id
+# Deploy with both deploy_config_path and target_space_id
 databricks bundle deploy --target dev \
-    --var genie_config="/Workspace/Shared/.bundle/genie-migration/dev/files/genie_spaces/my_space.json" \
-    --var space_id="xyz-789-new-dest-space-id"
+    --var deploy_config_path="/Workspace/Shared/.bundle/genie-migration/dev/files/genie_spaces/my_space.json" \
+    --var target_space_id="xyz-789-new-dest-space-id"
 
 databricks bundle run deploy_genie_space --target dev
 ```
@@ -185,6 +186,6 @@ Updated Genie Space: xyz-789-new-dest-space-id
 | ID | Where | When You Use It |
 | ---- | ------- | ----------------- |
 | **Source Space ID** | Source workspace | When running export job with `--var source_space_id` |
-| **Destination Space ID** | Destination workspace | When running deploy job with `--var space_id` (after first deploy) |
+| **Destination Space ID** | Destination workspace | When running deploy job with `--var target_space_id` (after first deploy) |
 
 These are **different IDs** for **different spaces** in **different workspaces**.

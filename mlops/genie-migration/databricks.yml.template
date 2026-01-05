@@ -8,24 +8,24 @@ bundle:
   name: genie-migration
 
 variables:
-  # TODO: SQL Warehouse ID for Genie Space in target workspace
-  warehouse_id:
-    description: "SQL Warehouse ID for Genie Space"
+  # TODO: SQL Warehouse ID in target workspace
+  target_warehouse_id:
+    description: "SQL Warehouse ID in target workspace"
     default: ""
 
-  # TODO: Workspace path where Genie Space will be created
-  genie_parent_path:
-    description: "Workspace path for Genie Space"
+  # TODO: Workspace path where new Genie Spaces will be created
+  target_parent_path:
+    description: "Workspace path for new Genie Spaces"
     default: "/Shared/genie_spaces"
 
   # Genie Space config file to deploy (must be provided via --var)
-  genie_config:
+  deploy_config_path:
     description: "Path to Genie Space JSON config file"
     default: ""
 
-  # Space ID for idempotent updates (set after first deploy)
-  space_id:
-    description: "Existing Genie Space ID to update"
+  # Target Space ID for idempotent updates (set after first deploy)
+  target_space_id:
+    description: "Existing Genie Space ID to update (optional)"
     default: ""
 
   # TODO: Source space ID for export operations
@@ -70,10 +70,10 @@ resources:
           notebook_task:
             notebook_path: scripts/deploy_genie_space.py
             base_parameters:
-              config_path: ${var.genie_config}
-              warehouse_id: ${var.warehouse_id}
-              parent_path: ${var.genie_parent_path}
-              space_id: ${var.space_id}
+              config_path: ${var.deploy_config_path}
+              target_warehouse_id: ${var.target_warehouse_id}
+              target_parent_path: ${var.target_parent_path}
+              target_space_id: ${var.target_space_id}
       timeout_seconds: 600
       max_concurrent_runs: 1
 
