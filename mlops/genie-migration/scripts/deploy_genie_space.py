@@ -10,15 +10,15 @@ This notebook creates or updates a Genie Space in the target workspace using
 the serialized_space configuration exported from another workspace.
 
 Idempotent Behavior:
-    - If space_id is provided, updates that specific space (recommended)
-    - If no space_id, falls back to title-matching in parent_path
+    - If target_space_id is provided, updates that specific space (recommended)
+    - If no target_space_id, falls back to title-matching in target_parent_path
     - If no matching space exists, a new one will be created
 
 Parameters (via job or widget):
     - config_path: Path to the JSON config file (workspace path or relative to bundle)
-    - warehouse_id: SQL Warehouse ID in the target workspace
-    - parent_path: Workspace folder path for creating new spaces
-    - space_id: (optional) Existing Genie Space ID to update
+    - target_warehouse_id: SQL Warehouse ID in the target workspace
+    - target_parent_path: Workspace folder path for creating new spaces
+    - target_space_id: (optional) Existing Genie Space ID to update
 """
 
 import json
@@ -31,26 +31,26 @@ from databricks.sdk.service.dashboards import GenieSpace
 # Parameters
 
 dbutils.widgets.text("config_path", "", "Path to Genie Space JSON config")
-dbutils.widgets.text("warehouse_id", "", "SQL Warehouse ID")
-dbutils.widgets.text("parent_path", "", "Workspace path for new spaces")
-dbutils.widgets.text("space_id", "", "Existing Space ID to update (optional)")
+dbutils.widgets.text("target_warehouse_id", "", "SQL Warehouse ID in target workspace")
+dbutils.widgets.text("target_parent_path", "", "Workspace path for new spaces")
+dbutils.widgets.text("target_space_id", "", "Existing Space ID to update (optional)")
 
 config_path = dbutils.widgets.get("config_path")
-warehouse_id = dbutils.widgets.get("warehouse_id")
-parent_path = dbutils.widgets.get("parent_path")
-space_id = dbutils.widgets.get("space_id") or None  # Convert empty string to None
+target_warehouse_id = dbutils.widgets.get("target_warehouse_id")
+target_parent_path = dbutils.widgets.get("target_parent_path")
+target_space_id = dbutils.widgets.get("target_space_id") or None  # Convert empty string to None
 
 if not config_path:
     raise ValueError("config_path parameter is required")
-if not warehouse_id:
-    raise ValueError("warehouse_id parameter is required")
-if not space_id and not parent_path:
-    raise ValueError("Either space_id or parent_path must be provided")
+if not target_warehouse_id:
+    raise ValueError("target_warehouse_id parameter is required")
+if not target_space_id and not target_parent_path:
+    raise ValueError("Either target_space_id or target_parent_path must be provided")
 
 print(f"Config path: {config_path}")
-print(f"Warehouse ID: {warehouse_id}")
-print(f"Parent path: {parent_path}")
-print(f"Space ID: {space_id or '(not provided - will create new or match by title)'}")
+print(f"Target Warehouse ID: {target_warehouse_id}")
+print(f"Target Parent path: {target_parent_path}")
+print(f"Target Space ID: {target_space_id or '(not provided - will create new or match by title)'}")
 
 # COMMAND ----------
 # Helper functions
@@ -128,18 +128,18 @@ def load_config(client: WorkspaceClient, config_path: str) -> dict:
 
 def deploy_genie_space(
     config_path: str,
-    warehouse_id: str,
-    parent_path: Optional[str] = None,
-    space_id: Optional[str] = None
+    target_warehouse_id: str,
+    target_parent_path: Optional[str] = None,
+    target_space_id: Optional[str] = None
 ) -> str:
     """
     Deploy a Genie Space from a JSON configuration file.
 
     Args:
         config_path: Path to the JSON config file
-        warehouse_id: SQL Warehouse ID for the Genie Space
-        parent_path: Workspace folder path where space will be created (for new spaces)
-        space_id: Existing space ID to update (recommended over title-matching)
+        target_warehouse_id: SQL Warehouse ID in target workspace
+        target_parent_path: Workspace folder path where space will be created (for new spaces)
+        target_space_id: Existing space ID to update (recommended over title-matching)
 
     Returns:
         The space_id of the created/updated space
@@ -162,20 +162,20 @@ def deploy_genie_space(
         raise ValueError("Config file missing 'title' field")
 
     print(f"Deploying Genie Space: {title}")
-    print(f"  Warehouse ID: {warehouse_id}")
-    if space_id:
-        print(f"  Target Space ID: {space_id}")
+    print(f"  Target Warehouse ID: {target_warehouse_id}")
+    if target_space_id:
+        print(f"  Target Space ID: {target_space_id}")
     else:
-        print(f"  Parent Path: {parent_path}")
+        print(f"  Target Parent Path: {target_parent_path}")
     if "_metadata" in config:
         print(f"  Source: {config['_metadata'].get('source_workspace', 'unknown')}")
 
     # Determine if updating existing space or creating new
-    existing_space_id = space_id
+    existing_space_id = target_space_id
 
-    # Fall back to title-matching if no space_id provided
-    if not existing_space_id and parent_path:
-        existing_space_id = find_existing_space(w, parent_path, title)
+    # Fall back to title-matching if no target_space_id provided
+    if not existing_space_id and target_parent_path:
+        existing_space_id = find_existing_space(w, target_parent_path, title)
 
     if existing_space_id:
         # Update existing space
@@ -187,7 +187,7 @@ def deploy_genie_space(
             title=title,
             description=description,
             serialized_space=serialized_space,
-            warehouse_id=warehouse_id
+            warehouse_id=target_warehouse_id
         )
         final_space_id = existing_space_id
         action = "Updated"
@@ -196,11 +196,11 @@ def deploy_genie_space(
         print("  No existing space found, creating new...")
 
         result: GenieSpace = w.genie.create_space(
-            warehouse_id=warehouse_id,
+            warehouse_id=target_warehouse_id,
             serialized_space=serialized_space,
             title=title,
             description=description,
-            parent_path=parent_path
+            parent_path=target_parent_path
         )
         final_space_id = result.space_id
         action = "Created"
@@ -208,8 +208,8 @@ def deploy_genie_space(
     print(f"\n{action} Genie Space: {final_space_id}")
     print(f"  Title: {title}")
     print(f"  Workspace: {w.config.host}")
-    if parent_path:
-        print(f"  Path: {parent_path}/{final_space_id}")
+    if target_parent_path:
+        print(f"  Path: {target_parent_path}/{final_space_id}")
 
     return final_space_id
 
@@ -219,9 +219,9 @@ def deploy_genie_space(
 
 result_space_id = deploy_genie_space(
     config_path=config_path,
-    warehouse_id=warehouse_id,
-    parent_path=parent_path,
-    space_id=space_id
+    target_warehouse_id=target_warehouse_id,
+    target_parent_path=target_parent_path,
+    target_space_id=target_space_id
 )
 
 # Output for CI/CD piping

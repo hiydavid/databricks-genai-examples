@@ -43,7 +43,7 @@ As of December 2025, Databricks Asset Bundles don't natively support Genie Space
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  8. databricks bundle validate --target prod                                │
 │  9. databricks bundle deploy --target prod \                                │
-│       --var genie_config=/Workspace/Shared/.bundle/.../genie_spaces/x.json  │
+│       --var deploy_config_path=/Workspace/Shared/.bundle/.../genie_spaces/x.json│
 │     → Syncs files + sets job parameters                                     │
 │ 10. databricks bundle run deploy_genie_space --target prod                  │
 │     → Creates/updates Genie Space from synced JSON                          │
@@ -62,7 +62,7 @@ Key settings:
 
 ```yaml
 variables:
-  warehouse_id:
+  target_warehouse_id:
     default: "<your-warehouse-id>"
 
   run_as_service_principal:
@@ -94,6 +94,7 @@ Supports both **Databricks managed SPs** and **Microsoft Entra ID SPs**. See [do
 4. **Grant SP permissions**:
    - Source: CAN EDIT on Genie Space (required for export)
    - Target: CAN USE on SQL Warehouse (required for deploy)
+   - Target: CAN MANAGE on `target_parent_path` folder (required to create Genie Spaces)
 
 ## Command Reference
 
@@ -125,15 +126,15 @@ git push
 # NOTE: --var must be on deploy, not run (base_parameters are set at deploy time)
 databricks bundle validate --target prod
 databricks bundle deploy --target prod \
-    --var genie_config=/Workspace/Shared/.bundle/genie-migration/prod/files/genie_spaces/<filename>.json
+    --var deploy_config_path=/Workspace/Shared/.bundle/genie-migration/prod/files/genie_spaces/<filename>.json
 
 # Run deploy job (first time - creates new space)
 databricks bundle run deploy_genie_space --target prod
 
 # Run deploy job (subsequent - updates existing space)
 databricks bundle deploy --target prod \
-    --var genie_config=/Workspace/Shared/.bundle/genie-migration/prod/files/genie_spaces/<filename>.json \
-    --var space_id=<existing-space-id>
+    --var deploy_config_path=/Workspace/Shared/.bundle/genie-migration/prod/files/genie_spaces/<filename>.json \
+    --var target_space_id=<existing-space-id>
 databricks bundle run deploy_genie_space --target prod
 ```
 
@@ -166,10 +167,10 @@ This field is portable and passed directly to `create_space()` or `update_space(
 
 ### Deployment Behavior
 
-| Scenario                   | Behavior                         |
-|----------------------------|----------------------------------|
-| No `--var space_id`        | Creates new space, outputs new ID |
-| With `--var space_id=<id>` | Updates existing space           |
+| Scenario                          | Behavior                         |
+|-----------------------------------|----------------------------------|
+| No `--var target_space_id`        | Creates new space, outputs new ID |
+| With `--var target_space_id=<id>` | Updates existing space           |
 
 **Note:** Target workspace gets a **different space_id** than source. Save the new ID for subsequent deployments.
 
