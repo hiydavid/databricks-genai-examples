@@ -22,6 +22,7 @@ Parameters (via job or widget):
 """
 
 import json
+import re
 from typing import Optional
 
 from databricks.sdk import WorkspaceClient
@@ -39,6 +40,17 @@ config_path = dbutils.widgets.get("config_path")
 target_warehouse_id = dbutils.widgets.get("target_warehouse_id")
 target_parent_path = dbutils.widgets.get("target_parent_path")
 target_space_id = dbutils.widgets.get("target_space_id") or None  # Convert empty string to None
+
+
+def validate_id(value: str, name: str, pattern: str) -> None:
+    """Validate that an ID matches expected format."""
+    if value and not re.match(pattern, value):
+        raise ValueError(f"Invalid {name} format: {value}")
+
+
+# Validate ID formats to prevent injection
+validate_id(target_space_id, "target_space_id", r"^[a-f0-9]{32}$")
+validate_id(target_warehouse_id, "target_warehouse_id", r"^[a-f0-9]{16}$")
 
 if not config_path:
     raise ValueError("config_path parameter is required")
