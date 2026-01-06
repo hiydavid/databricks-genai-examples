@@ -19,6 +19,7 @@ Parameters (via job or widget):
 
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 import os
 import re
@@ -97,6 +98,15 @@ def export_genie_space(space_id: str, output_path: str) -> dict:
         final_path = f"{output_path}/{safe_title}.json"
     else:
         final_path = output_path
+
+    # Validate path to prevent directory traversal attacks
+    ALLOWED_PREFIXES = ("/Workspace/Shared/", "/Workspace/Users/")
+    resolved = str(Path(final_path).resolve())
+    if not any(resolved.startswith(prefix) for prefix in ALLOWED_PREFIXES):
+        raise ValueError(
+            f"Output path must be under /Workspace/Shared/ or /Workspace/Users/. "
+            f"Got: {final_path}"
+        )
 
     # Write to workspace file using native file I/O
     # Convert /Workspace path to local filesystem path
