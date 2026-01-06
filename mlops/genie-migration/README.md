@@ -31,6 +31,7 @@ As of December 2025, Databricks Asset Bundles don't natively support Genie Space
 │  4. databricks workspace export \                                           │
 │       /Workspace/Shared/genie_exports/<title>.json \                        │
 │       --file ./genie_spaces/<filename>.json                                 │
+│     (Edit JSON here if catalog/schema names differ between environments)    │
 │                                                                             │
 │  5. git add genie_spaces/<filename>.json                                    │
 │  6. git commit -m "Export Genie Space: <title>"                             │
@@ -114,6 +115,8 @@ databricks workspace export \
     --file ./genie_spaces/<filename>.json
 ```
 
+> **Note:** If your target workspace uses different catalog/schema names, edit the JSON file before committing.
+
 ### Deploy (Target Workspace)
 
 ```bash
@@ -167,10 +170,10 @@ This field is portable and passed directly to `create_space()` or `update_space(
 
 ### Deployment Behavior
 
-| Scenario                          | Behavior                         |
-|-----------------------------------|----------------------------------|
+| Scenario                          | Behavior                          |
+|-----------------------------------|-----------------------------------|
 | No `--var target_space_id`        | Creates new space, outputs new ID |
-| With `--var target_space_id=<id>` | Updates existing space           |
+| With `--var target_space_id=<id>` | Updates existing space            |
 
 **Note:** Target workspace gets a **different space_id** than source. Save the new ID for subsequent deployments.
 
@@ -178,9 +181,9 @@ This field is portable and passed directly to `create_space()` or `update_space(
 
 | Limitation              | Impact                                               |
 |-------------------------|------------------------------------------------------|
-| New Space ID            | Target workspace gets different space_id than source |
 | No conversation history | Conversations are workspace-specific                 |
 | Permissions separate    | Unity Catalog grants must be configured separately   |
+| Table names unchanged   | `serialized_space` deployed as-is; edit JSON before commit if catalogs differ |
 
 ## References
 
