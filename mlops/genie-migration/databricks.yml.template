@@ -8,40 +8,50 @@ bundle:
   name: genie-migration
 
 variables:
-  # TODO: SQL Warehouse ID in target workspace
+  # ============================================================================
+  # DEPLOY JOB VARIABLES (set in targets.prod.variables below)
+  # ============================================================================
+
+  # SQL Warehouse ID in target workspace (set per-target, empty default for dev validation)
   target_warehouse_id:
     description: "SQL Warehouse ID in target workspace"
     default: ""
 
-  # TODO: Workspace path where new Genie Spaces will be created
+  # Workspace path where new Genie Spaces will be created (set per-target, empty default for dev validation)
   target_parent_path:
     description: "Workspace path for new Genie Spaces"
-    default: "/Shared/genie_spaces"
+    default: ""
 
-  # Genie Space config file to deploy (must be provided via --var)
+  # Genie Space config file to deploy (passed via --var on deploy command)
   deploy_config_path:
     description: "Path to Genie Space JSON config file"
     default: ""
 
-  # Target Space ID for idempotent updates (set after first deploy)
+  # Target Space ID for idempotent updates (passed via --var for updates)
   target_space_id:
     description: "Existing Genie Space ID to update (optional)"
     default: ""
 
-  # TODO: Source space ID for export operations
+  # ============================================================================
+  # EXPORT JOB VARIABLES
+  # ============================================================================
+
+  # Source space ID for export operations (passed via --var or set default)
   source_space_id:
     description: "Source Genie Space ID to export"
     default: ""
 
-  # Output path for exports (directory - filename will be generated from space title)
+  # Output path for exports (directory - filename generated from space title)
   export_output:
     description: "Output directory for exported Genie Space config"
     default: "/Workspace/Shared/genie_exports"
 
-  # TODO: Service Principal application ID for job execution (required for SP auth)
+  # ============================================================================
+  # SERVICE PRINCIPAL (set per-target below - each workspace has its own SP)
+  # ============================================================================
+
   run_as_service_principal:
     description: "Service Principal application ID to run jobs as"
-    default: ""
 
 resources:
   jobs:
@@ -78,18 +88,29 @@ resources:
       max_concurrent_runs: 1
 
 targets:
-  # Development target - configure via DATABRICKS_HOST env var or update host below
+  # Source workspace (for export operations)
+  # TODO: Update host and run_as_service_principal for your source workspace
   dev:
     default: true
     workspace:
-      # TODO: Uncomment and set your dev workspace URL:
-      # host: https://adb-<workspace-id>.<region>.azuredatabricks.net
-      # Deploy to /Shared so Service Principal can access the files
-      root_path: /Shared/.bundle/${bundle.name}/${bundle.target}
-
-  # Production target - host must be hardcoded (variables don't work here)
-  prod:
-    workspace:
-      # TODO: Set your production workspace URL:
+      # TODO: Set your source (dev) workspace URL:
       host: https://adb-<workspace-id>.<region>.azuredatabricks.net
       root_path: /Shared/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      # TODO: Set your source workspace Service Principal application ID:
+      run_as_service_principal: "<source-sp-application-id>"
+
+  # Target workspace (for deploy operations)
+  # TODO: Update host, run_as_service_principal, warehouse, and parent_path
+  prod:
+    workspace:
+      # TODO: Set your target (prod) workspace URL:
+      host: https://adb-<workspace-id>.<region>.azuredatabricks.net
+      root_path: /Shared/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      # TODO: Set your target workspace Service Principal application ID:
+      run_as_service_principal: "<target-sp-application-id>"
+      # TODO: Set your target workspace SQL Warehouse ID:
+      target_warehouse_id: "<target-warehouse-id>"
+      # TODO: Set the folder path where Genie Spaces will be created:
+      target_parent_path: "/Workspace/Shared/genie"

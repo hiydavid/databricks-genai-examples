@@ -63,26 +63,31 @@ Key settings:
 
 ```yaml
 variables:
-  target_warehouse_id:
-    default: "<your-warehouse-id>"
-
-  run_as_service_principal:
-    default: "<your-sp-application-id>"  # Use application ID, not display name
-
   source_space_id:
     default: "<genie-space-id-to-export>"
 
 targets:
-  dev:  # Source workspace
+  dev:  # Source workspace (for export)
     workspace:
       host: https://adb-<source-workspace-id>.<region>.azuredatabricks.net
       root_path: /Shared/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      run_as_service_principal: "<source-sp-application-id>"
 
-  prod:  # Target workspace
+  prod:  # Target workspace (for deploy)
     workspace:
       host: https://adb-<target-workspace-id>.<region>.azuredatabricks.net
       root_path: /Shared/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      run_as_service_principal: "<target-sp-application-id>"
+      target_warehouse_id: "<target-warehouse-id>"
+      target_parent_path: "/Workspace/Shared/genie"
 ```
+
+Each target uses its own Service Principal, allowing separate SPs scoped to each workspace:
+
+- **dev target**: SP with access to the source workspace (for export)
+- **prod target**: SP with access to the target workspace (for deploy)
 
 ### 2. Service Principal Setup (Both Workspaces)
 
