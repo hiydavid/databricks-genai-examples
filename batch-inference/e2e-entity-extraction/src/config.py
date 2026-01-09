@@ -92,6 +92,12 @@ class Config:
     endpoint_name: str
     llm_endpoint: str
     eval_sample_rate: float
+    # MLflow
+    mlflow_experiment_id: str
+    # Databricks authentication
+    databricks_host: str
+    secret_scope: str
+    secret_key: str
 
     @classmethod
     def from_yaml(cls, config_path: Optional[str] = None) -> "Config":
@@ -111,6 +117,10 @@ class Config:
             endpoint_name=cfg["model"]["endpoint_name"],
             llm_endpoint=cfg["llm"]["endpoint"],
             eval_sample_rate=cfg["evaluation"]["sample_rate"],
+            mlflow_experiment_id=cfg["mlflow"]["experiment_id"],
+            databricks_host=cfg["databricks"]["host"],
+            secret_scope=cfg["databricks"]["secret_scope"],
+            secret_key=cfg["databricks"]["secret_key"],
         )
 
     @property

@@ -1,0 +1,91 @@
+Loaded document: doc_39aebd3aa920
+Text length: 5712 characters
+First 500 chars:
+Standard Insurance Company
+
+866.851.5505 Tel 402.328.4029 Fax
+PO Box 85508 Lincoln NE 68501-5508
+
+Accident Benefits
+Employee's Statement
+
+A. About the Insured
+
+<table><tr><td>Full Name</td><td colspan="3">Alice Anderson</td><td>Employer/Company Name</td><td>Acme Corp</td></tr><tr><td>Group Policy No</td><td>Social Security No.</td><td>123-45-6789</td><td>Date of Birth</td><td>1/1/1980</td></tr><tr><td>Sex</td><td>Phone No.</td><td>315-315-3155</td><td>Mailing Address</td><td>123 4th Ave</td></tr><tr><td>Male &#9744; Female &#9744;</td><td></td><td></td><td>City</td><td>State</td><td>ZIP</td></tr><tr><td></td><td></td><td></td><td>Smalltown</td><td>CA</td><td>90009</td></tr></table>
+
+<table><tr><td>B. About the Patient - Check One</td><td><input type="checkbox" checked></td><td>You</td><td><input type="checkbox"></td><td>Spouse</td><td><input type="checkbox"></td><td>Domestic Partner</td><td><input type="checkbox"></td><td>Civil Union Partner</td><td><input type="checkbox"></td><td>Child</td><td><input type="checkbox"></td></tr><tr><td></td><td colspan="5"><input type="checkbox"> Other</td><td><input type="text"></td></tr></table>
+
+If the Insured is the Patient, then you do not need to complete this section again.
+
+If this is an Accidental Death Claim and you are the Beneficiary, please complete this section with your information. A separate form will need to be completed and signed for each beneficiary.
+
+<table><tr><td>Full Name</td><td></td><td>Social Security No.</td><td>Date of Birth</td></tr><tr><td colspan="4">Relationship to Insured (if an Accidental Death Claim)</td></tr><tr><td></td><td>Sex<br><input type="checkbox"> Male <input type="checkbox"> Female</td><td>Phone No.</td><td></td></tr><tr><td>Mailing Address</td><td>City</td><td>State</td><td>ZIP</td></tr><tr><td></td><td></td><td></td><td></td></tr></table>
+
+C. About the Accident
+
+<table><tr><td>Date of Accident</td><td>1/1/2026</td><td>Location of Accident (City, State)</td><td>Bigtown, CA</td></tr><tr><td colspan="4">Explain the injuries and how the accident happened (include additional information on a separate sheet of paper if needed):</td></tr><tr><td colspan="4">Minor bruise on forehead due to car accident.</td></tr><tr><td>Was the Patient in a motor vehicle accident?</td><td><input type="checkbox" checked> Yes (Attach accident report.) <input type="checkbox"> No</td></tr><tr><td>Was the Patient in any other type of accident that required an incident report?</td><td><input type="checkbox"> Yes (Attach the incident report.) <input type="checkbox" checked> No</td></tr><tr><td>Was the Patient at work when the accident occurred?</td><td><input type="checkbox"> Yes (Attach a copy of the report filed with the employer.) <input type="checkbox" checked> No</td></tr><tr><td>Was the Patient hospitalized?</td><td><input type="checkbox"> Yes <input type="checkbox" checked> No</td></tr><tr><td colspan="2">If Yes, complete the following:</td></tr><tr><td>Admission Date</td><td><input type="text"></td><td>Discharge Date</td><td><input type="text"></td></tr><tr><td>Name of Hospital</td><td><input type="text"></td><td>City</td><td><input type="text"></td><td>State</td><td><input type="text"></td><td>County</td><td><input type="text"></td></tr></table>
+
+D. Additional Benefits Claimed
+
+<table><tr><td><input type="checkbox"></td><td>Lodging Benefit - attach copies of receipts for lodging</td></tr><tr><td><input type="checkbox" checked></td><td>Transportation Benefit - attach copies of receipts for travel or provide mileage here if traveled by personal car <input type="text"></td></tr><tr><td><input type="checkbox"></td><td>Youth Organized Sport Benefit - attach proof of the Child's registration in the Organized Sport Event.</td></tr><tr><td><input type="checkbox"></td><td>Accidental Death Benefit - Date Death Occurred <input type="text">. Please attach a copy of the Death Certificate.</td></tr></table>
+
+E. Acknowledgement
+
+I hereby certify that the answers I have made to the foregoing questions are both complete and true to the best of my knowledge and belief. I acknowledge that I have read the fraud notices on page 3 of this Claim Packet.
+
+<table><tr><td>Signature of Insured/Beneficiary</td><td>Allee Anderson</td><td>Date</td><td>1/6/2026</td></tr></table>
+
+S1 17502
+
+2 of 8
+
+(1/25)
+
+Standard Insurance Company
+
+866.851.5505 Tel 402.328.4029 Fax
+PO Box 85508 Lincoln NE 68501-5508
+
+Accident Benefits
+
+Attending Physician's Statement
+
+C. Accidental Dismemberment and Impairment (if applicable)
+
+- to be completed by Attending Physician. Please attach
+
+supporting documentation.
+
+Did the accident result in a loss of hearing in one or both ears? Yes No
+
+If Yes, then please describe
+
+Did the accident result in a loss of sight in one of both eyes? Yes No
+
+If Yes, then please describe
+
+Did the accident result in a loss of limb(s)? □ Yes ☑ No
+
+If Yes, then please describe
+
+Did the accident result in paralysis? Yes No
+
+If Yes, then please describe
+
+D. Attending Physician Information, Acknowledgement and Signature
+
+<table><tr><td>Name of Physician</td><td>Tom Medic</td><td>Specialty</td><td colspan="3">Family Practice</td></tr><tr><td colspan="2">Address</td><td colspan="4">789 9th Ave</td></tr><tr><td>City</td><td></td><td>State</td><td>CA</td><td>ZIP</td><td>90009</td></tr><tr><td>Phone No.</td><td>484-484-4844</td><td></td><td>Fax No.</td><td></td><td></td></tr></table>
+
+Acknowledgement
+
+I hereby certify that the answers I have made to the foregoing questions are both complete and true to the best of my knowledge and belief. I acknowledge that I have read the fraud notice on page 8 of this form.
+
+Physician's Signature Tom Medic
+
+Date 1/6/2026
+
+S1 17502
+
+7 of 8
+
+(1/25)...
