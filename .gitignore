@@ -2,8 +2,8 @@
 .claude
 .mcp.json
 CLAUDE.md
+.env.local
 .env
-.env.*
 *.key
 *.pem
 .claude/

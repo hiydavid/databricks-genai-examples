@@ -1,0 +1,29 @@
+# Unity Catalog Configuration
+catalog: ""
+schema: ""
+
+# Volume paths
+volumes:
+  source_documents: /Volumes/${catalog}/${schema}/source_documents
+  checkpoints: /Volumes/${catalog}/${schema}/checkpoints
+
+# Table names
+tables:
+  raw_documents: raw_documents
+  parsed_documents: parsed_documents
+  extracted_claims: extracted_claims
+  final_claims: claims
+  evaluation: evaluation_dataset
+
+# Model Serving
+model:
+  name: claims-extraction-agent
+  endpoint_name: claims-extraction-agent
+
+# LLM Configuration
+llm:
+  endpoint: databricks-claude-sonnet-4-5
+
+# Evaluation
+evaluation:
+  sample_rate: 0.1

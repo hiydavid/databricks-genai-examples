@@ -1,0 +1,54 @@
+# Databricks Asset Bundle configuration for e2e-entity-extraction
+# Copy this file to databricks.yml and fill in your workspace details
+
+bundle:
+  name: e2e-entity-extraction
+
+variables:
+  catalog:
+    description: Unity Catalog name
+    default: main
+  schema:
+    description: Schema name within the catalog
+    default: claims_extraction
+  source_volume:
+    description: Volume path for source PDF documents
+    default: /Volumes/${var.catalog}/${var.schema}/source_documents
+  checkpoint_volume:
+    description: Volume path for streaming checkpoints
+    default: /Volumes/${var.catalog}/${var.schema}/checkpoints
+  endpoint_name:
+    description: Model serving endpoint name
+    default: claims-extraction-agent
+  llm_endpoint:
+    description: Foundation model endpoint for LLM calls
+    default: databricks-claude-sonnet-4-5
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: # Your Databricks workspace URL (e.g., https://adb-xxx.xx.azuredatabricks.net)
+    variables:
+      catalog: dev_catalog
+      schema: claims_extraction_dev
+
+  staging:
+    mode: development
+    workspace:
+      host: # Your Databricks workspace URL
+    variables:
+      catalog: staging_catalog
+      schema: claims_extraction_staging
+
+  prod:
+    mode: production
+    workspace:
+      host: # Your Databricks workspace URL
+    variables:
+      catalog: prod_catalog
+      schema: claims_extraction
