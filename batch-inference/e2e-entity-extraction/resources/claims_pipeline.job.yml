@@ -1,0 +1,117 @@
+# Lakeflow Job Definition for Claims Extraction Pipeline
+# This job orchestrates the end-to-end claims processing workflow
+
+resources:
+  jobs:
+    claims_extraction_pipeline:
+      name: claims-extraction-pipeline
+      description: "End-to-end medical claims extraction pipeline"
+
+      # Job-level settings
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+
+      # Environment variables passed to all tasks
+      job_clusters:
+        - job_cluster_key: shared_cluster
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "i3.xlarge"
+            num_workers: 0  # Serverless
+            data_security_mode: SINGLE_USER
+            spark_env_vars:
+              CATALOG: ${var.catalog}
+              SCHEMA: ${var.schema}
+              SOURCE_VOLUME_PATH: ${var.source_volume}
+              CHECKPOINT_VOLUME_PATH: ${var.checkpoint_volume}
+              ENDPOINT_NAME: ${var.endpoint_name}
+              LLM_ENDPOINT: ${var.llm_endpoint}
+
+      tasks:
+        # Task 1: Ingest and parse documents
+        - task_key: ingest_documents
+          description: "Parse PDFs from volume using ai_parse_document"
+          notebook_task:
+            notebook_path: ../src/02_ingest.py
+            source: WORKSPACE
+          job_cluster_key: shared_cluster
+          timeout_seconds: 3600
+
+        # Task 2: Classify and extract
+        - task_key: classify_extract
+          description: "Call agent endpoint for classification and extraction"
+          depends_on:
+            - task_key: ingest_documents
+          notebook_task:
+            notebook_path: ../src/03_classify_extract.py
+            source: WORKSPACE
+          job_cluster_key: shared_cluster
+          timeout_seconds: 7200  # Allow more time for LLM calls
+
+        # Task 3: Postprocessing
+        - task_key: postprocess
+          description: "Transform to final claims table"
+          depends_on:
+            - task_key: classify_extract
+          notebook_task:
+            notebook_path: ../src/04_postprocessing.py
+            source: WORKSPACE
+          job_cluster_key: shared_cluster
+          timeout_seconds: 1800
+
+      # Email notifications (optional)
+      email_notifications:
+        on_failure:
+          - # Add email addresses for failure notifications
+
+    # Separate job for agent deployment
+    deploy_agent:
+      name: claims-extraction-agent-deploy
+      description: "Deploy the claims extraction agent to Model Serving"
+
+      max_concurrent_runs: 1
+
+      tasks:
+        - task_key: deploy
+          description: "Create and deploy the PyFunc agent"
+          notebook_task:
+            notebook_path: ../src/01_create_deploy_agent.py
+            source: WORKSPACE
+            base_parameters:
+              CATALOG: ${var.catalog}
+              SCHEMA: ${var.schema}
+              MODEL_NAME: claims-extraction-agent
+              ENDPOINT_NAME: ${var.endpoint_name}
+              LLM_ENDPOINT: ${var.llm_endpoint}
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "i3.xlarge"
+            num_workers: 0
+            data_security_mode: SINGLE_USER
+          timeout_seconds: 3600
+
+    # Separate job for evaluation (run manually)
+    evaluation:
+      name: claims-extraction-evaluation
+      description: "Run MLflow evaluation on the extraction agent"
+
+      max_concurrent_runs: 1
+
+      tasks:
+        - task_key: evaluate
+          description: "Evaluate model and set up monitoring"
+          notebook_task:
+            notebook_path: ../src/05_evaluation.py
+            source: WORKSPACE
+            base_parameters:
+              CATALOG: ${var.catalog}
+              SCHEMA: ${var.schema}
+              ENDPOINT_NAME: ${var.endpoint_name}
+              EVAL_SAMPLE_RATE: "0.1"
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "i3.xlarge"
+            num_workers: 0
+            data_security_mode: SINGLE_USER
+          timeout_seconds: 3600
