@@ -20,6 +20,16 @@ model:
   name: claims-extraction-agent
   endpoint_name: claims-extraction-agent
 
+# MLflow Configuration
+mlflow:
+  experiment_id: "123456789"  # Update with your experiment ID
+
+# Databricks Configuration
+databricks:
+  host: https://your-workspace.cloud.databricks.com  # Update with your workspace URL
+  secret_scope: your-secret-scope  # Secret scope containing the PAT
+  secret_key: databricks-pat  # Key name for the PAT token
+
 # LLM Configuration
 llm:
   endpoint: databricks-claude-sonnet-4-5

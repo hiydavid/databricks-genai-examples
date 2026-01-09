@@ -7,7 +7,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install -r ../requirements.txt --quiet
+# MAGIC %pip install -r ../../requirements.txt --quiet
 # MAGIC %restart_python
 
 # COMMAND ----------
@@ -34,7 +34,7 @@ from pyspark.sql.types import (
 
 # COMMAND ----------
 
-# MAGIC %run ./config
+# MAGIC %run ../config
 
 # COMMAND ----------
 

@@ -7,7 +7,7 @@
 
 # COMMAND ----------
 
-# MAGIC %run ./config
+# MAGIC %run ../config
 
 # COMMAND ----------
 
