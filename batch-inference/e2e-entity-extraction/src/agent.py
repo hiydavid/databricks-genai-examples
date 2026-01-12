@@ -13,7 +13,6 @@ import mlflow
 from mlflow.pyfunc import PythonModel
 from pydantic import BaseModel, Field
 
-
 # --- Input/Output Schemas ---
 
 
@@ -37,7 +36,7 @@ class Classification(BaseModel):
     )
 
 
-# --- Extraction Sub-Schemas (based on Standard Insurance Accident Benefits forms) ---
+# --- Extraction Sub-Schemas ---
 
 
 class InsuredInfo(BaseModel):
@@ -449,17 +448,22 @@ Use null for any fields not found in the document."""
         return Extraction(**extraction_data)
 
     @mlflow.trace(name="predict")
-    def predict(
-        self, context, model_input: list[dict[str, str]]
-    ) -> list[dict[str, Any]]:
+    def predict(self, context, model_input):
         """Process documents for classification and extraction.
 
-        Input: list of dicts with 'text' field containing document text.
+        Input: DataFrame or list of dicts with 'text' field containing document text.
+               (No type hints to ensure compatibility with ai_query's dataframe_records format)
         Output: list of dicts with classification and extraction results.
         """
+        # Handle both DataFrame (from dataframe_records) and list of dicts (from inputs)
+        if hasattr(model_input, "to_dict"):
+            records = model_input.to_dict(orient="records")
+        else:
+            records = model_input
+
         outputs = []
 
-        for doc in model_input:
+        for doc in records:
             try:
                 # Extract text from input
                 text = doc.get("text", "") if isinstance(doc, dict) else str(doc)

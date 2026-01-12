@@ -20,14 +20,12 @@ CHECKPOINT_VOLUME = cfg.checkpoint_volume
 # Table names
 PARSED_TABLE_FULL = cfg.parsed_table_full
 EXTRACTED_TABLE_FULL = cfg.extracted_table_full
-FINAL_TABLE_FULL = cfg.final_table_full
 EVAL_TABLE_FULL = cfg.eval_table_full
 
 # Checkpoint paths
 CHECKPOINTS = [
     f"{CHECKPOINT_VOLUME}/parse_documents",
-    f"{CHECKPOINT_VOLUME}/classify_extract",
-    f"{CHECKPOINT_VOLUME}/postprocessing",
+    f"{CHECKPOINT_VOLUME}/extract",
 ]
 
 # COMMAND ----------
@@ -41,7 +39,6 @@ CHECKPOINTS = [
 dbutils.widgets.dropdown("reset_checkpoints", "Yes", ["Yes", "No"], "Clear Checkpoints")
 dbutils.widgets.dropdown("reset_parsed", "Yes", ["Yes", "No"], "Drop Parsed Table")
 dbutils.widgets.dropdown("reset_extracted", "No", ["Yes", "No"], "Drop Extracted Table")
-dbutils.widgets.dropdown("reset_final", "No", ["Yes", "No"], "Drop Final Table")
 dbutils.widgets.dropdown("reset_eval", "No", ["Yes", "No"], "Drop Eval Table")
 
 # COMMAND ----------
@@ -78,9 +75,6 @@ if dbutils.widgets.get("reset_parsed") == "Yes":
 if dbutils.widgets.get("reset_extracted") == "Yes":
     tables_to_drop.append(EXTRACTED_TABLE_FULL)
 
-if dbutils.widgets.get("reset_final") == "Yes":
-    tables_to_drop.append(FINAL_TABLE_FULL)
-
 if dbutils.widgets.get("reset_eval") == "Yes":
     tables_to_drop.append(EVAL_TABLE_FULL)
 
@@ -109,6 +103,5 @@ print("=" * 60)
 print(f"Checkpoints cleared: {dbutils.widgets.get('reset_checkpoints')}")
 print(f"Parsed table dropped: {dbutils.widgets.get('reset_parsed')}")
 print(f"Extracted table dropped: {dbutils.widgets.get('reset_extracted')}")
-print(f"Final table dropped: {dbutils.widgets.get('reset_final')}")
 print(f"Eval table dropped: {dbutils.widgets.get('reset_eval')}")
 print("=" * 60)
