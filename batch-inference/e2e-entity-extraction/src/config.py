@@ -92,6 +92,10 @@ class Config:
     endpoint_name: str
     llm_endpoint: str
     eval_sample_rate: float
+    # Evaluation dataset creation
+    eval_dataset_size: int
+    eval_min_confidence: float
+    eval_sampling_strategy: str
     # MLflow
     mlflow_experiment_id: str
     # Databricks authentication
@@ -117,6 +121,9 @@ class Config:
             endpoint_name=cfg["model"]["endpoint_name"],
             llm_endpoint=cfg["llm"]["endpoint"],
             eval_sample_rate=cfg["evaluation"]["sample_rate"],
+            eval_dataset_size=cfg["evaluation"].get("dataset_size", 100),
+            eval_min_confidence=cfg["evaluation"].get("min_confidence", 0.7),
+            eval_sampling_strategy=cfg["evaluation"].get("sampling_strategy", "stratified"),
             mlflow_experiment_id=cfg["mlflow"]["experiment_id"],
             databricks_host=cfg["databricks"]["host"],
             secret_scope=cfg["databricks"]["secret_scope"],
