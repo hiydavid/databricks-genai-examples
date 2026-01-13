@@ -6,7 +6,6 @@ requires-python = ">=3.11"
 dependencies = [
     "mlflow[databricks]>=3.8.1",
     "databricks-sdk>=0.40.0",
-    "databricks-agents>=1.9.1",
     "pydantic>=2.0.0",
     "pyyaml>=6.0",
     "openai>=1.0.0"
