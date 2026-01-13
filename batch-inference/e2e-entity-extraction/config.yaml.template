@@ -9,10 +9,8 @@ volumes:
 
 # Table names
 tables:
-  raw_documents: raw_documents
   parsed_documents: parsed_documents
   extracted_claims: extracted_claims
-  final_claims: claims
   evaluation: evaluation_dataset
 
 # Model Serving
@@ -37,3 +35,6 @@ llm:
 # Evaluation
 evaluation:
   sample_rate: 0.1
+  dataset_size: 100  # Number of documents to sample for evaluation
+  min_confidence: 0.7  # Minimum classification confidence for ground truth
+  sampling_strategy: stratified  # "stratified" or "random"

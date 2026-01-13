@@ -24,6 +24,7 @@ All materials are provided AS IS, without any guarantees or warranties, and are 
 * CPU Model Serving Endpoint Batch Inference
 * Provisioned Throughput Endpoint Batch Inference with `ai_query`
 * Entity Resolution with `vector_search` and `ai_query`
+* PDF Parsing, Classification, Extraction with `ai_parse_document` and `ai_query`
 
 ## Context Engineering
 
