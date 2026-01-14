@@ -15,40 +15,40 @@ As of December 2025, Databricks Asset Bundles don't natively support Genie Space
 ## Cross-Workspace Migration Workflow
 
 ```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           SOURCE WORKSPACE                                  │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  1. databricks bundle validate --target dev                                 │
-│  2. databricks bundle deploy --target dev                                   │
-│  3. databricks bundle run export_genie_space --target dev                   │
-│     → Writes JSON to /Workspace/Shared/genie_exports/<title>.json           │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           LOCAL MACHINE                                     │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  4. databricks workspace export \                                           │
-│       /Workspace/Shared/genie_exports/<title>.json \                        │
-│       --file ./genie_spaces/<filename>.json                                 │
-│     (Edit JSON here if catalog/schema names differ between environments)    │
-│                                                                             │
-│  5. git add genie_spaces/<filename>.json                                    │
-│  6. git commit -m "Export Genie Space: <title>"                             │
-│  7. git push                                                                │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           TARGET WORKSPACE                                  │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  8. databricks bundle validate --target prod                                │
-│  9. databricks bundle deploy --target prod \                                │
-│       --var deploy_config_path=/Workspace/Shared/.bundle/.../genie_spaces/x.json│
-│     → Syncs files + sets job parameters                                     │
-│ 10. databricks bundle run deploy_genie_space --target prod                  │
-│     → Creates/updates Genie Space from synced JSON                          │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                                SOURCE WORKSPACE                                  │
+├──────────────────────────────────────────────────────────────────────────────────┤
+│  1. databricks bundle validate --target dev                                      │
+│  2. databricks bundle deploy --target dev                                        │
+│  3. databricks bundle run export_genie_space --target dev                        │
+│     → Writes JSON to /Workspace/Shared/genie_exports/<title>.json                │
+└──────────────────────────────────────────────────────────────────────────────────┘
+                                         │
+                                         ▼
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                                LOCAL MACHINE                                     │
+├──────────────────────────────────────────────────────────────────────────────────┤
+│  4. databricks workspace export \                                                │
+│       /Workspace/Shared/genie_exports/<title>.json \                             │
+│       --file ./genie_spaces/<filename>.json                                      │
+│     (Edit JSON here if catalog/schema names differ between environments)         │
+│                                                                                  │
+│  5. git add genie_spaces/<filename>.json                                         │
+│  6. git commit -m "Export Genie Space: <title>"                                  │
+│  7. git push                                                                     │
+└──────────────────────────────────────────────────────────────────────────────────┘
+                                         │
+                                         ▼
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                                TARGET WORKSPACE                                  │
+├──────────────────────────────────────────────────────────────────────────────────┤
+│  8. databricks bundle validate --target prod                                     │
+│  9. databricks bundle deploy --target prod \                                     │
+│       --var deploy_config_path=/Workspace/Shared/.bundle/.../genie_spaces/x.json │
+│     → Syncs files + sets job parameters                                          │
+│ 10. databricks bundle run deploy_genie_space --target prod                       │
+│     → Creates/updates Genie Space from synced JSON                               │
+└──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Setup
