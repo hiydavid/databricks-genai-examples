@@ -1,0 +1,38 @@
+resources:
+  jobs:
+    agent_deploy:
+      name: "retrieval-agent-deploy-${bundle.target}"
+      description: "Deploy agent only: log to MLflow, register in UC, and deploy to Model Serving"
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+        - name: mlflow_experiment
+          default: ${var.experiment_name}
+
+      tasks:
+        - task_key: deploy_agent
+          description: "Deploy updated retrieval agent to Model Serving"
+          notebook_task:
+            notebook_path: ../src/04_deployment.py
+            base_parameters:
+              catalog: "{{job.parameters.catalog}}"
+              schema: "{{job.parameters.schema}}"
+              mlflow_experiment: "{{job.parameters.mlflow_experiment}}"
+          timeout_seconds: 1800
+          job_cluster_key: deploy_cluster
+
+      job_clusters:
+        - job_cluster_key: deploy_cluster
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "Standard_DS3_v2"
+            num_workers: 0
+            spark_conf:
+              spark.master: "local[*, 4]"
+              spark.databricks.cluster.profile: singleNode

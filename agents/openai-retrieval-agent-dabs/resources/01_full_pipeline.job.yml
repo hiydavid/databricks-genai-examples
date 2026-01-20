@@ -1,0 +1,62 @@
+resources:
+  jobs:
+    full_pipeline:
+      name: "retrieval-agent-full-pipeline-${bundle.target}"
+      description: "Full end-to-end pipeline: ingest documents, create vector index, and deploy agent"
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+
+      tasks:
+        - task_key: ingest_documents
+          description: "Parse user guide PDFs with ai_parse_document"
+          notebook_task:
+            notebook_path: ../src/01_ingest_documents.py
+            base_parameters:
+              catalog: "{{job.parameters.catalog}}"
+              schema: "{{job.parameters.schema}}"
+          timeout_seconds: 3600
+          job_cluster_key: processing_cluster
+
+        - task_key: create_vector_index
+          description: "Create and sync Vector Search index from parsed documents"
+          depends_on:
+            - task_key: ingest_documents
+          notebook_task:
+            notebook_path: ../src/02_create_vector_index.py
+            base_parameters:
+              catalog: "{{job.parameters.catalog}}"
+              schema: "{{job.parameters.schema}}"
+              mode: "create"
+          timeout_seconds: 3600
+          job_cluster_key: processing_cluster
+
+        - task_key: deploy_agent
+          description: "Log, register, and deploy retrieval agent to Model Serving"
+          depends_on:
+            - task_key: create_vector_index
+          notebook_task:
+            notebook_path: ../src/04_deployment.py
+            base_parameters:
+              catalog: "{{job.parameters.catalog}}"
+              schema: "{{job.parameters.schema}}"
+              mlflow_experiment: ${var.experiment_name}
+          timeout_seconds: 1800
+          job_cluster_key: processing_cluster
+
+      job_clusters:
+        - job_cluster_key: processing_cluster
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "Standard_DS4_v2"
+            autoscale:
+              min_workers: 1
+              max_workers: 4
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode

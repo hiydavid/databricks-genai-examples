@@ -1,0 +1,45 @@
+resources:
+  jobs:
+    index_update:
+      name: "retrieval-agent-index-update-${bundle.target}"
+      description: "Update index only: re-parse documents and sync Vector Search index"
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+
+      tasks:
+        - task_key: ingest_documents
+          description: "Parse new/updated user guide PDFs"
+          notebook_task:
+            notebook_path: ../src/01_ingest_documents.py
+            base_parameters:
+              catalog: "{{job.parameters.catalog}}"
+              schema: "{{job.parameters.schema}}"
+          timeout_seconds: 3600
+          job_cluster_key: processing_cluster
+
+        - task_key: sync_vector_index
+          description: "Sync Vector Search index with updated documents"
+          depends_on:
+            - task_key: ingest_documents
+          notebook_task:
+            notebook_path: ../src/02_create_vector_index.py
+            base_parameters:
+              catalog: "{{job.parameters.catalog}}"
+              schema: "{{job.parameters.schema}}"
+              mode: "sync_only"
+          timeout_seconds: 1800
+          job_cluster_key: processing_cluster
+
+      job_clusters:
+        - job_cluster_key: processing_cluster
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "Standard_DS4_v2"
+            num_workers: 1

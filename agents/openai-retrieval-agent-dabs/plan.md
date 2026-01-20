@@ -51,10 +51,14 @@ agents/retrieval-agent-mcp/
 │   ├── 02_create_vector_index.py       # Vector Search index creation
 │   ├── 03_agent.py                     # Retrieval agent with MCP
 │   ├── 04_deployment.py                # MLflow logging and agents.deploy()
+│   ├── 05_evaluation.py                # Agent evaluation with MLflow
 │   └── utils/
 │       └── helpers.py                  # Shared utilities
 └── resources/
-    └── retrieval_pipeline.job.yml      # Lakeflow Jobs definition
+    ├── 01_full_pipeline.job.yml        # Full end-to-end pipeline (ingest → index → deploy)
+    ├── 02_index_update.job.yml         # Update VS index only (when docs change)
+    ├── 03_agent_deploy.job.yml         # Deploy agent only (code/config changes)
+    └── 04_evaluation.job.yml           # Run evaluation only
 ```
 
 ## Implementation Tasks
@@ -265,7 +269,7 @@ with mlflow.start_run():
             DatabricksServingEndpoint(endpoint_name=LLM_ENDPOINT_NAME),
             DatabricksVectorSearchIndex(index_name=VS_INDEX_NAME),
         ],
-        pip_requirements=["mlflow>=2.20", "openai", "databricks-mcp", "pydantic"],
+        pip_requirements=["mlflow==3.8.1", "openai", "databricks-mcp", "pydantic"],
     )
 
 # Register to Unity Catalog
@@ -287,7 +291,81 @@ print(f"Agent deployed: {UC_MODEL_NAME} v{uc_registered_model_info.version}")
 
 ---
 
-### Task 5: Configuration Files
+### Task 5: Evaluation (`05_evaluation.py`)
+
+**Purpose**: Evaluate agent quality using MLflow's evaluation framework
+
+**Key Components**:
+- Load evaluation dataset (questions + expected answers)
+- Run agent against evaluation set
+- Calculate metrics (answer relevance, faithfulness, retrieval quality)
+- Log results to MLflow
+
+**Implementation Details**:
+
+```python
+import mlflow
+from mlflow.deployments import get_deploy_client
+import pandas as pd
+
+# Set MLflow tracking
+mlflow.set_tracking_uri("databricks")
+mlflow.set_experiment(EXPERIMENT_PATH)
+
+# Load evaluation dataset
+eval_df = spark.read.table(f"{CATALOG}.{SCHEMA}.eval_dataset").toPandas()
+
+# Prepare evaluation data format
+eval_data = pd.DataFrame({
+    "inputs": [{"messages": [{"role": "user", "content": q}]} for q in eval_df["question"]],
+    "ground_truth": eval_df["expected_answer"].tolist()
+})
+
+# Get deployed agent endpoint
+client = get_deploy_client("databricks")
+
+def predict_fn(inputs):
+    """Wrapper to call the deployed agent"""
+    responses = []
+    for input_row in inputs["inputs"]:
+        response = client.predict(
+            endpoint=AGENT_ENDPOINT_NAME,
+            inputs=input_row
+        )
+        responses.append(response["choices"][0]["message"]["content"])
+    return responses
+
+# Run evaluation with MLflow
+with mlflow.start_run(run_name="agent_evaluation"):
+    results = mlflow.evaluate(
+        model=predict_fn,
+        data=eval_data,
+        targets="ground_truth",
+        model_type="question-answering",
+        evaluators="default",
+        extra_metrics=[
+            mlflow.metrics.genai.answer_relevance(),
+            mlflow.metrics.genai.faithfulness(),
+        ],
+        evaluator_config={
+            "col_mapping": {
+                "inputs": "inputs",
+                "ground_truth": "ground_truth"
+            }
+        }
+    )
+
+    # Log evaluation metrics
+    print(f"Evaluation Results:")
+    print(f"  Answer Relevance: {results.metrics['answer_relevance/mean']:.3f}")
+    print(f"  Faithfulness: {results.metrics['faithfulness/mean']:.3f}")
+```
+
+**Output**: MLflow run with evaluation metrics and per-example results
+
+---
+
+### Task 6: Configuration Files
 
 #### `configs.template.yaml`
 ```yaml
@@ -299,7 +377,7 @@ databricks_configs:
 agent_configs:
   agent_name: user-guide-retrieval-agent
   llm:
-    endpoint_name: "databricks-claude-3-7-sonnet"  # or databricks-meta-llama-3-3-70b-instruct
+    endpoint_name: "databricks-claude-haiku-4-5"
     temperature: 0.1
     max_tokens: 4096
   vector_search:
@@ -391,11 +469,14 @@ targets:
       host: https://YOUR_WORKSPACE.cloud.databricks.com
 ```
 
-#### `resources/retrieval_pipeline.job.yml` (Lakeflow Jobs)
+#### `resources/01_full_pipeline.job.yml` (Full End-to-End Pipeline)
+
+Use when: Initial setup or complete refresh of documents, index, and agent.
+
 ```yaml
 resources:
   jobs:
-    retrieval_pipeline:
+    full_pipeline:
       name: retrieval-agent-full-pipeline
       max_concurrent_runs: 1
       queue:
@@ -452,14 +533,145 @@ resources:
               max_workers: 4
 ```
 
+#### `resources/02_index_update.job.yml` (Index Update Only)
+
+Use when: New documents added to the source volume, need to re-parse and update the index without redeploying the agent.
+
+```yaml
+resources:
+  jobs:
+    index_update:
+      name: retrieval-agent-index-update
+      max_concurrent_runs: 1
+
+      parameters:
+        - name: catalog
+          default: main
+        - name: schema
+          default: default
+
+      tasks:
+        - task_key: ingest_documents
+          description: "Parse new/updated PDFs"
+          notebook_task:
+            notebook_path: ../src/01_ingest_documents.py
+            base_parameters:
+              catalog: "{{job.parameters.catalog}}"
+              schema: "{{job.parameters.schema}}"
+          timeout_seconds: 3600
+          job_cluster_key: processing_cluster
+
+        - task_key: sync_vector_index
+          description: "Sync Vector Search index with new documents"
+          depends_on:
+            - task_key: ingest_documents
+          notebook_task:
+            notebook_path: ../src/02_create_vector_index.py
+            base_parameters:
+              catalog: "{{job.parameters.catalog}}"
+              schema: "{{job.parameters.schema}}"
+              mode: "sync_only"  # Skip creation, just sync
+          timeout_seconds: 1800
+          job_cluster_key: processing_cluster
+
+      job_clusters:
+        - job_cluster_key: processing_cluster
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "Standard_DS4_v2"
+            num_workers: 1
+```
+
+#### `resources/03_agent_deploy.job.yml` (Agent Deploy Only)
+
+Use when: Agent code or configuration changed, need to redeploy without touching the index.
+
+```yaml
+resources:
+  jobs:
+    agent_deploy:
+      name: retrieval-agent-deploy-only
+      max_concurrent_runs: 1
+
+      parameters:
+        - name: catalog
+          default: main
+        - name: schema
+          default: default
+        - name: mlflow_experiment
+          default: ""
+
+      tasks:
+        - task_key: deploy_agent
+          description: "Deploy updated agent to Model Serving"
+          notebook_task:
+            notebook_path: ../src/04_deployment.py
+            base_parameters:
+              catalog: "{{job.parameters.catalog}}"
+              schema: "{{job.parameters.schema}}"
+              mlflow_experiment: "{{job.parameters.mlflow_experiment}}"
+          timeout_seconds: 1200
+          job_cluster_key: deploy_cluster
+
+      job_clusters:
+        - job_cluster_key: deploy_cluster
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "Standard_DS3_v2"
+            num_workers: 0
+            spark_conf:
+              spark.master: "local[*, 4]"
+```
+
+#### `resources/04_evaluation.job.yml` (Evaluation Only)
+
+Use when: Run evaluation against deployed agent to measure quality.
+
+```yaml
+resources:
+  jobs:
+    agent_evaluation:
+      name: retrieval-agent-evaluation
+      max_concurrent_runs: 1
+
+      parameters:
+        - name: catalog
+          default: main
+        - name: schema
+          default: default
+        - name: mlflow_experiment
+          default: ""
+
+      tasks:
+        - task_key: run_evaluation
+          description: "Evaluate agent quality with MLflow"
+          notebook_task:
+            notebook_path: ../src/05_evaluation.py
+            base_parameters:
+              catalog: "{{job.parameters.catalog}}"
+              schema: "{{job.parameters.schema}}"
+              mlflow_experiment: "{{job.parameters.mlflow_experiment}}"
+          timeout_seconds: 3600
+          job_cluster_key: eval_cluster
+
+      job_clusters:
+        - job_cluster_key: eval_cluster
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "Standard_DS3_v2"
+            num_workers: 0
+            spark_conf:
+              spark.master: "local[*, 4]"
+```
+
 ---
 
-### Task 6: Requirements (`requirements.txt`)
+### Task 7: Requirements (`requirements.txt`)
+
 ```
-mlflow>=2.20.0
+mlflow==3.8.1
 databricks-sdk>=0.40.0
 databricks-mcp>=0.1.0
-databricks-langchain>=0.2.0
 databricks-vectorsearch>=0.40.0
 openai>=1.50.0
 pydantic>=2.0.0
@@ -478,10 +690,11 @@ nest-asyncio>=1.5.0
 | 4 | Vector index creation script | `02_create_vector_index.py` | Task 1 output |
 | 5 | Agent implementation | `03_agent.py` | Configs, Vector Index |
 | 6 | Deployment script | `04_deployment.py` | Agent code |
-| 7 | DABs configuration | `databricks.template.yml` | All scripts |
-| 8 | Lakeflow Jobs definition | `retrieval_pipeline.job.yml` | All scripts |
-| 9 | Helper utilities | `utils/helpers.py` | None |
-| 10 | README documentation | `README.md` | All |
+| 7 | Evaluation script | `05_evaluation.py` | Deployed agent |
+| 8 | DABs configuration | `databricks.template.yml` | All scripts |
+| 9 | Job definitions | `resources/*.job.yml` | All scripts |
+| 10 | Helper utilities | `utils/helpers.py` | None |
+| 11 | README documentation | `README.md` | All |
 
 ---
 
@@ -560,7 +773,12 @@ print(response)
 2. **Vector Index**: Index created and synced with >95% documents embedded
 3. **Agent Response**: Agent correctly retrieves relevant context for user queries
 4. **Deployment**: Agent accessible via Model Serving endpoint
-5. **Pipeline**: Full pipeline runs successfully via DABs `databricks bundle deploy && databricks bundle run`
+5. **Evaluation**: Agent evaluation runs and logs metrics to MLflow
+6. **Pipelines**: Individual job pipelines run successfully via DABs:
+   - `databricks bundle run full_pipeline` - full end-to-end
+   - `databricks bundle run index_update` - index refresh only
+   - `databricks bundle run agent_deploy` - deploy only
+   - `databricks bundle run agent_evaluation` - evaluation only
 
 ---
 

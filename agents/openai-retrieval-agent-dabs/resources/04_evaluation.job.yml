@@ -1,0 +1,38 @@
+resources:
+  jobs:
+    agent_evaluation:
+      name: "retrieval-agent-evaluation-${bundle.target}"
+      description: "Evaluate agent quality using MLflow evaluation framework"
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+        - name: mlflow_experiment
+          default: ${var.experiment_name}
+
+      tasks:
+        - task_key: run_evaluation
+          description: "Run agent evaluation with MLflow"
+          notebook_task:
+            notebook_path: ../src/05_evaluation.py
+            base_parameters:
+              catalog: "{{job.parameters.catalog}}"
+              schema: "{{job.parameters.schema}}"
+              mlflow_experiment: "{{job.parameters.mlflow_experiment}}"
+          timeout_seconds: 3600
+          job_cluster_key: eval_cluster
+
+      job_clusters:
+        - job_cluster_key: eval_cluster
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "Standard_DS3_v2"
+            num_workers: 0
+            spark_conf:
+              spark.master: "local[*, 4]"
+              spark.databricks.cluster.profile: singleNode
