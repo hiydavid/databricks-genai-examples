@@ -22,7 +22,6 @@ resources:
               catalog: "{{job.parameters.catalog}}"
               schema: "{{job.parameters.schema}}"
           timeout_seconds: 3600
-          job_cluster_key: processing_cluster
 
         - task_key: create_vector_index
           description: "Create and sync Vector Search index from parsed documents"
@@ -35,7 +34,6 @@ resources:
               schema: "{{job.parameters.schema}}"
               mode: "create"
           timeout_seconds: 3600
-          job_cluster_key: processing_cluster
 
         - task_key: deploy_agent
           description: "Log, register, and deploy retrieval agent to Model Serving"
@@ -48,15 +46,3 @@ resources:
               schema: "{{job.parameters.schema}}"
               mlflow_experiment: ${var.experiment_name}
           timeout_seconds: 1800
-          job_cluster_key: processing_cluster
-
-      job_clusters:
-        - job_cluster_key: processing_cluster
-          new_cluster:
-            spark_version: "15.4.x-scala2.12"
-            node_type_id: "Standard_DS4_v2"
-            autoscale:
-              min_workers: 1
-              max_workers: 4
-            spark_conf:
-              spark.databricks.cluster.profile: singleNode
