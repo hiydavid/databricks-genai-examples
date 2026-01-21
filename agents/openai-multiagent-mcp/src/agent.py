@@ -53,7 +53,8 @@ SYSTEM_PROMPT = mlflow.genai.load_prompt(
 # Load other resources
 LLM_ENDPOINT_NAME = agent_config.get("llm").get("endpoint_name")
 UC_FUNCTIONS = tools_conifg.get("uc_functions")
-VECTOR_SEARCH_USER_NAME = tools_conifg.get("vector_search").get("user_name")
+VECTOR_SEARCH_CATALOG = tools_conifg.get("vector_search").get("catalog")
+VECTOR_SEARCH_SCHEMA = tools_conifg.get("vector_search").get("schema")
 GENIE_SPACE_ID = tools_conifg.get("genie").get("space_id")
 
 
@@ -71,9 +72,9 @@ if UC_FUNCTIONS:
             )
 
 # Add vector search MCP server
-if VECTOR_SEARCH_USER_NAME:
+if VECTOR_SEARCH_CATALOG and VECTOR_SEARCH_SCHEMA:
     MANAGED_MCP_SERVER_URLS.append(
-        f"{host}/api/2.0/mcp/vector-search/users/{VECTOR_SEARCH_USER_NAME}"
+        f"{host}/api/2.0/mcp/vector-search/{VECTOR_SEARCH_CATALOG}/{VECTOR_SEARCH_SCHEMA}"
     )
 
 # Add Genie MCP server
