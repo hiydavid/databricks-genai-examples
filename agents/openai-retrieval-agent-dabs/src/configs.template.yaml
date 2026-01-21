@@ -12,8 +12,8 @@ agent_configs:
   vector_search:
     endpoint_name: YOUR_VS_ENDPOINT_NAME
     index_name: YOUR_CATALOG.YOUR_SCHEMA.user_guide_chunks_index
-    user_name: YOUR_USERNAME
 
 document_configs:
   source_volume: /Volumes/YOUR_CATALOG/YOUR_SCHEMA/user_guides
   chunks_table: YOUR_CATALOG.YOUR_SCHEMA.user_guide_chunks
+  images_volume: /Volumes/YOUR_CATALOG/YOUR_SCHEMA/parsed_images

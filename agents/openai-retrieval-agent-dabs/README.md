@@ -14,10 +14,10 @@ This example demonstrates an end-to-end retrieval agent pipeline:
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                          ORCHESTRATION LAYER                                 │
-│                     (DABs + Lakeflow Jobs Pipeline)                          │
+│                          ORCHESTRATION LAYER                                │
+│                     (DABs + Lakeflow Jobs Pipeline)                         │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
         ┌───────────────────────────┼───────────────────────────┐
@@ -33,17 +33,17 @@ This example demonstrates an end-to-end retrieval agent pipeline:
 │ai_parse_doc() │         │ Delta Sync      │         │ OpenAI API +    │
 │ PDF → Text    │         │ VS Index        │         │ MCP Tools       │
 └───────────────┘         └─────────────────┘         └─────────────────┘
-                                                              │
-                                                              ▼
-                                                    ┌─────────────────┐
-                                                    │ Model Serving   │
-                                                    │ Endpoint        │
-                                                    └─────────────────┘
+                                                                │
+                                                                ▼
+                                                      ┌─────────────────┐
+                                                      │ Model Serving   │
+                                                      │ Endpoint        │
+                                                      └─────────────────┘
 ```
 
 ## Directory Structure
 
-```
+```text
 agents/openai-retrieval-agent-dabs/
 ├── README.md                           # This file
 ├── databricks.yml                      # DABs configuration
@@ -75,6 +75,7 @@ agents/openai-retrieval-agent-dabs/
    - A Vector Search endpoint (or let the pipeline create one)
 
 3. **Databricks CLI** installed and configured:
+
    ```bash
    databricks auth login --host https://YOUR_WORKSPACE.cloud.databricks.com
    ```
@@ -134,11 +135,7 @@ targets:
 
 ### Step 4: Upload Your Documents
 
-Upload your PDF documents to the source volume:
-
-```bash
-databricks fs cp ./my-documents/*.pdf /Volumes/your_catalog/your_schema/user_guides/
-```
+Upload your PDF documents to the source volume.
 
 ## Deployment
 
@@ -152,6 +149,7 @@ databricks bundle run full_pipeline
 ```
 
 This will:
+
 1. Parse all PDFs in the source volume
 2. Create the Vector Search index
 3. Deploy the agent to Model Serving
@@ -171,45 +169,10 @@ databricks bundle run agent_deploy
 databricks bundle run agent_evaluation
 ```
 
-## Usage
-
-Once deployed, interact with your agent via the Model Serving endpoint:
-
-### Using the Databricks SDK
-
-```python
-from databricks.sdk import WorkspaceClient
-
-w = WorkspaceClient()
-client = w.serving_endpoints.get_open_ai_client()
-
-response = client.chat.completions.create(
-    model="your_catalog_your_schema_retrieval_agent",
-    messages=[
-        {"role": "user", "content": "How do I configure the system?"}
-    ]
-)
-
-print(response.choices[0].message.content)
-```
-
-### Using the REST API
-
-```bash
-curl -X POST "https://YOUR_WORKSPACE.cloud.databricks.com/serving-endpoints/your_catalog_your_schema_retrieval_agent/invocations" \
-  -H "Authorization: Bearer $DATABRICKS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "messages": [
-      {"role": "user", "content": "How do I configure the system?"}
-    ]
-  }'
-```
-
 ## Available Jobs
 
 | Job | Purpose | When to Use |
-|-----|---------|-------------|
+| ----- | --------- | ------------- |
 | `full_pipeline` | Complete setup | Initial deployment or full refresh |
 | `index_update` | Refresh documents | When documents are added/updated |
 | `agent_deploy` | Redeploy agent | When agent code/config changes |
@@ -219,50 +182,19 @@ curl -X POST "https://YOUR_WORKSPACE.cloud.databricks.com/serving-endpoints/your
 
 ### LLM Endpoints
 
-Supported Databricks model serving endpoints:
-- `databricks-claude-sonnet-4` (default)
-- `databricks-claude-3-5-sonnet`
-- `databricks-meta-llama-3-3-70b-instruct`
-- Custom fine-tuned models
+Currently deful to endpoint: `databricks-claude-haiku-4-5`
 
 ### Vector Search
 
 The pipeline uses Delta Sync with automatic embeddings:
+
 - Embedding model: `databricks-gte-large-en`
 - Index type: `TRIGGERED` (manual sync)
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Vector Search endpoint not found**
-   - Ensure Vector Search is enabled in your workspace
-   - Check that the endpoint name in config matches your endpoint
-
-2. **ai_parse_document errors**
-   - Verify your workspace supports this function
-   - Check that PDFs are valid and not corrupted
-
-3. **MCP connection errors**
-   - Verify the `user_name` in config matches your Databricks username
-   - Check that Vector Search MCP is enabled
-
-4. **Deployment fails**
-   - Check Model Serving logs in the Databricks UI
-   - Verify all resources (LLM endpoint, VS index) exist and are accessible
-
-### Logs
-
-View job logs:
-```bash
-databricks runs get-output --run-id <RUN_ID>
-```
-
-View Model Serving logs in the Databricks UI under Machine Learning > Model Serving.
 
 ## Evaluation
 
 Create an evaluation dataset table with columns:
+
 - `question`: The user question
 - `expected_answer`: The expected/reference answer
 
@@ -278,6 +210,7 @@ INSERT INTO your_catalog.your_schema.eval_dataset VALUES
 ```
 
 Then run evaluation:
+
 ```bash
 databricks bundle run agent_evaluation
 ```

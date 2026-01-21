@@ -40,9 +40,9 @@ TEMPERATURE = agent_config.get("llm", {}).get("temperature", 0.1)
 MAX_TOKENS = agent_config.get("llm", {}).get("max_tokens", 4096)
 
 # Vector Search MCP configuration
-VS_CONFIG = agent_config.get("vector_search", {})
-VS_USER_NAME = VS_CONFIG.get("user_name")
-VS_MCP_URL = f"{WORKSPACE_URL.rstrip('/')}/api/2.0/mcp/vector-search/users/{VS_USER_NAME}"
+CATALOG = databricks_config.get("catalog")
+SCHEMA = databricks_config.get("schema")
+VS_MCP_URL = f"{WORKSPACE_URL.rstrip('/')}/api/2.0/mcp/vector-search/{CATALOG}/{SCHEMA}"
 
 # System prompt for the retrieval agent
 SYSTEM_PROMPT = """You are a helpful assistant that answers questions about user guides and documentation.

@@ -7,7 +7,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install PyYAML
+# MAGIC %pip install -r ../requirements.txt --quiet
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -15,10 +15,11 @@
 import yaml
 from pyspark.sql.functions import (
     col,
+    collect_list,
+    concat_ws,
     current_timestamp,
     explode,
     expr,
-    lit,
     monotonically_increasing_id,
     regexp_replace,
 )
@@ -48,12 +49,17 @@ try:
     CHUNKS_TABLE = document_configs.get(
         "chunks_table", f"{CATALOG}.{SCHEMA}.user_guide_chunks"
     )
+    IMAGES_VOLUME = document_configs.get(
+        "images_volume", f"/Volumes/{CATALOG}/{SCHEMA}/parsed_images"
+    )
 except FileNotFoundError:
     SOURCE_VOLUME = f"/Volumes/{CATALOG}/{SCHEMA}/user_guides"
     CHUNKS_TABLE = f"{CATALOG}.{SCHEMA}.user_guide_chunks"
+    IMAGES_VOLUME = f"/Volumes/{CATALOG}/{SCHEMA}/parsed_images"
 
 print(f"Source volume: {SOURCE_VOLUME}")
 print(f"Output table: {CHUNKS_TABLE}")
+print(f"Images volume: {IMAGES_VOLUME}")
 
 # COMMAND ----------
 
@@ -81,11 +87,20 @@ files_df.select("path", "length", "modificationTime").display()
 # COMMAND ----------
 
 # Parse PDFs using ai_parse_document SQL function
-# This extracts structured content from PDF documents
-parsed_df = files_df.withColumn("parsed_result", expr("ai_parse_document(content)"))
-
-# Show parsing results
-parsed_df.select("path", "parsed_result.document.title").display()
+# Save page images to UC volume and generate descriptions for figures
+parsed_df = files_df.withColumn(
+    "parsed_result",
+    expr(
+        f"""ai_parse_document(
+            content,
+            map(
+                'imageOutputPath', '{IMAGES_VOLUME}/',
+                'descriptionElementTypes', 'figure',
+                'version', '2.0'
+            )
+        )"""
+    ),
+)
 
 # COMMAND ----------
 
@@ -95,24 +110,27 @@ parsed_df.select("path", "parsed_result.document.title").display()
 # COMMAND ----------
 
 # Extract text elements from parsed documents
-# Filter to text and section_header types for meaningful content
+# Schema ref: https://docs.databricks.com/aws/en/sql/language-manual/functions/ai_parse_document
 elements_df = (
     parsed_df.select(
         col("path").alias("source_path"),
-        col("parsed_result.document.title").alias("doc_title"),
-        explode("parsed_result.document.elements").alias("element"),
+        explode(
+            expr("try_cast(parsed_result:document:elements AS ARRAY<VARIANT>)")
+        ).alias("element"),
     )
-    .filter(col("element.type").isin(["text", "section_header", "paragraph"]))
+    .filter(
+        expr("element:type::STRING").isin(
+            ["text", "section_header", "title", "caption"]
+        )
+    )
     .select(
         "source_path",
-        "doc_title",
-        col("element.text_representation").alias("text_content"),
-        col("element.type").alias("element_type"),
-        col("element.page_number").alias("page_number"),
+        expr("element:content::STRING").alias("text_content"),
+        expr("element:bbox[0]:page_id::INT").alias("page_number"),
     )
 )
 
-# Filter out empty or very short chunks
+# Filter out empty content
 elements_df = elements_df.filter(
     (col("text_content").isNotNull()) & (col("text_content") != "")
 )
@@ -122,7 +140,10 @@ elements_df = elements_df.withColumn(
     "text_content", regexp_replace(col("text_content"), r"\s+", " ")
 )
 
-print(f"Extracted {elements_df.count()} text elements")
+# Aggregate elements by page - concatenate all text on same page
+pages_df = elements_df.groupBy("source_path", "page_number").agg(
+    concat_ws("\n\n", collect_list("text_content")).alias("text_content")
+)
 
 # COMMAND ----------
 
@@ -131,19 +152,14 @@ print(f"Extracted {elements_df.count()} text elements")
 
 # COMMAND ----------
 
-# Add unique chunk IDs and metadata
-chunks_df = elements_df.select(
+# Add unique chunk IDs and metadata (order by source and page to ensure sequential chunk IDs)
+chunks_df = pages_df.orderBy("source_path", "page_number").select(
     monotonically_increasing_id().alias("chunk_id"),
     "source_path",
-    "doc_title",
     "text_content",
-    "element_type",
     "page_number",
     current_timestamp().alias("ingested_at"),
 )
-
-# Display sample chunks
-chunks_df.limit(10).display()
 
 # COMMAND ----------
 
