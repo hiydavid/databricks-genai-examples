@@ -25,14 +25,3 @@ resources:
               schema: "{{job.parameters.schema}}"
               mlflow_experiment: "{{job.parameters.mlflow_experiment}}"
           timeout_seconds: 3600
-          job_cluster_key: eval_cluster
-
-      job_clusters:
-        - job_cluster_key: eval_cluster
-          new_cluster:
-            spark_version: "15.4.x-scala2.12"
-            node_type_id: "Standard_DS3_v2"
-            num_workers: 0
-            spark_conf:
-              spark.master: "local[*, 4]"
-              spark.databricks.cluster.profile: singleNode

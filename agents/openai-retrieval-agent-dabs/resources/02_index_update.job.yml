@@ -22,7 +22,6 @@ resources:
               catalog: "{{job.parameters.catalog}}"
               schema: "{{job.parameters.schema}}"
           timeout_seconds: 3600
-          job_cluster_key: processing_cluster
 
         - task_key: sync_vector_index
           description: "Sync Vector Search index with updated documents"
@@ -35,11 +34,3 @@ resources:
               schema: "{{job.parameters.schema}}"
               mode: "sync_only"
           timeout_seconds: 1800
-          job_cluster_key: processing_cluster
-
-      job_clusters:
-        - job_cluster_key: processing_cluster
-          new_cluster:
-            spark_version: "15.4.x-scala2.12"
-            node_type_id: "Standard_DS4_v2"
-            num_workers: 1
