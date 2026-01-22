@@ -38,6 +38,6 @@ resources:
             base_parameters:
               catalog: ${var.catalog}
               schema: ${var.schema}
-              experiment_name: ${var.experiment_name}
+              experiment_name: ${resources.experiments.retrieval_agent_experiment.name}
               vs_endpoint: ${var.vs_endpoint}
           timeout_seconds: 1800

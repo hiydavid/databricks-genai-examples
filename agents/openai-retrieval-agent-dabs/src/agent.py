@@ -7,10 +7,15 @@ to perform retrieval from a Vector Search index.
 
 import json
 import os
+import uuid
 from typing import Any, Callable, Generator, Optional
 
 import backoff
 import mlflow
+import nest_asyncio
+
+# Allow nested event loops (needed when running inside MLflow model validation)
+nest_asyncio.apply()
 import openai
 from databricks.sdk import WorkspaceClient
 from databricks_mcp import DatabricksMCPClient
@@ -38,23 +43,12 @@ WORKSPACE_URL = databricks_config.get("workspace_url")
 LLM_ENDPOINT = agent_config.get("llm", {}).get("endpoint_name", "databricks-claude-sonnet-4")
 TEMPERATURE = agent_config.get("llm", {}).get("temperature", 0.1)
 MAX_TOKENS = agent_config.get("llm", {}).get("max_tokens", 4096)
+SYSTEM_PROMPT = agent_config.get("system_prompt", "You are a helpful assistant.")
 
 # Vector Search MCP configuration
 CATALOG = databricks_config.get("catalog")
 SCHEMA = databricks_config.get("schema")
 VS_MCP_URL = f"{WORKSPACE_URL.rstrip('/')}/api/2.0/mcp/vector-search/{CATALOG}/{SCHEMA}"
-
-# System prompt for the retrieval agent
-SYSTEM_PROMPT = """You are a helpful assistant that answers questions about user guides and documentation.
-
-When answering questions:
-1. Use the search_index tool to find relevant information from the documentation
-2. Base your answers on the retrieved context
-3. If the retrieved information doesn't contain the answer, say so clearly
-4. Cite the source documents when possible
-5. Be concise and accurate
-
-Always search the documentation before answering questions about the product or system."""
 
 
 class ToolInfo(BaseModel):
@@ -239,6 +233,7 @@ class RetrievalAgent(ChatAgent):
                 return ChatAgentResponse(
                     messages=[
                         ChatAgentMessage(
+                            id=str(uuid.uuid4()),
                             role="assistant",
                             content=assistant_message.content or "",
                         )
@@ -249,6 +244,7 @@ class RetrievalAgent(ChatAgent):
         return ChatAgentResponse(
             messages=[
                 ChatAgentMessage(
+                    id=str(uuid.uuid4()),
                     role="assistant",
                     content="I apologize, but I was unable to complete the request within the allowed iterations.",
                 )
@@ -271,7 +267,7 @@ class RetrievalAgent(ChatAgent):
 
         for msg in response.messages:
             yield ChatAgentChunk(
-                delta=ChatAgentMessage(role=msg.role, content=msg.content)
+                delta=ChatAgentMessage(id=msg.id, role=msg.role, content=msg.content)
             )
 
 
