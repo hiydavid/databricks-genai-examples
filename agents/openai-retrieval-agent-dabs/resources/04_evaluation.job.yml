@@ -7,21 +7,9 @@ resources:
       queue:
         enabled: true
 
-      parameters:
-        - name: catalog
-          default: ${var.catalog}
-        - name: schema
-          default: ${var.schema}
-        - name: mlflow_experiment
-          default: ${var.experiment_name}
-
       tasks:
         - task_key: run_evaluation
           description: "Run agent evaluation with MLflow"
           notebook_task:
             notebook_path: ../src/05_evaluation.py
-            base_parameters:
-              catalog: "{{job.parameters.catalog}}"
-              schema: "{{job.parameters.schema}}"
-              mlflow_experiment: "{{job.parameters.mlflow_experiment}}"
           timeout_seconds: 3600

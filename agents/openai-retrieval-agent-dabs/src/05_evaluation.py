@@ -24,30 +24,17 @@ from mlflow.deployments import get_deploy_client
 
 # COMMAND ----------
 
-# Load configuration from widgets (set by DABs job) or defaults
-dbutils.widgets.text("catalog", "main")
-dbutils.widgets.text("schema", "default")
-dbutils.widgets.text("mlflow_experiment", "")
+# Load configuration from YAML
+with open("configs.yaml", "r") as f:
+    config = yaml.safe_load(f)
 
-CATALOG = dbutils.widgets.get("catalog")
-SCHEMA = dbutils.widgets.get("schema")
-EXPERIMENT_NAME = dbutils.widgets.get("mlflow_experiment")
+databricks_configs = config["databricks_configs"]
+agent_configs = config["agent_configs"]
 
-# Get current username for defaults
-USERNAME = spark.sql("SELECT current_user()").collect()[0][0]
-
-# Load additional config from YAML
-try:
-    with open("configs.yaml", "r") as f:
-        config = yaml.safe_load(f)
-    agent_configs = config.get("agent_configs", {})
-    AGENT_NAME = agent_configs.get("agent_name", "user-guide-retrieval-agent")
-except FileNotFoundError:
-    AGENT_NAME = "user-guide-retrieval-agent"
-
-# Set experiment name if not provided
-if not EXPERIMENT_NAME:
-    EXPERIMENT_NAME = f"/Users/{USERNAME}/retrieval-agent-mcp"
+CATALOG = databricks_configs["catalog"]
+SCHEMA = databricks_configs["schema"]
+EXPERIMENT_NAME = databricks_configs["mlflow_experiment"]
+AGENT_NAME = agent_configs["agent_name"]
 
 # Agent endpoint name (derived from UC model name)
 UC_MODEL_NAME = f"{CATALOG}.{SCHEMA}.retrieval_agent"

@@ -31,31 +31,18 @@ from pyspark.sql.functions import (
 
 # COMMAND ----------
 
-# Load configuration from widgets (set by DABs job) or defaults
-dbutils.widgets.text("catalog", "main")
-dbutils.widgets.text("schema", "default")
+# Load configuration from YAML
+with open("configs.yaml", "r") as f:
+    config = yaml.safe_load(f)
 
-CATALOG = dbutils.widgets.get("catalog")
-SCHEMA = dbutils.widgets.get("schema")
+databricks_configs = config["databricks_configs"]
+document_configs = config["document_configs"]
 
-# Load additional config from YAML if available
-try:
-    with open("configs.yaml", "r") as f:
-        config = yaml.safe_load(f)
-    document_configs = config.get("document_configs", {})
-    SOURCE_VOLUME = document_configs.get(
-        "source_volume", f"/Volumes/{CATALOG}/{SCHEMA}/user_guides"
-    )
-    CHUNKS_TABLE = document_configs.get(
-        "chunks_table", f"{CATALOG}.{SCHEMA}.user_guide_chunks"
-    )
-    IMAGES_VOLUME = document_configs.get(
-        "images_volume", f"/Volumes/{CATALOG}/{SCHEMA}/parsed_images"
-    )
-except FileNotFoundError:
-    SOURCE_VOLUME = f"/Volumes/{CATALOG}/{SCHEMA}/user_guides"
-    CHUNKS_TABLE = f"{CATALOG}.{SCHEMA}.user_guide_chunks"
-    IMAGES_VOLUME = f"/Volumes/{CATALOG}/{SCHEMA}/parsed_images"
+CATALOG = databricks_configs["catalog"]
+SCHEMA = databricks_configs["schema"]
+SOURCE_VOLUME = document_configs["source_volume"]
+CHUNKS_TABLE = document_configs["chunks_table"]
+IMAGES_VOLUME = document_configs["images_volume"]
 
 print(f"Source volume: {SOURCE_VOLUME}")
 print(f"Output table: {CHUNKS_TABLE}")
