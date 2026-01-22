@@ -166,14 +166,7 @@ with mlflow.start_run(run_name="retrieval-agent-deployment") as run:
         model_config=temp_config_path,
         input_example=input_example,
         resources=resources,
-        pip_requirements=[
-            "mlflow>=2.21.0",
-            "openai>=1.50.0",
-            "databricks-sdk>=0.40.0",
-            "databricks-mcp>=0.1.0",
-            "pydantic>=2.0.0",
-            "backoff>=2.0.0",
-        ],
+        pip_requirements="../requirements.txt",
     )
 
     print(f"Model logged to run: {run.info.run_id}")
