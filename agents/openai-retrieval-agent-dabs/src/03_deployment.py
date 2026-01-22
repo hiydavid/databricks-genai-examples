@@ -13,6 +13,7 @@
 # COMMAND ----------
 
 import os
+import tempfile
 
 import mlflow
 import yaml
@@ -29,31 +30,41 @@ from mlflow.models.resources import (
 
 # COMMAND ----------
 
-# Load configuration from YAML
+# Job parameters (DAB populates these via base_parameters)
+dbutils.widgets.text("catalog", "")
+dbutils.widgets.text("schema", "")
+dbutils.widgets.text("experiment_name", "")
+dbutils.widgets.text("vs_endpoint", "")
+
+CATALOG = dbutils.widgets.get("catalog")
+SCHEMA = dbutils.widgets.get("schema")
+EXPERIMENT_NAME = dbutils.widgets.get("experiment_name")
+VS_ENDPOINT = dbutils.widgets.get("vs_endpoint")
+
+if not CATALOG or not SCHEMA or not EXPERIMENT_NAME or not VS_ENDPOINT:
+    raise ValueError("Required parameters: catalog, schema, experiment_name, vs_endpoint")
+
+# Derive workspace URL from Spark context
+WORKSPACE_URL = f"https://{spark.conf.get('spark.databricks.workspaceUrl')}"
+
+# Load agent runtime config from configs.yaml (LLM settings, agent name, etc.)
 with open("configs.yaml", "r") as f:
-    config = yaml.safe_load(f)
+    agent_configs = yaml.safe_load(f)["agent_configs"]
 
-databricks_configs = config["databricks_configs"]
-agent_configs = config["agent_configs"]
-vs_config = agent_configs["vector_search"]
-
-CATALOG = databricks_configs["catalog"]
-SCHEMA = databricks_configs["schema"]
-WORKSPACE_URL = databricks_configs["workspace_url"]
-EXPERIMENT_NAME = databricks_configs["mlflow_experiment"]
 AGENT_NAME = agent_configs["agent_name"]
 LLM_ENDPOINT = agent_configs["llm"]["endpoint_name"]
-VS_ENDPOINT = vs_config["endpoint_name"]
-VS_INDEX = vs_config["index_name"]
 
-# Unity Catalog model name
+# Derive paths from parameters
+VS_INDEX = f"{CATALOG}.{SCHEMA}.user_guide_chunks_index"
 UC_MODEL_NAME = f"{CATALOG}.{SCHEMA}.retrieval_agent"
 
 print(f"Catalog: {CATALOG}")
 print(f"Schema: {SCHEMA}")
+print(f"Workspace URL: {WORKSPACE_URL}")
 print(f"UC Model: {UC_MODEL_NAME}")
 print(f"MLflow Experiment: {EXPERIMENT_NAME}")
 print(f"LLM Endpoint: {LLM_ENDPOINT}")
+print(f"Vector Search Endpoint: {VS_ENDPOINT}")
 print(f"Vector Search Index: {VS_INDEX}")
 
 # COMMAND ----------
@@ -116,10 +127,34 @@ input_example = {
 # Get the current working directory for file paths
 cwd = os.getcwd()
 agent_path = os.path.join(cwd, "agent.py")
-config_path = os.path.join(cwd, "configs.yaml")
 
 print(f"Agent path: {agent_path}")
-print(f"Config path: {config_path}")
+
+# Build deployment config (passed to agent.py at inference time via mlflow.models.ModelConfig)
+# This combines infrastructure configs from DAB parameters with agent runtime config from configs.yaml
+deployment_config = {
+    "databricks_configs": {
+        "catalog": CATALOG,
+        "schema": SCHEMA,
+        "workspace_url": WORKSPACE_URL,
+    },
+    "agent_configs": {
+        **agent_configs,
+        "vector_search": {
+            "endpoint_name": VS_ENDPOINT,
+            "index_name": VS_INDEX,
+        },
+    },
+}
+
+# Write temp config for model logging
+temp_config_file = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
+yaml.dump(deployment_config, temp_config_file)
+temp_config_file.close()
+temp_config_path = temp_config_file.name
+
+print(f"Deployment config written to: {temp_config_path}")
+print(f"Config contents: {deployment_config}")
 
 # COMMAND ----------
 
@@ -128,7 +163,7 @@ with mlflow.start_run(run_name="retrieval-agent-deployment") as run:
     logged_agent_info = mlflow.pyfunc.log_model(
         artifact_path=AGENT_NAME,
         python_model=agent_path,
-        model_config=config_path,
+        model_config=temp_config_path,
         input_example=input_example,
         resources=resources,
         pip_requirements=[
@@ -143,6 +178,9 @@ with mlflow.start_run(run_name="retrieval-agent-deployment") as run:
 
     print(f"Model logged to run: {run.info.run_id}")
     print(f"Model URI: {logged_agent_info.model_uri}")
+
+# Clean up temp config file
+os.unlink(temp_config_path)
 
 # COMMAND ----------
 

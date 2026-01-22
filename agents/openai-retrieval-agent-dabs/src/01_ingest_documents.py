@@ -12,7 +12,6 @@
 
 # COMMAND ----------
 
-import yaml
 from pyspark.sql.functions import (
     col,
     collect_list,
@@ -31,19 +30,23 @@ from pyspark.sql.functions import (
 
 # COMMAND ----------
 
-# Load configuration from YAML
-with open("configs.yaml", "r") as f:
-    config = yaml.safe_load(f)
+# Job parameters (DAB populates these via base_parameters)
+dbutils.widgets.text("catalog", "")
+dbutils.widgets.text("schema", "")
 
-databricks_configs = config["databricks_configs"]
-document_configs = config["document_configs"]
+CATALOG = dbutils.widgets.get("catalog")
+SCHEMA = dbutils.widgets.get("schema")
 
-CATALOG = databricks_configs["catalog"]
-SCHEMA = databricks_configs["schema"]
-SOURCE_VOLUME = document_configs["source_volume"]
-CHUNKS_TABLE = document_configs["chunks_table"]
-IMAGES_VOLUME = document_configs["images_volume"]
+if not CATALOG or not SCHEMA:
+    raise ValueError("Required parameters: catalog, schema")
 
+# Derive paths from parameters
+SOURCE_VOLUME = f"/Volumes/{CATALOG}/{SCHEMA}/user_guide/guide"
+CHUNKS_TABLE = f"{CATALOG}.{SCHEMA}.user_guide_chunks"
+IMAGES_VOLUME = f"/Volumes/{CATALOG}/{SCHEMA}/user_guide/parsed_images"
+
+print(f"Catalog: {CATALOG}")
+print(f"Schema: {SCHEMA}")
 print(f"Source volume: {SOURCE_VOLUME}")
 print(f"Output table: {CHUNKS_TABLE}")
 print(f"Images volume: {IMAGES_VOLUME}")

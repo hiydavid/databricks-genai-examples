@@ -14,7 +14,6 @@
 
 import time
 
-import yaml
 from databricks.vector_search.client import VectorSearchClient
 
 # COMMAND ----------
@@ -24,24 +23,27 @@ from databricks.vector_search.client import VectorSearchClient
 
 # COMMAND ----------
 
-# Load configuration from YAML
-with open("configs.yaml", "r") as f:
-    config = yaml.safe_load(f)
+# Job parameters (DAB populates these via base_parameters)
+dbutils.widgets.text("catalog", "")
+dbutils.widgets.text("schema", "")
+dbutils.widgets.text("vs_endpoint", "")
 
-databricks_configs = config["databricks_configs"]
-agent_configs = config["agent_configs"]
-vs_configs = agent_configs["vector_search"]
-document_configs = config["document_configs"]
+CATALOG = dbutils.widgets.get("catalog")
+SCHEMA = dbutils.widgets.get("schema")
+VS_ENDPOINT = dbutils.widgets.get("vs_endpoint")
 
-CATALOG = databricks_configs["catalog"]
-SCHEMA = databricks_configs["schema"]
-VS_ENDPOINT = vs_configs["endpoint_name"]
-VS_INDEX = vs_configs["index_name"]
-CHUNKS_TABLE = document_configs["chunks_table"]
+if not CATALOG or not SCHEMA or not VS_ENDPOINT:
+    raise ValueError("Required parameters: catalog, schema, vs_endpoint")
+
+# Derive paths from parameters
+CHUNKS_TABLE = f"{CATALOG}.{SCHEMA}.user_guide_chunks"
+VS_INDEX = f"{CATALOG}.{SCHEMA}.user_guide_chunks_index"
 
 # Embedding model to use
 EMBEDDING_MODEL = "databricks-gte-large-en"
 
+print(f"Catalog: {CATALOG}")
+print(f"Schema: {SCHEMA}")
 print(f"Vector Search Endpoint: {VS_ENDPOINT}")
 print(f"Vector Search Index: {VS_INDEX}")
 print(f"Source Table: {CHUNKS_TABLE}")

@@ -14,7 +14,6 @@
 
 import mlflow
 import pandas as pd
-import yaml
 from mlflow.deployments import get_deploy_client
 
 # COMMAND ----------
@@ -24,23 +23,21 @@ from mlflow.deployments import get_deploy_client
 
 # COMMAND ----------
 
-# Load configuration from YAML
-with open("configs.yaml", "r") as f:
-    config = yaml.safe_load(f)
+# Job parameters (DAB populates these via base_parameters)
+dbutils.widgets.text("catalog", "")
+dbutils.widgets.text("schema", "")
+dbutils.widgets.text("experiment_name", "")
 
-databricks_configs = config["databricks_configs"]
-agent_configs = config["agent_configs"]
+CATALOG = dbutils.widgets.get("catalog")
+SCHEMA = dbutils.widgets.get("schema")
+EXPERIMENT_NAME = dbutils.widgets.get("experiment_name")
 
-CATALOG = databricks_configs["catalog"]
-SCHEMA = databricks_configs["schema"]
-EXPERIMENT_NAME = databricks_configs["mlflow_experiment"]
-AGENT_NAME = agent_configs["agent_name"]
+if not CATALOG or not SCHEMA or not EXPERIMENT_NAME:
+    raise ValueError("Required parameters: catalog, schema, experiment_name")
 
-# Agent endpoint name (derived from UC model name)
+# Derive paths from parameters
 UC_MODEL_NAME = f"{CATALOG}.{SCHEMA}.retrieval_agent"
 AGENT_ENDPOINT_NAME = UC_MODEL_NAME.replace(".", "_")
-
-# Evaluation dataset table
 EVAL_TABLE = f"{CATALOG}.{SCHEMA}.eval_dataset"
 
 print(f"Catalog: {CATALOG}")

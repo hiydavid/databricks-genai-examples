@@ -12,6 +12,9 @@ resources:
           description: "Parse user guide PDFs with ai_parse_document"
           notebook_task:
             notebook_path: ../src/01_ingest_documents.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
           timeout_seconds: 3600
 
         - task_key: create_vector_index
@@ -20,6 +23,10 @@ resources:
             - task_key: ingest_documents
           notebook_task:
             notebook_path: ../src/02_create_vector_index.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              vs_endpoint: ${var.vs_endpoint}
           timeout_seconds: 3600
 
         - task_key: deploy_agent
@@ -28,4 +35,9 @@ resources:
             - task_key: create_vector_index
           notebook_task:
             notebook_path: ../src/03_deployment.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              experiment_name: ${var.experiment_name}
+              vs_endpoint: ${var.vs_endpoint}
           timeout_seconds: 1800

@@ -1,20 +1,9 @@
-databricks_configs:
-  catalog: YOUR_CATALOG_NAME
-  schema: YOUR_SCHEMA_NAME
-  workspace_url: https://YOUR_WORKSPACE.cloud.databricks.com/
-  mlflow_experiment: /Users/YOUR_USERNAME/retrieval-agent-mcp
+# Agent runtime configuration
+# Infrastructure configs (catalog, schema, workspace_url, vector_search) come from
+# DAB job parameters and are injected at deployment time via 03_deployment.py
 
 agent_configs:
   agent_name: user-guide-retrieval-agent
   llm:
-    endpoint_name: databricks-claude-sonnet-4
+    endpoint_name: databricks-claude-haiku-4-5
     temperature: 0.1
-    max_tokens: 4096
-  vector_search:
-    endpoint_name: YOUR_VS_ENDPOINT_NAME
-    index_name: YOUR_CATALOG.YOUR_SCHEMA.user_guide_chunks_index
-
-document_configs:
-  source_volume: /Volumes/YOUR_CATALOG/YOUR_SCHEMA/user_guides
-  chunks_table: YOUR_CATALOG.YOUR_SCHEMA.user_guide_chunks
-  images_volume: /Volumes/YOUR_CATALOG/YOUR_SCHEMA/parsed_images

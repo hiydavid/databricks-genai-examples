@@ -12,6 +12,9 @@ resources:
           description: "Parse new/updated user guide PDFs"
           notebook_task:
             notebook_path: ../src/01_ingest_documents.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
           timeout_seconds: 3600
 
         - task_key: sync_vector_index
@@ -20,4 +23,8 @@ resources:
             - task_key: ingest_documents
           notebook_task:
             notebook_path: ../src/02_create_vector_index.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              vs_endpoint: ${var.vs_endpoint}
           timeout_seconds: 1800
