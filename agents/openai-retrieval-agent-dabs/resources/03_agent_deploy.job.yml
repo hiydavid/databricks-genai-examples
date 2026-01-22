@@ -11,5 +11,10 @@ resources:
         - task_key: deploy_agent
           description: "Deploy updated retrieval agent to Model Serving"
           notebook_task:
-            notebook_path: ../src/04_deployment.py
+            notebook_path: ../src/03_deployment.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              experiment_name: ${var.experiment_name}
+              vs_endpoint: ${var.vs_endpoint}
           timeout_seconds: 1800

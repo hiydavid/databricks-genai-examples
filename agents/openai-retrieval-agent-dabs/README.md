@@ -46,15 +46,15 @@ This example demonstrates an end-to-end retrieval agent pipeline:
 ```text
 agents/openai-retrieval-agent-dabs/
 ├── README.md                           # This file
-├── databricks.yml                      # DABs configuration
+├── databricks.yml                      # DABs config + infrastructure variables
 ├── requirements.txt                    # Python dependencies
 ├── src/
-│   ├── configs.template.yaml           # Configuration template (copy to configs.yaml)
+│   ├── configs.template.yaml           # Agent runtime config template (LLM settings)
 │   ├── 01_ingest_documents.py          # PDF parsing with ai_parse_document
 │   ├── 02_create_vector_index.py       # Vector Search index creation
-│   ├── 03_agent.py                     # Retrieval agent with MCP
-│   ├── 04_deployment.py                # MLflow logging and agents.deploy()
-│   └── 05_evaluation.py                # Agent evaluation with MLflow
+│   ├── agent.py                        # Retrieval agent with MCP
+│   ├── 03_deployment.py                # MLflow logging and agents.deploy()
+│   └── 04_evaluation.py                # Agent evaluation with MLflow
 └── resources/
     ├── 01_full_pipeline.job.yml        # Full end-to-end pipeline
     ├── 02_index_update.job.yml         # Update index only
@@ -80,62 +80,69 @@ agents/openai-retrieval-agent-dabs/
    databricks auth login --host https://YOUR_WORKSPACE.cloud.databricks.com
    ```
 
+## Configuration
+
+Infrastructure settings are defined as DAB variables in `databricks.yml`:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `catalog` | Unity Catalog name | `main` |
+| `schema` | Schema name | `default` |
+| `experiment_name` | MLflow experiment path | `/Users/{user}/retrieval-agent-mcp` |
+| `vs_endpoint` | Vector Search endpoint name | `retrieval-agent-vs-endpoint` |
+
+Agent runtime settings (LLM config) are in `src/configs.yaml`.
+
 ## Setup
 
-### Step 1: Clone and Configure
+### Step 1: Clone and Navigate
 
 ```bash
 cd agents/openai-retrieval-agent-dabs
 ```
 
-### Step 2: Create Configuration File
+### Step 2: Create Agent Config File
 
-Copy the template and fill in your values:
+Copy the template:
 
 ```bash
 cp src/configs.template.yaml src/configs.yaml
 ```
 
-Edit `src/configs.yaml`:
+Edit `src/configs.yaml` to configure the LLM endpoint:
 
 ```yaml
-databricks_configs:
-  catalog: your_catalog          # Your Unity Catalog name
-  schema: your_schema            # Your schema name
-  workspace_url: https://YOUR_WORKSPACE.cloud.databricks.com/
-
 agent_configs:
   agent_name: user-guide-retrieval-agent
   llm:
-    endpoint_name: databricks-claude-sonnet-4    # Or your preferred model
+    endpoint_name: databricks-claude-haiku-4-5  # Or your preferred model
     temperature: 0.1
     max_tokens: 4096
-  vector_search:
-    endpoint_name: your-vs-endpoint     # Your VS endpoint name
-    index_name: your_catalog.your_schema.user_guide_chunks_index
-    user_name: your_username            # Your Databricks username (for MCP URL)
-
-document_configs:
-  source_volume: /Volumes/your_catalog/your_schema/user_guides
-  chunks_table: your_catalog.your_schema.user_guide_chunks
 ```
 
 ### Step 3: Update DABs Configuration
 
-Edit `databricks.yml` to set your workspace URL:
+Edit `databricks.yml` to set your workspace URL and optionally override variables:
 
 ```yaml
+variables:
+  catalog:
+    default: your_catalog      # Change default catalog
+  schema:
+    default: your_schema       # Change default schema
+
 targets:
   dev:
-    mode: development
-    default: true
     workspace:
       host: https://YOUR_WORKSPACE.cloud.databricks.com
+    # Optional: target-specific overrides
+    # variables:
+    #   catalog: dev_catalog
 ```
 
 ### Step 4: Upload Your Documents
 
-Upload your PDF documents to the source volume.
+Upload PDF documents to `/Volumes/{catalog}/{schema}/user_guides`.
 
 ## Deployment
 
@@ -169,6 +176,18 @@ databricks bundle run agent_deploy
 databricks bundle run agent_evaluation
 ```
 
+### Override Variables via CLI
+
+Override any variable at deploy/run time:
+
+```bash
+# Deploy to a different catalog
+databricks bundle deploy --var catalog=test_catalog --var schema=test_schema
+
+# Run with overrides
+databricks bundle run full_pipeline --var catalog=prod_catalog
+```
+
 ## Available Jobs
 
 | Job | Purpose | When to Use |
@@ -178,11 +197,24 @@ databricks bundle run agent_evaluation
 | `agent_deploy` | Redeploy agent | When agent code/config changes |
 | `agent_evaluation` | Quality check | After deployment to measure quality |
 
-## Configuration Options
+## Configuration Details
+
+### Derived Paths
+
+The following paths are automatically derived from the `catalog` and `schema` variables:
+
+| Resource | Path |
+|----------|------|
+| Source Volume | `/Volumes/{catalog}/{schema}/user_guides` |
+| Chunks Table | `{catalog}.{schema}.user_guide_chunks` |
+| Images Volume | `/Volumes/{catalog}/{schema}/parsed_images` |
+| Vector Index | `{catalog}.{schema}.user_guide_chunks_index` |
+| UC Model | `{catalog}.{schema}.retrieval_agent` |
+| Eval Table | `{catalog}.{schema}.eval_dataset` |
 
 ### LLM Endpoints
 
-Currently deful to endpoint: `databricks-claude-haiku-4-5`
+Configure in `src/configs.yaml`. Default: `databricks-claude-haiku-4-5`
 
 ### Vector Search
 

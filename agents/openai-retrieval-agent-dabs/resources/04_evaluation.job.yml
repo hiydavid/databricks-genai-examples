@@ -11,5 +11,9 @@ resources:
         - task_key: run_evaluation
           description: "Run agent evaluation with MLflow"
           notebook_task:
-            notebook_path: ../src/05_evaluation.py
+            notebook_path: ../src/04_evaluation.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              experiment_name: ${var.experiment_name}
           timeout_seconds: 3600
