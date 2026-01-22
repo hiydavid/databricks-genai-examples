@@ -7,7 +7,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install mlflow>=2.21.0 databricks-agents>=0.16.0 PyYAML
+# MAGIC %pip install -r ../requirements.txt --quiet
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -17,7 +17,10 @@ import os
 import mlflow
 import yaml
 from databricks import agents
-from mlflow.models.resources import DatabricksServingEndpoint, DatabricksVectorSearchIndex
+from mlflow.models.resources import (
+    DatabricksServingEndpoint,
+    DatabricksVectorSearchIndex,
+)
 
 # COMMAND ----------
 
@@ -112,7 +115,7 @@ input_example = {
 
 # Get the current working directory for file paths
 cwd = os.getcwd()
-agent_path = os.path.join(cwd, "03_agent.py")
+agent_path = os.path.join(cwd, "agent.py")
 config_path = os.path.join(cwd, "configs.yaml")
 
 print(f"Agent path: {agent_path}")

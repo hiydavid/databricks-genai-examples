@@ -27,5 +27,5 @@ resources:
           depends_on:
             - task_key: create_vector_index
           notebook_task:
-            notebook_path: ../src/04_deployment.py
+            notebook_path: ../src/03_deployment.py
           timeout_seconds: 1800

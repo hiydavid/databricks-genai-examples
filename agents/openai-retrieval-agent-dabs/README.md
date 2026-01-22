@@ -52,9 +52,9 @@ agents/openai-retrieval-agent-dabs/
 │   ├── configs.template.yaml           # Configuration template (copy to configs.yaml)
 │   ├── 01_ingest_documents.py          # PDF parsing with ai_parse_document
 │   ├── 02_create_vector_index.py       # Vector Search index creation
-│   ├── 03_agent.py                     # Retrieval agent with MCP
-│   ├── 04_deployment.py                # MLflow logging and agents.deploy()
-│   └── 05_evaluation.py                # Agent evaluation with MLflow
+│   ├── agent.py                        # Retrieval agent with MCP
+│   ├── 03_deployment.py                # MLflow logging and agents.deploy()
+│   └── 04_evaluation.py                # Agent evaluation with MLflow
 └── resources/
     ├── 01_full_pipeline.job.yml        # Full end-to-end pipeline
     ├── 02_index_update.job.yml         # Update index only
