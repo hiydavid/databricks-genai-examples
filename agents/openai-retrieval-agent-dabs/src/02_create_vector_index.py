@@ -114,6 +114,17 @@ wait_for_endpoint_ready(VS_ENDPOINT)
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## Enable Change Data Feed on Source Table
+
+# COMMAND ----------
+
+# Delta Sync indexes require Change Data Feed (CDF) to be enabled on the source table
+spark.sql(f"ALTER TABLE {CHUNKS_TABLE} SET TBLPROPERTIES (delta.enableChangeDataFeed = true)")
+print(f"Change Data Feed enabled on {CHUNKS_TABLE}")
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## Create or Sync Delta Sync Index
 
 # COMMAND ----------
