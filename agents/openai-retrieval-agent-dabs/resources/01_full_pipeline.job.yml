@@ -7,20 +7,11 @@ resources:
       queue:
         enabled: true
 
-      parameters:
-        - name: catalog
-          default: ${var.catalog}
-        - name: schema
-          default: ${var.schema}
-
       tasks:
         - task_key: ingest_documents
           description: "Parse user guide PDFs with ai_parse_document"
           notebook_task:
             notebook_path: ../src/01_ingest_documents.py
-            base_parameters:
-              catalog: "{{job.parameters.catalog}}"
-              schema: "{{job.parameters.schema}}"
           timeout_seconds: 3600
 
         - task_key: create_vector_index
@@ -29,10 +20,6 @@ resources:
             - task_key: ingest_documents
           notebook_task:
             notebook_path: ../src/02_create_vector_index.py
-            base_parameters:
-              catalog: "{{job.parameters.catalog}}"
-              schema: "{{job.parameters.schema}}"
-              mode: "create"
           timeout_seconds: 3600
 
         - task_key: deploy_agent
@@ -41,8 +28,4 @@ resources:
             - task_key: create_vector_index
           notebook_task:
             notebook_path: ../src/04_deployment.py
-            base_parameters:
-              catalog: "{{job.parameters.catalog}}"
-              schema: "{{job.parameters.schema}}"
-              mlflow_experiment: ${var.experiment_name}
           timeout_seconds: 1800

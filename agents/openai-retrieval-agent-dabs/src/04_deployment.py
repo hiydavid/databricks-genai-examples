@@ -26,43 +26,22 @@ from mlflow.models.resources import DatabricksServingEndpoint, DatabricksVectorS
 
 # COMMAND ----------
 
-# Load configuration from widgets (set by DABs job) or defaults
-dbutils.widgets.text("catalog", "main")
-dbutils.widgets.text("schema", "default")
-dbutils.widgets.text("mlflow_experiment", "")
+# Load configuration from YAML
+with open("configs.yaml", "r") as f:
+    config = yaml.safe_load(f)
 
-CATALOG = dbutils.widgets.get("catalog")
-SCHEMA = dbutils.widgets.get("schema")
-EXPERIMENT_NAME = dbutils.widgets.get("mlflow_experiment")
+databricks_configs = config["databricks_configs"]
+agent_configs = config["agent_configs"]
+vs_config = agent_configs["vector_search"]
 
-# Get current username for defaults
-USERNAME = spark.sql("SELECT current_user()").collect()[0][0]
-
-# Load additional config from YAML
-try:
-    with open("configs.yaml", "r") as f:
-        config = yaml.safe_load(f)
-    databricks_configs = config.get("databricks_configs", {})
-    agent_configs = config.get("agent_configs", {})
-
-    WORKSPACE_URL = databricks_configs.get("workspace_url", "")
-    AGENT_NAME = agent_configs.get("agent_name", "user-guide-retrieval-agent")
-    LLM_ENDPOINT = agent_configs.get("llm", {}).get("endpoint_name", "databricks-claude-sonnet-4")
-
-    vs_config = agent_configs.get("vector_search", {})
-    VS_ENDPOINT = vs_config.get("endpoint_name", "vs-endpoint")
-    VS_INDEX = vs_config.get("index_name", f"{CATALOG}.{SCHEMA}.user_guide_chunks_index")
-except FileNotFoundError:
-    print("Warning: configs.yaml not found, using defaults")
-    WORKSPACE_URL = ""
-    AGENT_NAME = "user-guide-retrieval-agent"
-    LLM_ENDPOINT = "databricks-claude-sonnet-4"
-    VS_ENDPOINT = "vs-endpoint"
-    VS_INDEX = f"{CATALOG}.{SCHEMA}.user_guide_chunks_index"
-
-# Set experiment name if not provided
-if not EXPERIMENT_NAME:
-    EXPERIMENT_NAME = f"/Users/{USERNAME}/retrieval-agent-mcp"
+CATALOG = databricks_configs["catalog"]
+SCHEMA = databricks_configs["schema"]
+WORKSPACE_URL = databricks_configs["workspace_url"]
+EXPERIMENT_NAME = databricks_configs["mlflow_experiment"]
+AGENT_NAME = agent_configs["agent_name"]
+LLM_ENDPOINT = agent_configs["llm"]["endpoint_name"]
+VS_ENDPOINT = vs_config["endpoint_name"]
+VS_INDEX = vs_config["index_name"]
 
 # Unity Catalog model name
 UC_MODEL_NAME = f"{CATALOG}.{SCHEMA}.retrieval_agent"

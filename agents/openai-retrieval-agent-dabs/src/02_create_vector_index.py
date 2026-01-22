@@ -7,7 +7,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install databricks-vectorsearch PyYAML
+# MAGIC %pip install -r ../requirements.txt --quiet
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -24,32 +24,20 @@ from databricks.vector_search.client import VectorSearchClient
 
 # COMMAND ----------
 
-# Load configuration from widgets (set by DABs job) or defaults
-dbutils.widgets.text("catalog", "main")
-dbutils.widgets.text("schema", "default")
-dbutils.widgets.text("mode", "create")  # "create" or "sync_only"
+# Load configuration from YAML
+with open("configs.yaml", "r") as f:
+    config = yaml.safe_load(f)
 
-CATALOG = dbutils.widgets.get("catalog")
-SCHEMA = dbutils.widgets.get("schema")
-MODE = dbutils.widgets.get("mode")
+databricks_configs = config["databricks_configs"]
+agent_configs = config["agent_configs"]
+vs_configs = agent_configs["vector_search"]
+document_configs = config["document_configs"]
 
-# Load additional config from YAML if available
-try:
-    with open("configs.yaml", "r") as f:
-        config = yaml.safe_load(f)
-    agent_configs = config.get("agent_configs", {})
-    vs_configs = agent_configs.get("vector_search", {})
-    document_configs = config.get("document_configs", {})
-
-    VS_ENDPOINT = vs_configs.get("endpoint_name", "vs-endpoint")
-    VS_INDEX = vs_configs.get("index_name", f"{CATALOG}.{SCHEMA}.user_guide_chunks_index")
-    CHUNKS_TABLE = document_configs.get(
-        "chunks_table", f"{CATALOG}.{SCHEMA}.user_guide_chunks"
-    )
-except FileNotFoundError:
-    VS_ENDPOINT = "vs-endpoint"
-    VS_INDEX = f"{CATALOG}.{SCHEMA}.user_guide_chunks_index"
-    CHUNKS_TABLE = f"{CATALOG}.{SCHEMA}.user_guide_chunks"
+CATALOG = databricks_configs["catalog"]
+SCHEMA = databricks_configs["schema"]
+VS_ENDPOINT = vs_configs["endpoint_name"]
+VS_INDEX = vs_configs["index_name"]
+CHUNKS_TABLE = document_configs["chunks_table"]
 
 # Embedding model to use
 EMBEDDING_MODEL = "databricks-gte-large-en"
@@ -58,7 +46,6 @@ print(f"Vector Search Endpoint: {VS_ENDPOINT}")
 print(f"Vector Search Index: {VS_INDEX}")
 print(f"Source Table: {CHUNKS_TABLE}")
 print(f"Embedding Model: {EMBEDDING_MODEL}")
-print(f"Mode: {MODE}")
 
 # COMMAND ----------
 
@@ -109,21 +96,20 @@ def wait_for_endpoint_ready(endpoint_name: str, timeout_minutes: int = 30):
 
 # COMMAND ----------
 
-if MODE != "sync_only":
-    # Create endpoint if it doesn't exist
-    try:
-        endpoint = vsc.get_endpoint(VS_ENDPOINT)
-        print(f"Endpoint {VS_ENDPOINT} already exists")
-    except Exception as e:
-        if "NOT_FOUND" in str(e) or "does not exist" in str(e).lower():
-            print(f"Creating endpoint {VS_ENDPOINT}...")
-            vsc.create_endpoint(name=VS_ENDPOINT, endpoint_type="STANDARD")
-            print(f"Endpoint {VS_ENDPOINT} creation initiated")
-        else:
-            raise
+# Create endpoint if it doesn't exist
+try:
+    endpoint = vsc.get_endpoint(VS_ENDPOINT)
+    print(f"Endpoint {VS_ENDPOINT} already exists")
+except Exception as e:
+    if "NOT_FOUND" in str(e) or "does not exist" in str(e).lower():
+        print(f"Creating endpoint {VS_ENDPOINT}...")
+        vsc.create_endpoint(name=VS_ENDPOINT, endpoint_type="STANDARD")
+        print(f"Endpoint {VS_ENDPOINT} creation initiated")
+    else:
+        raise
 
-    # Wait for endpoint to be ready
-    wait_for_endpoint_ready(VS_ENDPOINT)
+# Wait for endpoint to be ready
+wait_for_endpoint_ready(VS_ENDPOINT)
 
 # COMMAND ----------
 
@@ -133,7 +119,9 @@ if MODE != "sync_only":
 # COMMAND ----------
 
 
-def wait_for_index_ready(endpoint_name: str, index_name: str, timeout_minutes: int = 60):
+def wait_for_index_ready(
+    endpoint_name: str, index_name: str, timeout_minutes: int = 60
+):
     """Wait for Vector Search index to be ready."""
     start_time = time.time()
     timeout_seconds = timeout_minutes * 60
@@ -142,7 +130,9 @@ def wait_for_index_ready(endpoint_name: str, index_name: str, timeout_minutes: i
         try:
             index = vsc.get_index(endpoint_name=endpoint_name, index_name=index_name)
             status = index.describe().get("status", {}).get("ready", False)
-            detailed_state = index.describe().get("status", {}).get("detailed_state", "UNKNOWN")
+            detailed_state = (
+                index.describe().get("status", {}).get("detailed_state", "UNKNOWN")
+            )
 
             if status:
                 print(f"Index {index_name} is READY")
@@ -166,34 +156,27 @@ def wait_for_index_ready(endpoint_name: str, index_name: str, timeout_minutes: i
 
 # COMMAND ----------
 
-if MODE == "sync_only":
-    # Just sync existing index
-    print(f"Syncing existing index {VS_INDEX}...")
+# Create new index or sync if exists
+try:
+    # Check if index already exists
     index = vsc.get_index(endpoint_name=VS_ENDPOINT, index_name=VS_INDEX)
+    print(f"Index {VS_INDEX} already exists. Triggering sync...")
     index.sync()
-    print("Sync initiated")
-else:
-    # Create new index or sync if exists
-    try:
-        # Check if index already exists
-        index = vsc.get_index(endpoint_name=VS_ENDPOINT, index_name=VS_INDEX)
-        print(f"Index {VS_INDEX} already exists. Triggering sync...")
-        index.sync()
-    except Exception as e:
-        if "NOT_FOUND" in str(e) or "does not exist" in str(e).lower():
-            print(f"Creating Delta Sync index {VS_INDEX}...")
-            vsc.create_delta_sync_index(
-                endpoint_name=VS_ENDPOINT,
-                index_name=VS_INDEX,
-                source_table_name=CHUNKS_TABLE,
-                primary_key="chunk_id",
-                pipeline_type="TRIGGERED",
-                embedding_source_column="text_content",
-                embedding_model_endpoint_name=EMBEDDING_MODEL,
-            )
-            print(f"Index {VS_INDEX} creation initiated")
-        else:
-            raise
+except Exception as e:
+    if "NOT_FOUND" in str(e) or "does not exist" in str(e).lower():
+        print(f"Creating Delta Sync index {VS_INDEX}...")
+        vsc.create_delta_sync_index(
+            endpoint_name=VS_ENDPOINT,
+            index_name=VS_INDEX,
+            source_table_name=CHUNKS_TABLE,
+            primary_key="chunk_id",
+            pipeline_type="TRIGGERED",
+            embedding_source_column="text_content",
+            embedding_model_endpoint_name=EMBEDDING_MODEL,
+        )
+        print(f"Index {VS_INDEX} creation initiated")
+    else:
+        raise
 
 # COMMAND ----------
 
