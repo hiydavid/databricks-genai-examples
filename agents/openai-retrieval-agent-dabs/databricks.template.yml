@@ -1,0 +1,39 @@
+bundle:
+  name: retrieval-agent-mcp
+
+variables:
+  catalog:
+    description: Unity Catalog name
+    default: main
+  schema:
+    description: Schema name
+    default: default
+  vs_endpoint:
+    description: Vector Search endpoint name
+    default: retrieval-agent-vs-endpoint
+
+include:
+  - resources/*.job.yml
+
+resources:
+  experiments:
+    retrieval_agent_experiment:
+      name: /Users/${workspace.current_user.userName}/experiments/retrieval-agent-mcp
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://YOUR_WORKSPACE.cloud.databricks.com
+    # Optional: override variables for dev
+    # variables:
+    #   catalog: dev_catalog
+
+  prod:
+    mode: production
+    workspace:
+      host: https://YOUR_WORKSPACE.cloud.databricks.com
+    # Optional: override variables for prod
+    # variables:
+    #   catalog: prod_catalog

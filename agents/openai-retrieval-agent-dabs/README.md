@@ -15,10 +15,10 @@ This example demonstrates an end-to-end retrieval agent pipeline:
 ## Architecture
 
 ```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          ORCHESTRATION LAYER                                │
-│                     (DABs + Lakeflow Jobs Pipeline)                         │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│                          ORCHESTRATION LAYER                           │
+│                     (DABs + Lakeflow Jobs Pipeline)                    │
+└────────────────────────────────────────────────────────────────────────┘
                                     │
         ┌───────────────────────────┼───────────────────────────┐
         ▼                           ▼                           ▼
@@ -46,7 +46,7 @@ This example demonstrates an end-to-end retrieval agent pipeline:
 ```text
 agents/openai-retrieval-agent-dabs/
 ├── README.md                           # This file
-├── databricks.yml                      # DABs config + infrastructure variables
+├── databricks.template.yml             # DABs config template (copy to databricks.yml)
 ├── requirements.txt                    # Python dependencies
 ├── src/
 │   ├── configs.template.yaml           # Agent runtime config template (LLM settings)
@@ -85,11 +85,12 @@ agents/openai-retrieval-agent-dabs/
 Infrastructure settings are defined as DAB variables in `databricks.yml`:
 
 | Variable | Description | Default |
-|----------|-------------|---------|
+| ---------- | ------------- | --------- |
 | `catalog` | Unity Catalog name | `main` |
 | `schema` | Schema name | `default` |
-| `experiment_name` | MLflow experiment path | `/Users/{user}/retrieval-agent-mcp` |
 | `vs_endpoint` | Vector Search endpoint name | `retrieval-agent-vs-endpoint` |
+
+The MLflow experiment is automatically created at `/Users/{user}/experiments/retrieval-agent-mcp` (with a `[dev ...]` prefix in development mode).
 
 Agent runtime settings (LLM config) are in `src/configs.yaml`.
 
@@ -101,13 +102,16 @@ Agent runtime settings (LLM config) are in `src/configs.yaml`.
 cd agents/openai-retrieval-agent-dabs
 ```
 
-### Step 2: Create Agent Config File
+### Step 2: Create Config Files
 
-Copy the template:
+Copy the templates:
 
 ```bash
+cp databricks.template.yml databricks.yml
 cp src/configs.template.yaml src/configs.yaml
 ```
+
+### Step 3: Configure Agent Runtime
 
 Edit `src/configs.yaml` to configure the LLM endpoint:
 
@@ -120,7 +124,7 @@ agent_configs:
     max_tokens: 4096
 ```
 
-### Step 3: Update DABs Configuration
+### Step 4: Configure DABs
 
 Edit `databricks.yml` to set your workspace URL and optionally override variables:
 
@@ -140,7 +144,7 @@ targets:
     #   catalog: dev_catalog
 ```
 
-### Step 4: Upload Your Documents
+### Step 5: Upload Your Documents
 
 Upload PDF documents to `/Volumes/{catalog}/{schema}/user_guides`.
 
@@ -204,7 +208,7 @@ databricks bundle run full_pipeline --var catalog=prod_catalog
 The following paths are automatically derived from the `catalog` and `schema` variables:
 
 | Resource | Path |
-|----------|------|
+| ---------- | ------ |
 | Source Volume | `/Volumes/{catalog}/{schema}/user_guides` |
 | Chunks Table | `{catalog}.{schema}.user_guide_chunks` |
 | Images Volume | `/Volumes/{catalog}/{schema}/parsed_images` |
