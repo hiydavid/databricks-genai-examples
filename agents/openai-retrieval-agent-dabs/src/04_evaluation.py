@@ -7,14 +7,21 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install mlflow>=2.21.0 databricks-agents>=0.16.0 PyYAML pandas
+# MAGIC %pip install -r ../requirements.txt --quiet
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
 
 import mlflow
 import pandas as pd
+from databricks import agents
 from mlflow.deployments import get_deploy_client
+from mlflow.genai.scorers import (
+    Correctness,
+    RelevanceToQuery,
+    RetrievalGroundedness,
+    RetrievalRelevance,
+)
 
 # COMMAND ----------
 
@@ -37,8 +44,13 @@ if not CATALOG or not SCHEMA or not EXPERIMENT_NAME:
 
 # Derive paths from parameters
 UC_MODEL_NAME = f"{CATALOG}.{SCHEMA}.retrieval_agent"
-AGENT_ENDPOINT_NAME = UC_MODEL_NAME.replace(".", "_")
 EVAL_TABLE = f"{CATALOG}.{SCHEMA}.eval_dataset"
+
+# Get endpoint name from deployed agent
+deployments = agents.get_deployments(UC_MODEL_NAME)
+if not deployments:
+    raise ValueError(f"No deployment found for {UC_MODEL_NAME}. Deploy the agent first.")
+AGENT_ENDPOINT_NAME = deployments[0].endpoint_name
 
 print(f"Catalog: {CATALOG}")
 print(f"Schema: {SCHEMA}")
@@ -108,14 +120,11 @@ eval_df.head()
 
 # COMMAND ----------
 
-# Prepare data in MLflow evaluation format
+# Prepare data in MLflow GenAI evaluation format
 eval_data = pd.DataFrame(
     {
-        "inputs": [
-            {"messages": [{"role": "user", "content": q}]}
-            for q in eval_df["question"]
-        ],
-        "ground_truth": eval_df["expected_answer"].tolist(),
+        "inputs": [{"question": q} for q in eval_df["question"]],
+        "expectations": [{"expected_response": a} for a in eval_df["expected_answer"]],
     }
 )
 
@@ -133,33 +142,28 @@ eval_data.head()
 client = get_deploy_client("databricks")
 
 
-def predict_fn(inputs_df: pd.DataFrame) -> list[str]:
+def predict_fn(question: str) -> str:
     """
     Wrapper function to call the deployed agent.
-    Takes a DataFrame with 'inputs' column and returns list of responses.
+    Takes a question string and returns response string.
     """
-    responses = []
+    messages = {"messages": [{"role": "user", "content": question}]}
 
-    for _, row in inputs_df.iterrows():
-        input_data = row["inputs"]
+    try:
+        response = client.predict(endpoint=AGENT_ENDPOINT_NAME, inputs=messages)
 
-        try:
-            response = client.predict(endpoint=AGENT_ENDPOINT_NAME, inputs=input_data)
+        # Extract the assistant message from response
+        if "choices" in response:
+            content = response["choices"][0]["message"]["content"]
+        elif "messages" in response:
+            content = response["messages"][-1]["content"]
+        else:
+            content = str(response)
 
-            # Extract the assistant message from response
-            if "choices" in response:
-                content = response["choices"][0]["message"]["content"]
-            elif "messages" in response:
-                content = response["messages"][-1]["content"]
-            else:
-                content = str(response)
-
-            responses.append(content)
-        except Exception as e:
-            print(f"Error calling agent: {e}")
-            responses.append(f"Error: {str(e)}")
-
-    return responses
+        return content
+    except Exception as e:
+        print(f"Error calling agent: {e}")
+        return f"Error: {str(e)}"
 
 
 # COMMAND ----------
@@ -195,16 +199,16 @@ with mlflow.start_run(run_name="agent-evaluation") as run:
     mlflow.log_param("num_examples", len(eval_data))
     mlflow.log_param("eval_table", EVAL_TABLE)
 
-    # Run evaluation
-    results = mlflow.evaluate(
-        model=predict_fn,
+    # Run evaluation using mlflow.genai.evaluate
+    results = mlflow.genai.evaluate(
         data=eval_data,
-        targets="ground_truth",
-        model_type="question-answering",
-        evaluators="default",
-        evaluator_config={
-            "col_mapping": {"inputs": "inputs", "ground_truth": "ground_truth"}
-        },
+        predict_fn=predict_fn,
+        scorers=[
+            Correctness(),  # Requires expectations (ground truth)
+            RelevanceToQuery(),  # Is response relevant to question?
+            RetrievalGroundedness(),  # Is response grounded in retrieved context?
+            RetrievalRelevance(),  # Is retrieved context relevant to query?
+        ],
     )
 
     print("\n=== Evaluation Results ===")
@@ -221,9 +225,9 @@ with mlflow.start_run(run_name="agent-evaluation") as run:
 
 # COMMAND ----------
 
-# Display per-example results
-results_df = results.tables["eval_results_table"]
-results_df
+# Display per-example results via traces
+traces_df = mlflow.search_traces(run_id=run.info.run_id)
+traces_df
 
 # COMMAND ----------
 
@@ -242,6 +246,10 @@ print(f"MLflow Experiment: {EXPERIMENT_NAME}")
 print("\nKey Metrics:")
 for metric_name, metric_value in results.metrics.items():
     if "mean" in metric_name or "std" not in metric_name:
-        print(f"  {metric_name}: {metric_value:.4f}" if isinstance(metric_value, float) else f"  {metric_name}: {metric_value}")
+        print(
+            f"  {metric_name}: {metric_value:.4f}"
+            if isinstance(metric_value, float)
+            else f"  {metric_name}: {metric_value}"
+        )
 print("=" * 50)
 print("\nView detailed results in the MLflow UI.")

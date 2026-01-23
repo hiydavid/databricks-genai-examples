@@ -231,11 +231,16 @@ try:
         uc_registered_model_info.version,
         tags={"endpointSource": "retrieval-agent-mcp"},
     )
+    AGENT_ENDPOINT_NAME = deployment.endpoint_name
     print(f"Deployment initiated successfully!")
-    print(f"Endpoint will be available at: {UC_MODEL_NAME.replace('.', '_')}")
+    print(f"Endpoint name: {AGENT_ENDPOINT_NAME}")
 except ValueError as e:
     if "currently updating" in str(e):
         print("Endpoint is already updating. Deployment will complete shortly.")
+        # Get endpoint name from existing deployment
+        deployments = agents.get_deployments(UC_MODEL_NAME)
+        AGENT_ENDPOINT_NAME = deployments[0].endpoint_name if deployments else "unknown"
+        print(f"Endpoint name: {AGENT_ENDPOINT_NAME}")
     else:
         raise e
 
@@ -253,6 +258,7 @@ print(f"MLflow Experiment: {EXPERIMENT_NAME}")
 print(f"Run ID: {run.info.run_id}")
 print(f"UC Model: {UC_MODEL_NAME}")
 print(f"Model Version: {uc_registered_model_info.version}")
+print(f"Agent Endpoint: {AGENT_ENDPOINT_NAME}")
 print(f"LLM Endpoint: {LLM_ENDPOINT}")
 print(f"Vector Search Index: {VS_INDEX}")
 print("=" * 50)
