@@ -14,7 +14,7 @@ All materials are provided AS IS, without any guarantees or warranties, and are 
 * Multi-Agent Genie with OpenAI Response API
 * Multi-Agent Knowledge Assistant with OpenAI Response API
 * Tool-Calling Agent with Databricks Managed MCPs
-* Agent Deployement with Databricks Asset Bundles
+* Agent Deployment with Databricks Asset Bundles
 * Text2SQL Agent with Databricks UC Managed MCP
 * Text2SQL Agent with LangChain
 * Async Agentic Task with Lakeflow Jobs
