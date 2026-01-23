@@ -1,4 +1,4 @@
-# Retrieval Agent with MCP
+# Deploying a Simple Retrieval Agent with DABS
 
 A retrieval-augmented generation (RAG) agent that parses PDF documents, creates a Vector Search index, and deploys an AI agent using the OpenAI Chat Completions API with MCP (Model Context Protocol) tool calling.
 
@@ -15,30 +15,30 @@ This example demonstrates an end-to-end retrieval agent pipeline:
 ## Architecture
 
 ```text
-┌────────────────────────────────────────────────────────────────────────┐
-│                          ORCHESTRATION LAYER                           │
-│                     (DABs + Lakeflow Jobs Pipeline)                    │
-└────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────┐
+│                          ORCHESTRATION LAYER                          │
+│                     (DABs + Lakeflow Jobs Pipeline)                   │
+└───────────────────────────────────────────────────────────────────────┘
                                     │
         ┌───────────────────────────┼───────────────────────────┐
         ▼                           ▼                           ▼
-┌───────────────┐         ┌─────────────────┐         ┌─────────────────┐
-│  Task 1:      │         │  Task 2:        │         │  Task 3:        │
-│  Document     │────────▶│  Vector Search  │────────▶│  Agent          │
-│  Ingestion    │         │  Index Creation │         │  Deployment     │
-└───────────────┘         └─────────────────┘         └─────────────────┘
-        │                           │                           │
-        ▼                           ▼                           ▼
-┌───────────────┐         ┌─────────────────┐         ┌─────────────────┐
-│ai_parse_doc() │         │ Delta Sync      │         │ OpenAI API +    │
-│ PDF → Text    │         │ VS Index        │         │ MCP Tools       │
-└───────────────┘         └─────────────────┘         └─────────────────┘
-                                                                │
-                                                                ▼
-                                                      ┌─────────────────┐
-                                                      │ Model Serving   │
-                                                      │ Endpoint        │
-                                                      └─────────────────┘
+┌───────────────┐         ┌─────────────────┐         ┌────────────────┐
+│  Task 1:      │         │  Task 2:        │         │  Task 3:       │
+│  Document     │────────▶│  Vector Search  │────────▶│  Agent         │
+│  Ingestion    │         │  Index Creation │         │  Deployment    │
+└───────────────┘         └─────────────────┘         └────────────────┘
+        │                          │                          │
+        ▼                          ▼                          ▼
+┌───────────────┐         ┌─────────────────┐         ┌────────────────┐
+│ai_parse_doc() │         │ Delta Sync      │         │ OpenAI API +   │
+│ PDF → Text    │         │ VS Index        │         │ MCP Tools      │
+└───────────────┘         └─────────────────┘         └────────────────┘
+                                                              │
+                                                              ▼
+                                                      ┌────────────────┐
+                                                      │ Model Serving  │
+                                                      │ Endpoint       │
+                                                      └────────────────┘
 ```
 
 ## Directory Structure
@@ -89,8 +89,9 @@ Infrastructure settings are defined as DAB variables in `databricks.yml`:
 | `catalog` | Unity Catalog name | `main` |
 | `schema` | Schema name | `default` |
 | `vs_endpoint` | Vector Search endpoint name | `retrieval-agent-vs-endpoint` |
+| `run_as_service_principal` | SP application ID for `run_as` | `""` (required) |
 
-The MLflow experiment is automatically created at `/Users/{user}/experiments/retrieval-agent-mcp` (with a `[dev ...]` prefix in development mode).
+The MLflow experiment is created at `/Shared/experiments/retrieval-agent-mcp`. In development mode, DABs adds a `[dev ...]` prefix automatically.
 
 Agent runtime settings (LLM config) are in `src/configs.yaml`.
 
@@ -203,22 +204,49 @@ databricks bundle run full_pipeline --var catalog=prod_catalog
 
 ## Configuration Details
 
-### Derived Paths
+### Script Variables
 
-The following paths are automatically derived from the `catalog` and `schema` variables:
+Each script has hardcoded variable names that derive paths from the DAB `catalog` and `schema` parameters. If you need to customize these paths, modify the following variables in the respective scripts:
 
-| Resource | Path |
-| ---------- | ------ |
-| Source Volume | `/Volumes/{catalog}/{schema}/user_guides` |
-| Chunks Table | `{catalog}.{schema}.user_guide_chunks` |
-| Images Volume | `/Volumes/{catalog}/{schema}/parsed_images` |
-| Vector Index | `{catalog}.{schema}.user_guide_chunks_index` |
-| UC Model | `{catalog}.{schema}.retrieval_agent` |
-| Eval Table | `{catalog}.{schema}.eval_dataset` |
+**`src/01_ingest_documents.py`**
 
-### LLM Endpoints
+| Variable | Default Value | Description |
+| ---------- | --------------- | ------------- |
+| `SOURCE_VOLUME` | `/Volumes/{catalog}/{schema}/user_guide/guide` | Volume path containing PDF documents |
+| `CHUNKS_TABLE` | `{catalog}.{schema}.user_guide_chunks` | Delta table for parsed chunks |
+| `IMAGES_VOLUME` | `/Volumes/{catalog}/{schema}/user_guide/parsed_images` | Volume for extracted images |
 
-Configure in `src/configs.yaml`. Default: `databricks-claude-haiku-4-5`
+**`src/02_create_vector_index.py`**
+
+| Variable | Default Value | Description |
+| ---------- | --------------- | ------------- |
+| `CHUNKS_TABLE` | `{catalog}.{schema}.user_guide_chunks` | Source table for VS index |
+| `VS_INDEX` | `{catalog}.{schema}.user_guide_chunks_index` | Vector Search index name |
+| `EMBEDDING_MODEL` | `databricks-gte-large-en` | Embedding model endpoint |
+
+**`src/03_deployment.py`**
+
+| Variable | Default Value | Description |
+| ---------- | --------------- | ------------- |
+| `VS_INDEX` | `{catalog}.{schema}.user_guide_chunks_index` | VS index for MCP tool |
+| `UC_MODEL_NAME` | `{catalog}.{schema}.retrieval_agent` | Unity Catalog model name |
+
+**`src/04_evaluation.py`**
+
+| Variable | Default Value | Description |
+| ---------- | --------------- | ------------- |
+| `UC_MODEL_NAME` | `{catalog}.{schema}.retrieval_agent` | Model to evaluate |
+| `AGENT_ENDPOINT_NAME` | `{catalog}_{schema}_retrieval_agent` | Serving endpoint name |
+| `EVAL_TABLE` | `{catalog}.{schema}.eval_dataset` | Evaluation dataset table |
+
+**`src/configs.yaml`** (agent runtime config)
+
+| Variable | Default Value | Description |
+| ---------- | --------------- | ------------- |
+| `agent_name` | `user-guide-retrieval-agent` | Agent identifier |
+| `llm.endpoint_name` | `databricks-claude-haiku-4-5` | LLM model serving endpoint |
+| `llm.temperature` | `0.1` | LLM temperature |
+| `system_prompt` | *(see template)* | Agent system prompt |
 
 ### Vector Search
 
@@ -252,6 +280,74 @@ databricks bundle run agent_evaluation
 ```
 
 View results in the MLflow UI under the experiment.
+
+## Service Principal Configuration
+
+Jobs are configured to run as a Service Principal via the `run_as` setting. This requires passing the SP application ID when deploying.
+
+### SP Prerequisites
+
+1. Create a Service Principal in Databricks Account Console
+2. Grant deploying users **Use** role on the SP (Account Console → Service Principals → Permissions)
+3. Grant SP required permissions (see below)
+4. For CI/CD: Generate an OAuth secret for the SP
+
+### Required Permissions
+
+- **Unity Catalog**:
+  - `USE CATALOG`, `USE SCHEMA` on target catalog/schema
+  - `CREATE TABLE`, `MODIFY`, `SELECT` on tables
+  - `READ VOLUME` on source volume (PDFs)
+  - `WRITE VOLUME` on images volume (parsed output)
+  - `CREATE MODEL` and `CREATE MODEL VERSION` on schema (for registering the agent)
+- **Vector Search**: `CAN MANAGE` on the VS endpoint
+- **Workspace Folder**: `CAN_MANAGE` on `/Shared/experiments` folder
+
+### Local Development (IDE Terminal)
+
+When deploying from your local machine, you authenticate with your personal OAuth. The `run_as` variable controls which SP the jobs execute as:
+
+```bash
+# Deploy (you authenticate as yourself, jobs run as SP)
+databricks bundle deploy -t dev \
+  --var run_as_service_principal=<sp_application_id>
+
+# Run the pipeline
+databricks bundle run full_pipeline -t dev \
+  --var run_as_service_principal=<sp_application_id>
+```
+
+### CI/CD Pipelines
+
+In CI/CD, the pipeline itself authenticates as the SP. Configure these as **secrets** in your CI/CD platform:
+
+**GitHub Actions:**
+
+```yaml
+env:
+  DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+  DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+  DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+
+steps:
+  - run: |
+      databricks bundle deploy -t prod \
+        --var run_as_service_principal=${{ secrets.DATABRICKS_CLIENT_ID }}
+```
+
+**Azure DevOps:**
+
+```yaml
+variables:
+  DATABRICKS_HOST: $(DATABRICKS_HOST)
+  DATABRICKS_CLIENT_ID: $(DATABRICKS_CLIENT_ID)
+  DATABRICKS_CLIENT_SECRET: $(DATABRICKS_CLIENT_SECRET)
+
+steps:
+  - script: |
+      databricks bundle deploy -t prod \
+        --var run_as_service_principal=$(DATABRICKS_CLIENT_ID)
+```
 
 ## References
 

@@ -11,6 +11,9 @@ variables:
   vs_endpoint:
     description: Vector Search endpoint name
     default: retrieval-agent-vs-endpoint
+  run_as_service_principal:
+    description: "Service Principal application ID for run_as"
+    default: ""
 
 include:
   - resources/*.job.yml
@@ -18,7 +21,7 @@ include:
 resources:
   experiments:
     retrieval_agent_experiment:
-      name: /Users/${workspace.current_user.userName}/experiments/retrieval-agent-mcp
+      name: /Shared/experiments/retrieval-agent-mcp
 
 targets:
   dev:
@@ -26,6 +29,8 @@ targets:
     default: true
     workspace:
       host: https://YOUR_WORKSPACE.cloud.databricks.com
+    run_as:
+      service_principal_name: ${var.run_as_service_principal}
     # Optional: override variables for dev
     # variables:
     #   catalog: dev_catalog
@@ -34,6 +39,8 @@ targets:
     mode: production
     workspace:
       host: https://YOUR_WORKSPACE.cloud.databricks.com
+    run_as:
+      service_principal_name: ${var.run_as_service_principal}
     # Optional: override variables for prod
     # variables:
     #   catalog: prod_catalog
