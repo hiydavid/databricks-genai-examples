@@ -19,6 +19,9 @@ All materials are provided AS IS, without any guarantees or warranties, and are 
 * Text2SQL Agent with LangChain
 * Async Agentic Task with Lakeflow Jobs
 
+## AI/BI
+* (WIP) Genie Space Optimization 
+
 ## Batch Inference
 
 * CPU Model Serving Endpoint Batch Inference
