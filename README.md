@@ -15,11 +15,13 @@ All materials are provided AS IS, without any guarantees or warranties, and are 
 * Multi-Agent Knowledge Assistant with OpenAI Response API
 * Tool-Calling Agent with Databricks Managed MCPs
 * Agent Deployment with Databricks Asset Bundles
+* Retrieval Agent Deployment with DABs and `ai_parse_document`
 * Text2SQL Agent with Databricks UC Managed MCP
 * Text2SQL Agent with LangChain
 * Async Agentic Task with Lakeflow Jobs
 
 ## AI/BI
+
 * (WIP) Genie Space Optimization 
 
 ## Batch Inference
