@@ -1,0 +1,14 @@
+# Genie Space Optimizer Configuration
+
+# Genie Space to analyze (required)
+space_id: ""
+
+# SQL Warehouse ID for benchmark execution (optional - uses space default if empty)
+warehouse_id: ""
+
+# LLM endpoint for analysis
+llm_endpoint: "databricks-claude-sonnet-4-5"
+
+# Databricks secrets for API authentication
+secret_scope: "dbdemos"
+secret_key: "databricks_token"

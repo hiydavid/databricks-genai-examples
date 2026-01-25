@@ -26,36 +26,35 @@
 import sys
 
 # Add the current notebook directory to Python path for imports
-notebook_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+notebook_path = (
+    dbutils.notebook.entry_point.getDbutils()
+    .notebook()
+    .getContext()
+    .notebookPath()
+    .get()
+)
 notebook_dir = "/Workspace" + "/".join(notebook_path.split("/")[:-1])
 if notebook_dir not in sys.path:
     sys.path.insert(0, notebook_dir)
 
-from utils import (
-    HTMLRenderer,
-    LLMAnalyzer,
-    GenieSpaceClient,
-    BenchmarkRunner,
-)
+from utils import BenchmarkRunner, GenieSpaceClient, HTMLRenderer, LLMAnalyzer, load_config
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## Configuration
-# MAGIC Set the Genie Space ID and optional parameters for analysis.
+# MAGIC Loads settings from config.yaml in the project root.
 
 # COMMAND ----------
 
-dbutils.widgets.text("space_id", "", "Genie Space ID")
-dbutils.widgets.text("warehouse_id", "", "SQL Warehouse ID (optional)")
-dbutils.widgets.text("llm_endpoint", "databricks-claude-sonnet-4-5", "LLM Endpoint")
+config = load_config()
 
-space_id = dbutils.widgets.get("space_id")
-warehouse_id = dbutils.widgets.get("warehouse_id") or None
-llm_endpoint = dbutils.widgets.get("llm_endpoint")
+space_id = config["space_id"]
+warehouse_id = config.get("warehouse_id") or None
+llm_endpoint = config.get("llm_endpoint", "databricks-claude-sonnet-4-5")
 
 if not space_id:
-    raise ValueError("space_id parameter is required")
+    raise ValueError("space_id is required in config.yaml")
 
 print(f"Space ID: {space_id}")
 print(f"Warehouse ID: {warehouse_id or '(will use space default)'}")
@@ -110,7 +109,7 @@ displayHTML(html_output)
 
 # COMMAND ----------
 
-analyzer = LLMAnalyzer(endpoint=llm_endpoint)
+analyzer = LLMAnalyzer(dbutils, config)
 
 print("\nAnalyzing data_sources section...")
 data_sources_analysis = analyzer.analyze_data_sources(serialized.get("data_sources"))
