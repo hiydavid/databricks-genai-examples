@@ -7,11 +7,22 @@ Helper classes and constants for analyzing and optimizing Databricks Genie Space
 import json
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Optional
 
+import yaml
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.sql import StatementState
 from openai import OpenAI
+
+
+def load_config(config_path: str = None) -> dict:
+    """Load configuration from YAML file."""
+    if config_path is None:
+        # Look for config.yaml in parent directory of src/
+        config_path = Path(__file__).parent.parent / "config.yaml"
+    with open(config_path) as f:
+        return yaml.safe_load(f)
 
 # =============================================================================
 # Evaluation Checklists
@@ -304,14 +315,22 @@ class HTMLRenderer:
 class LLMAnalyzer:
     """Uses Foundation Model API to analyze Genie Space sections against checklists."""
 
-    def __init__(self, endpoint: str = "databricks-claude-sonnet-4-5"):
+    def __init__(self, dbutils, config: dict = None):
         """Initialize the LLM client."""
-        w = WorkspaceClient()
-        self.client = OpenAI(
-            api_key=w.config.token,
-            base_url=f"{w.config.host}/serving-endpoints",
+        if config is None:
+            config = load_config()
+
+        token = dbutils.secrets.get(
+            scope=config["secret_scope"],
+            key=config["secret_key"],
         )
-        self.endpoint = endpoint
+        host = WorkspaceClient().config.host
+
+        self.client = OpenAI(
+            api_key=token,
+            base_url=f"{host}/serving-endpoints",
+        )
+        self.endpoint = config.get("llm_endpoint", "databricks-claude-sonnet-4-5")
 
     def _analyze_section(
         self, section_name: str, section_data: Any, checklist: str
@@ -355,7 +374,34 @@ Provide your analysis as JSON."""
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            response_format={"type": "json_object"},
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "checklist_analysis",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "items": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {"type": "string"},
+                                        "status": {"type": "string"},
+                                        "explanation": {"type": "string"},
+                                    },
+                                    "required": ["name", "status", "explanation"],
+                                    "additionalProperties": False,
+                                },
+                            },
+                            "summary": {"type": "string"},
+                        },
+                        "required": ["items", "summary"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
             max_tokens=2000,
             temperature=0,
         )
@@ -425,7 +471,7 @@ class GenieSpaceClient:
             "title": space.title,
             "description": space.description,
             "space_id": space_id,
-            "serialized_space": space.serialized_space,
+            "serialized_space": json.loads(space.serialized_space),
         }
 
     def ask_question(
