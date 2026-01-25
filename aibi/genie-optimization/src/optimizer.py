@@ -37,7 +37,13 @@ notebook_dir = "/Workspace" + "/".join(notebook_path.split("/")[:-1])
 if notebook_dir not in sys.path:
     sys.path.insert(0, notebook_dir)
 
-from utils import BenchmarkRunner, GenieSpaceClient, HTMLRenderer, LLMAnalyzer, load_config
+from utils import (
+    BenchmarkRunner,
+    GenieSpaceClient,
+    HTMLRenderer,
+    LLMAnalyzer,
+    load_config,
+)
 
 # COMMAND ----------
 
@@ -63,7 +69,7 @@ print(f"LLM Endpoint: {llm_endpoint}")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Section 1: Space Configuration
+# MAGIC ## Section 1: Import Space Configuration
 # MAGIC Fetches and displays the serialized Genie Space configuration by section.
 
 # COMMAND ----------
@@ -195,15 +201,23 @@ displayHTML(summary_html)
 
 # MAGIC %md
 # MAGIC ## Section 3: Benchmark Testing
-# MAGIC Runs benchmark questions through Genie and compares generated SQL against expected results.
+# MAGIC Select which benchmark questions to run, then execute the next cell.
 
 # COMMAND ----------
 
 benchmarks_data = serialized.get("benchmarks", {})
-questions = benchmarks_data.get("questions", [])
+all_questions = benchmarks_data.get("questions", [])
 
-if not questions:
-    print("\nNo benchmark questions defined in this space. Skipping benchmark testing.")
+
+def get_question_text(q):
+    """Extract question text, handling list format."""
+    text = q.get("question", "")
+    if isinstance(text, list):
+        text = text[0] if text else ""
+    return text
+
+
+if not all_questions:
     displayHTML(
         """
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; margin: 20px 0;">
@@ -215,42 +229,137 @@ if not questions:
     """
     )
 else:
-    print(f"\nFound {len(questions)} benchmark question(s)")
+    import ipywidgets as widgets
+    from IPython.display import display
 
-    benchmark_runner = BenchmarkRunner(genie_client, warehouse_id)
-    benchmark_results = benchmark_runner.run_all_benchmarks(space_id, questions)
-
-    # Display individual results
-    html_output = """
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-        <h2 style="color: #1e3a5f; border-bottom: 2px solid #667eea; padding-bottom: 8px;">
-            Benchmark Test Results
-        </h2>
-    """
-
-    for result in benchmark_results:
-        details = {}
-        if result.expected_row_count is not None:
-            details["Expected rows"] = result.expected_row_count
-        if result.generated_row_count is not None:
-            details["Generated rows"] = result.generated_row_count
-        if result.error:
-            details["Error"] = result.error
-
-        html_output += HTMLRenderer.render_benchmark_result(
-            question=result.question,
-            expected_sql=result.expected_sql,
-            generated_sql=result.generated_sql,
-            passed=result.passed,
-            details=details,
+    # Create checkboxes for each question
+    checkboxes = []
+    for i, q in enumerate(all_questions):
+        cb = widgets.Checkbox(
+            value=False,
+            description="",
+            indent=False,
+            layout=widgets.Layout(width="30px"),
         )
+        checkboxes.append(cb)
 
-    html_output += "</div>"
-    displayHTML(html_output)
+    # Create styled labels
+    question_widgets = []
+    for i, (cb, q) in enumerate(zip(checkboxes, all_questions)):
+        label = widgets.HTML(
+            value=f"<span style='font-family: -apple-system, sans-serif;'><strong>Q{i}:</strong> {get_question_text(q)}</span>"
+        )
+        row = widgets.HBox([cb, label], layout=widgets.Layout(margin="4px 0"))
+        question_widgets.append(row)
+
+    # Select all / Deselect all buttons
+    def select_all(b):
+        for cb in checkboxes:
+            cb.value = True
+
+    def deselect_all(b):
+        for cb in checkboxes:
+            cb.value = False
+
+    select_all_btn = widgets.Button(
+        description="Select All",
+        button_style="info",
+        layout=widgets.Layout(width="100px"),
+    )
+    deselect_all_btn = widgets.Button(
+        description="Clear All",
+        button_style="warning",
+        layout=widgets.Layout(width="100px"),
+    )
+    select_all_btn.on_click(select_all)
+    deselect_all_btn.on_click(deselect_all)
+
+    header = widgets.HTML(
+        value=f"""<div style="font-family: -apple-system, sans-serif; margin-bottom: 10px;">
+            <h3 style="color: #1e3a5f; margin: 0;">Select Benchmark Questions ({len(all_questions)} available)</h3>
+            <p style="color: #666; margin: 4px 0 0 0;">Check the questions you want to run, then execute the next cell.</p>
+        </div>"""
+    )
+
+    button_row = widgets.HBox(
+        [select_all_btn, deselect_all_btn], layout=widgets.Layout(margin="0 0 10px 0")
+    )
+    question_box = widgets.VBox(
+        question_widgets,
+        layout=widgets.Layout(
+            max_height="400px",
+            overflow_y="auto",
+            padding="10px",
+            border="1px solid #ddd",
+            border_radius="4px",
+        ),
+    )
+
+    display(widgets.VBox([header, button_row, question_box]))
+
+    # Store checkboxes globally for next cell
+    _benchmark_checkboxes = checkboxes
 
 # COMMAND ----------
 
-if questions:
+# Run selected benchmarks
+benchmark_results = []  # Initialize before conditional to ensure variable exists
+
+if not all_questions:
+    print("No benchmark questions available.")
+elif "_benchmark_checkboxes" not in dir():
+    print("Please run the previous cell first to display the question selector.")
+else:
+    selected_indices = [i for i, cb in enumerate(_benchmark_checkboxes) if cb.value]
+
+    if not selected_indices:
+        print("No questions selected. Please select at least one question above.")
+    else:
+        questions_to_run = [all_questions[i] for i in selected_indices]
+        print(
+            f"Running {len(questions_to_run)} selected benchmark(s): Q{', Q'.join(map(str, selected_indices))}"
+        )
+
+        # Ensure analyzer exists for LLM-based SQL comparison
+        if "analyzer" not in dir():
+            analyzer = LLMAnalyzer(dbutils, config)
+
+        benchmark_runner = BenchmarkRunner(genie_client, warehouse_id, llm_analyzer=analyzer)
+        benchmark_results = benchmark_runner.run_all_benchmarks(
+            space_id, questions_to_run
+        )
+
+        # Display individual results
+        html_output = """
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+            <h2 style="color: #1e3a5f; border-bottom: 2px solid #667eea; padding-bottom: 8px;">
+                Benchmark Test Results
+            </h2>
+        """
+
+        for result in benchmark_results:
+            details = {}
+            if result.expected_row_count is not None:
+                details["Expected rows"] = result.expected_row_count
+            if result.generated_row_count is not None:
+                details["Generated rows"] = result.generated_row_count
+            if result.error:
+                details["Error"] = result.error
+
+            html_output += HTMLRenderer.render_benchmark_result(
+                question=result.question,
+                expected_sql=result.expected_sql,
+                generated_sql=result.generated_sql,
+                passed=result.passed,
+                details=details,
+            )
+
+        html_output += "</div>"
+        displayHTML(html_output)
+
+# COMMAND ----------
+
+if benchmark_results:
     # Prepare summary data
     summary_data = [
         {
@@ -272,3 +381,26 @@ if questions:
     passed = sum(1 for r in benchmark_results if r.passed)
     total = len(benchmark_results)
     print(f"\nBenchmark Results: {passed}/{total} passed ({passed/total*100:.0f}%)")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Benchmark Analysis & Recommendations
+# MAGIC Uses LLM to compare expected vs generated SQL and provide actionable recommendations.
+
+# COMMAND ----------
+
+if benchmark_results:
+    # Ensure analyzer exists (in case checklist section was skipped)
+    if "analyzer" not in dir():
+        analyzer = LLMAnalyzer(dbutils, config)
+
+    print("Analyzing benchmark results with LLM...")
+    benchmark_analysis = analyzer.analyze_benchmark_results(
+        benchmark_results=benchmark_results,
+        serialized_space=serialized,
+    )
+    html_output = HTMLRenderer.render_benchmark_analysis(benchmark_analysis)
+    displayHTML(html_output)
+else:
+    print("No benchmark results to analyze.")
