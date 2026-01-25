@@ -306,6 +306,101 @@ class HTMLRenderer:
         </div>
         """
 
+    @staticmethod
+    def render_benchmark_analysis(analysis: dict) -> str:
+        """Render the LLM benchmark analysis as styled HTML with collapsible sections."""
+        benchmark_analyses = analysis.get("benchmark_analyses", [])
+        overall_recommendations = analysis.get("overall_recommendations", [])
+        summary = HTMLRenderer._escape_html(analysis.get("summary", ""))
+
+        # Render individual benchmark analyses
+        analyses_html = ""
+        for i, ba in enumerate(benchmark_analyses):
+            question = HTMLRenderer._escape_html(ba.get("question", ""))
+            comparison = HTMLRenderer._escape_html(ba.get("comparison", ""))
+            diagnosis = HTMLRenderer._escape_html(ba.get("diagnosis", ""))
+            recommendations = ba.get("recommendations", [])
+
+            recs_html = "".join(
+                f'<li style="margin: 4px 0; color: #374151;">{HTMLRenderer._escape_html(r)}</li>'
+                for r in recommendations
+            )
+
+            analyses_html += f"""
+            <div style="margin: 12px 0; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;">
+                <div onclick="
+                    var content = this.nextElementSibling;
+                    var toggle = this.querySelector('.toggle');
+                    if (content.style.display === 'none') {{
+                        content.style.display = 'block';
+                        toggle.textContent = '−';
+                    }} else {{
+                        content.style.display = 'none';
+                        toggle.textContent = '+';
+                    }}
+                " style="background: #f8fafc; padding: 12px 16px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb;">
+                    <span style="font-weight: 600; color: #1e3a5f; font-size: 14px;">Q{i + 1}: {question[:80]}{'...' if len(ba.get('question', '')) > 80 else ''}</span>
+                    <span class="toggle" style="font-family: monospace; font-size: 18px; color: #666;">+</span>
+                </div>
+                <div style="display: none; padding: 16px;">
+                    <div style="margin-bottom: 16px;">
+                        <div style="font-weight: 600; color: #667eea; margin-bottom: 6px; font-size: 13px;">SQL Comparison</div>
+                        <div style="background: #f1f5f9; padding: 12px; border-radius: 4px; font-size: 13px; color: #475569; white-space: pre-wrap;">{comparison}</div>
+                    </div>
+                    <div style="margin-bottom: 16px;">
+                        <div style="font-weight: 600; color: #667eea; margin-bottom: 6px; font-size: 13px;">Diagnosis</div>
+                        <div style="background: #fef3c7; padding: 12px; border-radius: 4px; font-size: 13px; color: #92400e; white-space: pre-wrap;">{diagnosis}</div>
+                    </div>
+                    <div>
+                        <div style="font-weight: 600; color: #667eea; margin-bottom: 6px; font-size: 13px;">Recommendations</div>
+                        <ul style="margin: 0; padding-left: 20px; font-size: 13px;">
+                            {recs_html if recs_html else '<li style="color: #6b7280;">No specific recommendations</li>'}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            """
+
+        # Render overall recommendations
+        overall_recs_html = "".join(
+            f"""
+            <div style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; background: #f0fdf4; border-left: 3px solid #22c55e; border-radius: 4px; margin: 8px 0;">
+                <span style="color: #22c55e; font-weight: bold;">→</span>
+                <span style="color: #166534; font-size: 13px;">{HTMLRenderer._escape_html(r)}</span>
+            </div>
+            """
+            for r in overall_recommendations
+        )
+
+        return f"""
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 20px 0;">
+            <div style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 16px 20px;">
+                    <h3 style="margin: 0; font-size: 18px;">Benchmark Analysis & Recommendations</h3>
+                    <p style="margin: 8px 0 0 0; opacity: 0.9; font-size: 14px;">LLM-powered comparison of expected vs generated SQL</p>
+                </div>
+
+                <div style="padding: 20px;">
+                    <div style="background: #f8fafc; padding: 16px; border-radius: 6px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
+                        <div style="font-weight: 600; color: #1e3a5f; margin-bottom: 8px;">Overall Assessment</div>
+                        <p style="margin: 0; color: #475569; font-size: 14px;">{summary}</p>
+                    </div>
+
+                    <div style="margin-bottom: 20px;">
+                        <h4 style="color: #1e3a5f; margin: 0 0 12px 0; font-size: 16px;">Individual Benchmark Analysis</h4>
+                        <p style="color: #6b7280; font-size: 13px; margin: 0 0 12px 0;">Click each benchmark to expand details</p>
+                        {analyses_html if analyses_html else '<p style="color: #6b7280;">No benchmark analyses available</p>'}
+                    </div>
+
+                    <div>
+                        <h4 style="color: #1e3a5f; margin: 0 0 12px 0; font-size: 16px;">Overall Recommendations</h4>
+                        {overall_recs_html if overall_recs_html else '<p style="color: #6b7280;">No overall recommendations</p>'}
+                    </div>
+                </div>
+            </div>
+        </div>
+        """
+
 
 # =============================================================================
 # LLMAnalyzer
@@ -430,6 +525,265 @@ Provide your analysis as JSON."""
         """Analyze the benchmarks section."""
         return self._analyze_section("benchmarks", benchmarks, CHECKLIST_BENCHMARKS)
 
+    def analyze_benchmark_results(
+        self,
+        benchmark_results: list,
+        serialized_space: dict,
+    ) -> dict:
+        """
+        Compare expected vs generated SQL for each benchmark and provide
+        actionable recommendations for improving the Genie space.
+
+        Args:
+            benchmark_results: List of BenchmarkResult with question, expected_sql, generated_sql, error
+            serialized_space: Full serialized space config for context
+
+        Returns:
+            dict with benchmark_analyses, overall_recommendations, and summary
+        """
+        system_prompt = """You are an expert Databricks Genie Space analyst.
+Your task is to analyze benchmark results where Genie generated SQL that may differ from the expected SQL.
+
+For each benchmark:
+1. Compare the expected SQL with the generated SQL semantically (not just syntactically)
+2. Identify meaningful differences in logic, joins, filters, columns, or aggregations
+3. Diagnose WHY Genie may have generated different SQL based on the space configuration
+4. Provide SPECIFIC, ACTIONABLE recommendations to improve the Genie space
+
+Focus on:
+- Missing or unclear column descriptions that could cause wrong column selection
+- Missing synonyms that could cause misinterpretation of user terminology
+- Missing or unclear instructions that could guide Genie
+- Example SQL queries that could demonstrate the expected pattern
+- Join specifications that could clarify table relationships
+
+Be concise but specific. Reference actual table names, column names, and instruction text where relevant."""
+
+        # Prepare benchmark data for the prompt
+        benchmark_data = []
+        for r in benchmark_results:
+            benchmark_data.append({
+                "question": r.question,
+                "expected_sql": r.expected_sql,
+                "generated_sql": r.generated_sql or "(no SQL generated)",
+                "passed": r.passed,
+                "error": r.error,
+            })
+
+        # Truncate serialized space to avoid token limits
+        space_summary = {
+            "instructions": serialized_space.get("instructions", {}),
+            "data_sources": self._truncate_data_sources(
+                serialized_space.get("data_sources", {})
+            ),
+        }
+
+        user_prompt = f"""Analyze these benchmark results and provide recommendations to improve the Genie space.
+
+## Genie Space Configuration (summarized):
+```json
+{json.dumps(space_summary, indent=2, default=str)[:12000]}
+```
+
+## Benchmark Results:
+```json
+{json.dumps(benchmark_data, indent=2, default=str)}
+```
+
+For each benchmark, compare the expected vs generated SQL and explain:
+1. What semantic differences exist (if any)
+2. Why Genie may have generated different SQL
+3. Specific changes to improve accuracy
+
+Then provide overall recommendations for the space."""
+
+        response = self.client.chat.completions.create(
+            model=self.endpoint,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "benchmark_analysis",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "benchmark_analyses": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "question": {"type": "string"},
+                                        "comparison": {
+                                            "type": "string",
+                                            "description": "Semantic comparison of expected vs generated SQL",
+                                        },
+                                        "diagnosis": {
+                                            "type": "string",
+                                            "description": "Why Genie generated different SQL",
+                                        },
+                                        "recommendations": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                            "description": "Specific actionable changes",
+                                        },
+                                    },
+                                    "required": [
+                                        "question",
+                                        "comparison",
+                                        "diagnosis",
+                                        "recommendations",
+                                    ],
+                                    "additionalProperties": False,
+                                },
+                            },
+                            "overall_recommendations": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "High-level improvements for the space",
+                            },
+                            "summary": {
+                                "type": "string",
+                                "description": "Overall assessment of benchmark performance",
+                            },
+                        },
+                        "required": [
+                            "benchmark_analyses",
+                            "overall_recommendations",
+                            "summary",
+                        ],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            max_tokens=4000,
+            temperature=0,
+        )
+
+        try:
+            return json.loads(response.choices[0].message.content)
+        except json.JSONDecodeError:
+            return {
+                "benchmark_analyses": [],
+                "overall_recommendations": [],
+                "summary": "Failed to parse LLM response",
+            }
+
+    def _truncate_data_sources(self, data_sources: dict) -> dict:
+        """Truncate data sources to include only essential metadata."""
+        if not data_sources:
+            return {}
+
+        truncated = {}
+
+        # Include tables with just names, descriptions, and column info
+        if "tables" in data_sources:
+            truncated["tables"] = []
+            for table in data_sources.get("tables", [])[:10]:  # Limit to 10 tables
+                table_info = {
+                    "name": table.get("name"),
+                    "description": table.get("description"),
+                }
+                # Include columns with descriptions/synonyms only
+                if "columns" in table:
+                    table_info["columns"] = [
+                        {
+                            "name": c.get("name"),
+                            "description": c.get("description"),
+                            "synonyms": c.get("synonyms"),
+                        }
+                        for c in table.get("columns", [])[:20]  # Limit columns
+                    ]
+                truncated["tables"].append(table_info)
+
+        return truncated
+
+    def compare_sql_semantically(
+        self,
+        question: str,
+        expected_sql: str,
+        generated_sql: str,
+    ) -> dict:
+        """
+        Use LLM to determine if two SQL queries are semantically equivalent.
+
+        Returns:
+            dict with 'equivalent' (bool), 'explanation' (str)
+        """
+        if not generated_sql or not generated_sql.strip():
+            return {
+                "equivalent": False,
+                "explanation": "No SQL was generated",
+            }
+
+        system_prompt = """You are an expert SQL analyst. Compare two SQL queries and determine if they are semantically equivalent - meaning they would return the same results for the given question.
+
+Consider:
+- Column aliases don't matter if the underlying data is the same
+- ORDER BY differences only matter if ordering is relevant to the question
+- Minor syntactic differences (formatting, explicit vs implicit joins) don't matter
+- Different but equivalent expressions (e.g., COALESCE vs IFNULL) are equivalent
+- The queries should select the same columns and apply the same filters/logic
+
+Be strict: if the queries would return different data, they are NOT equivalent."""
+
+        user_prompt = f"""Question: {question}
+
+Expected SQL:
+```sql
+{expected_sql}
+```
+
+Generated SQL:
+```sql
+{generated_sql}
+```
+
+Are these queries semantically equivalent for answering the question?"""
+
+        response = self.client.chat.completions.create(
+            model=self.endpoint,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "sql_comparison",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "equivalent": {
+                                "type": "boolean",
+                                "description": "True if queries are semantically equivalent",
+                            },
+                            "explanation": {
+                                "type": "string",
+                                "description": "Brief explanation of why they are or aren't equivalent",
+                            },
+                        },
+                        "required": ["equivalent", "explanation"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            max_tokens=500,
+            temperature=0,
+        )
+
+        try:
+            return json.loads(response.choices[0].message.content)
+        except json.JSONDecodeError:
+            return {
+                "equivalent": False,
+                "explanation": "Failed to parse LLM comparison response",
+            }
+
 
 # =============================================================================
 # GenieSpaceClient
@@ -475,41 +829,38 @@ class GenieSpaceClient:
         }
 
     def ask_question(
-        self, space_id: str, question: str, max_wait_seconds: int = 120
+        self, space_id: str, question: str, timeout_minutes: int = 5
     ) -> GenieConversationResult:
         """Ask a question to Genie and retrieve the response."""
-        # Start a new conversation with the question
-        conversation = self.client.genie.start_conversation(
-            space_id=space_id,
-            content=question,
-        )
+        from datetime import timedelta
 
-        conversation_id = conversation.conversation_id
-        message_id = conversation.message_id
+        from databricks.sdk.service.dashboards import MessageStatus
 
-        # Poll for completion
-        start_time = time.time()
-        while time.time() - start_time < max_wait_seconds:
-            message = self.client.genie.get_message(
+        try:
+            # Use the wait pattern - start_conversation returns a waiter
+            message = self.client.genie.start_conversation_and_wait(
                 space_id=space_id,
-                conversation_id=conversation_id,
-                message_id=message_id,
+                content=question,
+                timeout=timedelta(minutes=timeout_minutes),
             )
-
-            status = message.status
-            if status in ("COMPLETED", "FAILED"):
-                break
-
-            time.sleep(2)
-        else:
+        except TimeoutError:
             return GenieConversationResult(
-                conversation_id=conversation_id,
-                message_id=message_id,
+                conversation_id="",
+                message_id="",
                 error="Timeout waiting for Genie response",
             )
+        except Exception as e:
+            return GenieConversationResult(
+                conversation_id="",
+                message_id="",
+                error=f"Error starting conversation: {e}",
+            )
 
-        if status == "FAILED":
-            error_msg = getattr(message, "error", None)
+        conversation_id = message.conversation_id
+        message_id = message.id
+
+        if message.status == MessageStatus.FAILED:
+            error_msg = message.error.message if message.error else "Unknown error"
             return GenieConversationResult(
                 conversation_id=conversation_id,
                 message_id=message_id,
@@ -564,11 +915,15 @@ class BenchmarkRunner:
     """Runs benchmark tests against a Genie Space."""
 
     def __init__(
-        self, genie_client: GenieSpaceClient, warehouse_id: Optional[str] = None
+        self,
+        genie_client: GenieSpaceClient,
+        warehouse_id: Optional[str] = None,
+        llm_analyzer: Optional[LLMAnalyzer] = None,
     ):
         """Initialize the benchmark runner."""
         self.genie_client = genie_client
         self.warehouse_id = warehouse_id
+        self.llm_analyzer = llm_analyzer
         self.sdk_client = WorkspaceClient()
 
     def _execute_sql(self, sql: str) -> tuple[Optional[int], Optional[str]]:
@@ -580,7 +935,7 @@ class BenchmarkRunner:
             response = self.sdk_client.statement_execution.execute_statement(
                 warehouse_id=self.warehouse_id,
                 statement=sql,
-                wait_timeout="60s",
+                wait_timeout="50s",
             )
 
             if response.status and response.status.state == StatementState.SUCCEEDED:
@@ -633,8 +988,19 @@ class BenchmarkRunner:
 
     def run_benchmark(self, space_id: str, benchmark: dict) -> BenchmarkResult:
         """Run a single benchmark test."""
-        question = benchmark.get("question", "")
-        expected_sql = benchmark.get("expected_sql", "")
+        question = benchmark.get("question", [])
+        if isinstance(question, list):
+            question = question[0] if question else ""
+
+        # Extract expected SQL from answer array
+        # Structure: answer: [{"format": "SQL", "content": ["SELECT\n", "..."]}]
+        expected_sql = ""
+        answers = benchmark.get("answer", [])
+        for ans in answers:
+            if ans.get("format") == "SQL":
+                content = ans.get("content", [])
+                expected_sql = "".join(content) if isinstance(content, list) else content
+                break
 
         if not question:
             return BenchmarkResult(
@@ -658,7 +1024,24 @@ class BenchmarkRunner:
 
         generated_sql = result.generated_sql
 
-        # If no warehouse_id, just check if SQL was generated
+        # Use LLM semantic comparison if analyzer is available
+        if self.llm_analyzer:
+            comparison = self.llm_analyzer.compare_sql_semantically(
+                question=question,
+                expected_sql=expected_sql,
+                generated_sql=generated_sql,
+            )
+            passed = comparison.get("equivalent", False)
+            summary = comparison.get("explanation", "")
+            return BenchmarkResult(
+                question=question,
+                expected_sql=expected_sql,
+                generated_sql=generated_sql,
+                passed=passed,
+                summary=summary,
+            )
+
+        # Fallback: If no warehouse_id, just check if SQL was generated
         if not self.warehouse_id:
             passed = generated_sql is not None and len(generated_sql.strip()) > 0
             summary = (
@@ -674,7 +1057,7 @@ class BenchmarkRunner:
                 summary=summary,
             )
 
-        # Compare results by executing both SQLs
+        # Fallback: Compare results by executing both SQLs (row count only)
         passed, summary, expected_rows, generated_rows = self._compare_results(
             expected_sql, generated_sql
         )
@@ -695,9 +1078,10 @@ class BenchmarkRunner:
         """Run all benchmark tests."""
         results = []
         for i, benchmark in enumerate(benchmarks):
-            print(
-                f"Running benchmark {i + 1}/{len(benchmarks)}: {benchmark.get('question', '')[:50]}..."
-            )
+            question = benchmark.get("question", "")
+            if isinstance(question, list):
+                question = question[0] if question else ""
+            print(f"Running benchmark {i + 1}/{len(benchmarks)}: {question[:50]}...")
             result = self.run_benchmark(space_id, benchmark)
             results.append(result)
         return results
