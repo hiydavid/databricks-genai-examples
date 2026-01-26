@@ -1,12 +1,13 @@
-# Agent runtime configuration
-# Infrastructure configs (catalog, schema, workspace_url, vector_search) come from
-# DAB job parameters and are injected at deployment time via 03_deployment.py
+# Agent runtime configuration template
+# Non-DAB usage: Copy this file to configs.yaml and fill in your values
+# DAB usage: Infrastructure configs (catalog, schema, workspace_url, vector_search)
+# come from DAB job parameters and are injected at deployment time via 03_deployment.py
 
 agent_configs:
   agent_name: user-guide-retrieval-agent
   llm:
-    endpoint_name: databricks-claude-haiku-4-5
-    temperature: 0.1
+    endpoint_name: databricks-claude-haiku-4-5 
+    temperature: 0.1 
   system_prompt: |
     You are a helpful assistant that answers questions about user guides and documentation.
 

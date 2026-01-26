@@ -24,9 +24,9 @@ from databricks.vector_search.client import VectorSearchClient
 # COMMAND ----------
 
 # Job parameters (DAB populates these via base_parameters)
-dbutils.widgets.text("catalog", "")
-dbutils.widgets.text("schema", "")
-dbutils.widgets.text("vs_endpoint", "")
+dbutils.widgets.text("catalog", "")  # Non-DAB: set default, e.g. "users"
+dbutils.widgets.text("schema", "")  # Non-DAB: set default, e.g. "your_schema"
+dbutils.widgets.text("vs_endpoint", "")  # Non-DAB: set your VS endpoint name
 
 CATALOG = dbutils.widgets.get("catalog")
 SCHEMA = dbutils.widgets.get("schema")
