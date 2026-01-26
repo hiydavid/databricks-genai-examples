@@ -31,9 +31,9 @@ from mlflow.genai.scorers import (
 # COMMAND ----------
 
 # Job parameters (DAB populates these via base_parameters)
-dbutils.widgets.text("catalog", "")
-dbutils.widgets.text("schema", "")
-dbutils.widgets.text("experiment_name", "")
+dbutils.widgets.text("catalog", "")  # Non-DAB: set default, e.g. "users"
+dbutils.widgets.text("schema", "")  # Non-DAB: set default, e.g. "your_schema"
+dbutils.widgets.text("experiment_name", "")  # Non-DAB: set, e.g. "/Users/you@email.com/my-experiment"
 
 CATALOG = dbutils.widgets.get("catalog")
 SCHEMA = dbutils.widgets.get("schema")

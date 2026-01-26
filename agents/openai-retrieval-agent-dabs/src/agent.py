@@ -34,6 +34,7 @@ mlflow.set_registry_uri("databricks-uc")
 mlflow.set_tracking_uri("databricks")
 
 # Load configuration
+# Non-DAB: copy configs.template.yaml to configs.yaml and fill in your values
 config = mlflow.models.ModelConfig(development_config="./configs.yaml")
 databricks_config = config.get("databricks_configs")
 agent_config = config.get("agent_configs")

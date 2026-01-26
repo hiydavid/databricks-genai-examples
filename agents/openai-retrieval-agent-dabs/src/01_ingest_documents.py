@@ -31,8 +31,8 @@ from pyspark.sql.functions import (
 # COMMAND ----------
 
 # Job parameters (DAB populates these via base_parameters)
-dbutils.widgets.text("catalog", "")
-dbutils.widgets.text("schema", "")
+dbutils.widgets.text("catalog", "")  # Non-DAB: set default, e.g. "users"
+dbutils.widgets.text("schema", "")  # Non-DAB: set default, e.g. "your_schema"
 
 CATALOG = dbutils.widgets.get("catalog")
 SCHEMA = dbutils.widgets.get("schema")
