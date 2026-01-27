@@ -67,7 +67,7 @@ files_df = (
 )
 
 print(f"Found {files_df.count()} PDF files")
-files_df.select("path", "length", "modificationTime").display()
+display(files_df.select("path", "length", "modificationTime"))
 
 # COMMAND ----------
 
@@ -179,7 +179,7 @@ print(f"Total chunks in table: {result_df.count()}")
 print(f"Columns: {result_df.columns}")
 
 # Show sample data
-result_df.limit(5).display()
+display(result_df.limit(5))
 
 # COMMAND ----------
 
@@ -191,4 +191,4 @@ print(f"Total documents processed: {files_df.count()}")
 print(f"Total chunks created: {result_df.count()}")
 
 # Chunks per document
-result_df.groupBy("source_path").count().orderBy("count", ascending=False).display()
+display(result_df.groupBy("source_path").count().orderBy("count", ascending=False))
