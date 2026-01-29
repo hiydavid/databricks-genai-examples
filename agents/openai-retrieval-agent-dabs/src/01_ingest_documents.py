@@ -110,12 +110,18 @@ elements_df = (
     )
     .filter(
         expr("element:type::STRING").isin(
-            ["text", "section_header", "title", "caption"]
+            ["text", "section_header", "title", "caption", "figure"]
         )
     )
     .select(
         "source_path",
-        expr("element:content::STRING").alias("text_content"),
+        # Use description for figures (AI-generated), content for text elements
+        expr("""
+            CASE
+                WHEN element:type::STRING = 'figure' THEN element:description::STRING
+                ELSE element:content::STRING
+            END
+        """).alias("text_content"),
         expr("element:bbox[0]:page_id::INT").alias("page_number"),
     )
 )
