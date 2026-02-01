@@ -34,7 +34,7 @@ resources:
           depends_on:
             - task_key: create_vector_index
           notebook_task:
-            notebook_path: ../src/03_deployment.py
+            notebook_path: ../src/04_deployment.py
             base_parameters:
               catalog: ${var.catalog}
               schema: ${var.schema}
