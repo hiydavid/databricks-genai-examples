@@ -2,8 +2,8 @@
 # MAGIC %md
 # MAGIC # Agent Evaluation
 # MAGIC
-# MAGIC This notebook evaluates the deployed retrieval agent using MLflow's evaluation framework.
-# MAGIC It runs the agent against an evaluation dataset and logs quality metrics.
+# MAGIC This notebook evaluates the retrieval agent using MLflow's evaluation framework.
+# MAGIC It imports and runs the agent directly to capture full trace hierarchy.
 
 # COMMAND ----------
 
@@ -14,8 +14,7 @@
 
 import mlflow
 import pandas as pd
-from databricks import agents
-from mlflow.deployments import get_deploy_client
+import yaml
 from mlflow.genai.scorers import (
     Correctness,
     RelevanceToQuery,
@@ -43,20 +42,55 @@ if not CATALOG or not SCHEMA or not EXPERIMENT_NAME:
     raise ValueError("Required parameters: catalog, schema, experiment_name")
 
 # Derive paths from parameters
-UC_MODEL_NAME = f"{CATALOG}.{SCHEMA}.retrieval_agent"
 EVAL_TABLE = f"{CATALOG}.{SCHEMA}.eval_dataset"
-
-# Get endpoint name from deployed agent
-deployments = agents.get_deployments(UC_MODEL_NAME)
-if not deployments:
-    raise ValueError(f"No deployment found for {UC_MODEL_NAME}. Deploy the agent first.")
-AGENT_ENDPOINT_NAME = deployments[0].endpoint_name
+WORKSPACE_URL = f"https://{spark.conf.get('spark.databricks.workspaceUrl')}"
 
 print(f"Catalog: {CATALOG}")
 print(f"Schema: {SCHEMA}")
-print(f"Agent Endpoint: {AGENT_ENDPOINT_NAME}")
 print(f"Evaluation Table: {EVAL_TABLE}")
 print(f"MLflow Experiment: {EXPERIMENT_NAME}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Build Agent Config
+# MAGIC
+# MAGIC Create complete config with databricks_configs for the agent to use.
+
+# COMMAND ----------
+
+# Load agent runtime config from template
+with open("configs.template.yaml", "r") as f:
+    agent_configs = yaml.safe_load(f)["agent_configs"]
+
+# Build complete config (same structure as deployment)
+eval_config = {
+    "databricks_configs": {
+        "catalog": CATALOG,
+        "schema": SCHEMA,
+        "workspace_url": WORKSPACE_URL,
+    },
+    "agent_configs": agent_configs,
+}
+
+# Write config file for agent to load
+with open("configs.yaml", "w") as f:
+    yaml.dump(eval_config, f)
+
+print("Created configs.yaml for evaluation")
+print(f"Config: {eval_config}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Import Agent
+
+# COMMAND ----------
+
+# Import agent AFTER config file is created
+from agent import AGENT
+
+print("Agent imported successfully")
 
 # COMMAND ----------
 
@@ -121,9 +155,12 @@ eval_df.head()
 # COMMAND ----------
 
 # Prepare data in MLflow GenAI evaluation format
+# Input format must match what the endpoint expects (messages array)
 eval_data = pd.DataFrame(
     {
-        "inputs": [{"question": q} for q in eval_df["question"]],
+        "inputs": [
+            {"messages": [{"role": "user", "content": q}]} for q in eval_df["question"]
+        ],
         "expectations": [{"expected_response": a} for a in eval_df["expected_answer"]],
     }
 )
@@ -138,52 +175,19 @@ eval_data.head()
 
 # COMMAND ----------
 
-# Get deployment client
-client = get_deploy_client("databricks")
+# Create predict function that calls the agent directly
+# This captures full trace hierarchy (predict → call_llm → retrieve_documents)
+from mlflow.types.agent import ChatAgentMessage
 
 
-def predict_fn(question: str) -> str:
-    """
-    Wrapper function to call the deployed agent.
-    Takes a question string and returns response string.
-    """
-    messages = {"messages": [{"role": "user", "content": question}]}
-
-    try:
-        response = client.predict(endpoint=AGENT_ENDPOINT_NAME, inputs=messages)
-
-        # Extract the assistant message from response
-        if "choices" in response:
-            content = response["choices"][0]["message"]["content"]
-        elif "messages" in response:
-            content = response["messages"][-1]["content"]
-        else:
-            content = str(response)
-
-        return content
-    except Exception as e:
-        print(f"Error calling agent: {e}")
-        return f"Error: {str(e)}"
-
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Test Agent Connection
-
-# COMMAND ----------
-
-# Test with a single example
-test_input = {"messages": [{"role": "user", "content": "Hello, are you working?"}]}
-
-try:
-    test_response = client.predict(endpoint=AGENT_ENDPOINT_NAME, inputs=test_input)
-    print("Agent connection successful!")
-    print(f"Test response: {test_response}")
-except Exception as e:
-    print(f"Error connecting to agent: {e}")
-    print("Make sure the agent is deployed and the endpoint is ready.")
-    raise
+def predict_fn(messages: list) -> str:
+    """Prediction function for evaluation."""
+    # Convert message dicts to ChatAgentMessage objects
+    agent_messages = [
+        ChatAgentMessage(role=m["role"], content=m["content"]) for m in messages
+    ]
+    response = AGENT.predict(messages=agent_messages)
+    return response.messages[-1].content if response.messages else ""
 
 # COMMAND ----------
 
@@ -192,31 +196,21 @@ except Exception as e:
 
 # COMMAND ----------
 
-# Run evaluation with MLflow
-with mlflow.start_run(run_name="agent-evaluation") as run:
-    # Log evaluation configuration
-    mlflow.log_param("agent_endpoint", AGENT_ENDPOINT_NAME)
-    mlflow.log_param("num_examples", len(eval_data))
-    mlflow.log_param("eval_table", EVAL_TABLE)
+# Run evaluation using mlflow.genai.evaluate
+results = mlflow.genai.evaluate(
+    data=eval_data,
+    predict_fn=predict_fn,
+    scorers=[
+        Correctness(),  # Requires expectations (ground truth)
+        RelevanceToQuery(),  # Is response relevant to question?
+        RetrievalGroundedness(),  # Is response grounded in retrieved context?
+        RetrievalRelevance(),  # Is retrieved context relevant to query?
+    ],
+)
 
-    # Run evaluation using mlflow.genai.evaluate
-    results = mlflow.genai.evaluate(
-        data=eval_data,
-        predict_fn=predict_fn,
-        scorers=[
-            Correctness(),  # Requires expectations (ground truth)
-            RelevanceToQuery(),  # Is response relevant to question?
-            RetrievalGroundedness(),  # Is response grounded in retrieved context?
-            RetrievalRelevance(),  # Is retrieved context relevant to query?
-        ],
-    )
-
-    print("\n=== Evaluation Results ===")
-    for metric_name, metric_value in results.metrics.items():
-        print(f"{metric_name}: {metric_value}")
-
-    print(f"\nRun ID: {run.info.run_id}")
-    print(f"Experiment: {EXPERIMENT_NAME}")
+print("\n=== Evaluation Results ===")
+for metric_name, metric_value in results.metrics.items():
+    print(f"{metric_name}: {metric_value}")
 
 # COMMAND ----------
 
@@ -226,7 +220,7 @@ with mlflow.start_run(run_name="agent-evaluation") as run:
 # COMMAND ----------
 
 # Display per-example results via traces
-traces_df = mlflow.search_traces(run_id=run.info.run_id)
+traces_df = mlflow.search_traces(run_id=results.run_id)
 traces_df
 
 # COMMAND ----------
@@ -239,9 +233,8 @@ traces_df
 print("\n" + "=" * 50)
 print("EVALUATION SUMMARY")
 print("=" * 50)
-print(f"Agent Endpoint: {AGENT_ENDPOINT_NAME}")
 print(f"Evaluation Examples: {len(eval_data)}")
-print(f"MLflow Run ID: {run.info.run_id}")
+print(f"MLflow Run ID: {results.run_id}")
 print(f"MLflow Experiment: {EXPERIMENT_NAME}")
 print("\nKey Metrics:")
 for metric_name, metric_value in results.metrics.items():
