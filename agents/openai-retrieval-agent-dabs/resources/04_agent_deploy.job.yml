@@ -11,7 +11,7 @@ resources:
         - task_key: deploy_agent
           description: "Deploy updated retrieval agent to Model Serving"
           notebook_task:
-            notebook_path: ../src/03_deployment.py
+            notebook_path: ../src/04_deployment.py
             base_parameters:
               catalog: ${var.catalog}
               schema: ${var.schema}
