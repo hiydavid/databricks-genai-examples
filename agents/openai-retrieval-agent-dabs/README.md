@@ -53,13 +53,13 @@ agents/openai-retrieval-agent-dabs/
 │   ├── 01_ingest_documents.py          # PDF parsing with ai_parse_document
 │   ├── 02_create_vector_index.py       # Vector Search index creation
 │   ├── agent.py                        # Retrieval agent with MCP
-│   ├── 03_deployment.py                # MLflow logging and agents.deploy()
-│   └── 04_evaluation.py                # Agent evaluation with MLflow
+│   ├── 03_evaluation.py                # Agent evaluation with MLflow
+│   └── 04_deployment.py                # MLflow logging and agents.deploy()
 └── resources/
     ├── 01_full_pipeline.job.yml        # Full end-to-end pipeline
     ├── 02_index_update.job.yml         # Update index only
-    ├── 03_agent_deploy.job.yml         # Deploy agent only
-    └── 04_evaluation.job.yml           # Run evaluation only
+    ├── 03_evaluation.job.yml           # Run evaluation only
+    └── 04_agent_deploy.job.yml         # Deploy agent only
 ```
 
 ## Prerequisites
@@ -224,20 +224,20 @@ Each script has hardcoded variable names that derive paths from the DAB `catalog
 | `VS_INDEX` | `{catalog}.{schema}.user_guide_chunks_index` | Vector Search index name |
 | `EMBEDDING_MODEL` | `databricks-gte-large-en` | Embedding model endpoint |
 
-**`src/03_deployment.py`**
-
-| Variable | Default Value | Description |
-| ---------- | --------------- | ------------- |
-| `VS_INDEX` | `{catalog}.{schema}.user_guide_chunks_index` | VS index for MCP tool |
-| `UC_MODEL_NAME` | `{catalog}.{schema}.retrieval_agent` | Unity Catalog model name |
-
-**`src/04_evaluation.py`**
+**`src/03_evaluation.py`**
 
 | Variable | Default Value | Description |
 | ---------- | --------------- | ------------- |
 | `UC_MODEL_NAME` | `{catalog}.{schema}.retrieval_agent` | Model to evaluate |
 | `AGENT_ENDPOINT_NAME` | `{catalog}_{schema}_retrieval_agent` | Serving endpoint name |
 | `EVAL_TABLE` | `{catalog}.{schema}.eval_dataset` | Evaluation dataset table |
+
+**`src/04_deployment.py`**
+
+| Variable | Default Value | Description |
+| ---------- | --------------- | ------------- |
+| `VS_INDEX` | `{catalog}.{schema}.user_guide_chunks_index` | VS index for MCP tool |
+| `UC_MODEL_NAME` | `{catalog}.{schema}.retrieval_agent` | Unity Catalog model name |
 
 **`src/configs.yaml`** (agent runtime config)
 

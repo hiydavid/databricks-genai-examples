@@ -2,7 +2,7 @@ mlflow==3.8.1
 databricks-sdk==0.79.0
 databricks-agents==1.9.2
 databricks-vectorsearch==0.64
-databricks-mcp==0.6.0
+databricks-openai>=0.3.0
 openai>=1.50.0
 pydantic>=2.0.0
 backoff>=2.0.0
