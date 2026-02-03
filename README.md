@@ -54,6 +54,10 @@ All materials are provided AS IS, without any guarantees or warranties, and are 
 * Serving the FLUX1-Dev on a Custom Multi-GPU Endpoint
 * Serving a Custom GLM on a Custom CPU Endpoint
 
+## Traditional ML
+
+* (WIP) Real-Time Fruad Detection
+
 ## Vector Search
 
 * Multi-Index Vector Search
