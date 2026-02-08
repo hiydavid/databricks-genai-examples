@@ -22,7 +22,8 @@ All materials are provided AS IS, without any guarantees or warranties, and are 
 
 ## AI/BI
 
-* (WIP) Genie Space Optimization 
+* (WIP) Genie Space Optimization
+* Genie Space Migration with DABs
 
 ## Batch Inference
 
@@ -44,10 +45,6 @@ All materials are provided AS IS, without any guarantees or warranties, and are 
 
 * Structured Extraction with LLM
 * Prompt Optimization with GEPA on MLflow 3
-
-## MLOps
-
-* Genie Space Migration with DABs
 
 ## Model Serving
 
