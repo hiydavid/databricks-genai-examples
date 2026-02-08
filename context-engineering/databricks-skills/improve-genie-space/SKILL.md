@@ -1,12 +1,6 @@
 ---
 name: improve-genie-space
-description: >
-  Analyze, optimize, and improve Databricks Genie Space (AI/BI Dashboard) configurations.
-  Use when users want to: (1) evaluate a Genie Space against best practices,
-  (2) audit space configuration quality, (3) get recommendations for improving
-  their Genie Space, or (4) optimize Genie Space performance.
-  Triggers on: "improve genie space", "analyze genie space", "optimize genie",
-  "audit genie", "review genie space", "genie best practices".
+description: Analyze, optimize, and improve Databricks Genie Space (AI/BI Dashboard) configurations. Use when users want to: (1) evaluate a Genie Space against best practices, (2) audit space configuration quality, (3) get recommendations for improving their Genie Space, or (4) optimize Genie Space performance. Triggers on: "improve genie space", "analyze genie space", "optimize genie", "audit genie", "review genie space", "genie best practices".
 ---
 
 # Improve Genie Space
@@ -124,3 +118,9 @@ Fixes:
 
 #### Priority Recommendations
 List the top 3-5 most impactful fixes, ordered by expected improvement to Genie accuracy.
+
+### Step 3e: Save Report
+
+1. Create a `reports/` directory in the user's project root if it doesn't already exist.
+2. Save the full analysis markdown (everything from Step 3d) to `reports/analysis-<space_id>.md` in the project root.
+3. Inform the user of the saved file path.
