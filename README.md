@@ -35,7 +35,7 @@ All materials are provided AS IS, without any guarantees or warranties, and are 
 ## Context Engineering
 
 * Claude Financial Analyst with Databricks DBSQL Managed MCP
-* (WIP) Claude with Databricks Skills
+* Databricks Skills for Claude Code
 
 ## Evals
 
