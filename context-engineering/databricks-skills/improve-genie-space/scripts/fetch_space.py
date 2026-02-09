@@ -7,7 +7,7 @@ Output: JSON to stdout
 Exit codes: 0 success, 1 error (message to stderr)
 
 Requires:
-  - databricks-sdk (pip install databricks-sdk)
+  - databricks-sdk >= 0.85 (pip install "databricks-sdk>=0.85")
   - Databricks CLI profile configured (databricks configure)
   - CAN EDIT permission on the target Genie Space
 """
@@ -22,7 +22,7 @@ def fetch_space(space_id: str) -> dict:
         from databricks.sdk import WorkspaceClient
     except ImportError:
         print(
-            "Error: databricks-sdk is not installed. Run: pip install databricks-sdk",
+            'Error: databricks-sdk is not installed. Run: pip install "databricks-sdk>=0.85"',
             file=sys.stderr,
         )
         sys.exit(1)
