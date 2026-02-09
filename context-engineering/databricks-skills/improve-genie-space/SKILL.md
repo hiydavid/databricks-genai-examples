@@ -30,6 +30,12 @@ python <skill_path>/scripts/fetch_space.py <space_id>
 
 This outputs JSON to stdout with keys: `title`, `description`, `space_id`, `serialized_space` (parsed dict).
 
+### Step 2b: Save Raw Config
+
+1. Create a `reports/<space_id>/` directory in the user's project root if it doesn't already exist.
+2. Save the full JSON output from Step 2 to `reports/<space_id>/space-config.json`.
+3. Inform the user the raw config has been saved.
+
 If the script fails:
 - **Missing SDK**: Prompt user to `pip install "databricks-sdk>=0.85"`
 - **Auth failure**: Prompt user to run `databricks configure` or check environment variables
@@ -51,7 +57,7 @@ Run benchmark questions against Genie and compare generated SQL to expected answ
 Proceed to [Analyze with Benchmarks](#analyze-with-benchmarks).
 
 ### Option C: Optimize Genie Space (future)
-Create an updated Genie configuration with learnings from the config-analysis and the benchmark-analysis reports. Both reports should be present in order to run this option. Prompt the user to run the other sub-workflows first. **This workflow is not yet implemented.** Inform the user it will be available in a future update, and offer to run the best practices analysis instead.
+Create an updated Genie configuration with learnings from the `reports/<space_id>/config-analysis.md` and `reports/<space_id>/benchmark-analysis.md` reports. Both reports should be present in order to run this option. Prompt the user to run the other sub-workflows first. **This workflow is not yet implemented.** Inform the user it will be available in a future update, and offer to run the best practices analysis instead.
 
 ---
 
@@ -126,8 +132,8 @@ List the top 3-5 most impactful fixes, ordered by expected improvement to Genie 
 
 ### Step 3e: Save Report
 
-1. Create a `reports/` directory in the user's project root if it doesn't already exist.
-2. Save the full analysis markdown (everything from Step 3d) to `reports/config-analysis-<space_id>.md` in the project root.
+1. Create a `reports/<space_id>/` directory in the user's project root if it doesn't already exist.
+2. Save the full analysis markdown (everything from Step 3d) to `reports/<space_id>/config-analysis.md` in the project root.
 3. Inform the user of the saved file path.
 
 ---
@@ -262,6 +268,6 @@ Score counts correct as 1, partial as 0.5, incorrect and error as 0.
 
 ### Step 3f: Save Report
 
-1. Create a `reports/` directory in the user's project root if it doesn't already exist.
-2. Save the full report markdown to `reports/benchmark-analysis-<space_id>.md` in the project root.
+1. Create a `reports/<space_id>/` directory in the user's project root if it doesn't already exist.
+2. Save the full report markdown to `reports/<space_id>/benchmark-analysis.md` in the project root.
 3. Inform the user of the saved file path.
