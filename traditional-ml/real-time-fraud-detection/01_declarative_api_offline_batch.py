@@ -3,12 +3,12 @@
 # MAGIC # Declarative feature engineering and offline batch inference
 # MAGIC
 # MAGIC PrPr:
-# MAGIC * https://docs.databricks.com/aws/en/machine-learning/feature-store/declarative-apis#customer-analytics
+# MAGIC * https://docs.databricks.com/aws/en/machine-learning/feature-store/declarative-apis
 # MAGIC * A classic compute cluster running Databricks Runtime 16.4 LTS ML or above.
 
 # COMMAND ----------
 
-# MAGIC %pip install databricks-feature-engineering==0.13.1a4 --quiet
+# MAGIC %pip install databricks-feature-engineering==0.14.0 --quiet
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
