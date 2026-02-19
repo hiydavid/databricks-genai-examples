@@ -3,11 +3,37 @@
 # Genie Space to analyze (required)
 space_id: ""
 
-# SQL Warehouse ID for benchmark execution (optional - uses space default if empty)
+# SQL Warehouse ID for benchmark execution (optional)
+# Resolution order: config warehouse_id > space default warehouse_id > none
 warehouse_id: ""
 
 # LLM endpoint for analysis
 llm_endpoint: "databricks-claude-sonnet-4-5"
+
+# Workflow mode:
+# - all: run A+B+C sections
+# - analyze: run checklist analysis only
+# - benchmark: run benchmark workflow only
+# - optimize: run analysis + benchmark + optimization planning/apply flow
+workflow_mode: "all"
+
+# Benchmark judge mode:
+# - hybrid: deterministic SQL dimensions + optional LLM tie-breaker (recommended)
+# - llm: LLM-only semantic judgment
+# - execution: SQL execution row-count judgment first
+benchmark_judge_mode: "hybrid"
+
+# Timeout for each benchmark question sent to Genie
+benchmark_timeout_minutes: 5
+
+# Optional: run row-count execution diagnostics in addition to the primary judge
+enable_execution_diagnostics: false
+
+# Option C: whether to create a new optimized Genie Space after validation
+create_new_space: false
+
+# Option C: title prefix for newly created optimized spaces
+optimized_title_prefix: "[Optimized] "
 
 # Databricks secrets for API authentication
 secret_scope: "dbdemos"
