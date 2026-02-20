@@ -17,7 +17,6 @@
 # COMMAND ----------
 
 import sys
-from datetime import date
 
 # Add the current notebook directory to Python path for imports
 notebook_path = (
@@ -37,141 +36,15 @@ from utils import (
     HTMLRenderer,
     LLMAnalyzer,
     apply_optimization_changes,
+    as_bool,
+    build_benchmark_report,
+    build_config_report,
+    build_optimization_report,
     generate_optimization_changes,
+    join_text,
     load_config,
     validate_serialized_space,
 )
-
-
-# COMMAND ----------
-
-
-def _as_bool(value):
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return False
-    if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
-    return bool(value)
-
-
-def _join_text(value):
-    if value is None:
-        return ""
-    if isinstance(value, list):
-        return " ".join(str(v).strip() for v in value if str(v).strip()).strip()
-    return str(value).strip()
-
-
-def _build_config_report(space_id, analyses):
-    sections = ["data_sources", "instructions", "benchmarks", "config"]
-    status_counts = {"pass": 0, "fail": 0, "warning": 0, "na": 0}
-
-    lines = [
-        f"# Config Analysis: {space_id}",
-        "",
-        f"**Date:** {date.today().isoformat()}",
-        "",
-    ]
-
-    for section in sections:
-        analysis = analyses.get(section, {})
-        items = analysis.get("items", [])
-        lines.append(f"## {section}")
-        lines.append("")
-        lines.append("| Item | Status | Explanation | Fix |")
-        lines.append("|------|--------|-------------|-----|")
-        for item in items:
-            status = str(item.get("status", "na")).lower()
-            status = status if status in status_counts else "na"
-            status_counts[status] += 1
-            name = str(item.get("name", "")).replace("|", "\\|")
-            explanation = str(item.get("explanation", "")).replace("|", "\\|")
-            fix = str(item.get("fix", "")).replace("|", "\\|")
-            lines.append(f"| {name} | {status} | {explanation} | {fix} |")
-        lines.append("")
-        lines.append(f"Summary: {analysis.get('summary', '')}")
-        lines.append("")
-
-    lines.insert(
-        4,
-        (
-            "**Counts:** "
-            f"pass={status_counts['pass']} | "
-            f"fail={status_counts['fail']} | "
-            f"warning={status_counts['warning']} | "
-            f"na={status_counts['na']}"
-        ),
-    )
-
-    return "\n".join(lines)
-
-
-def _build_benchmark_report(space_id, results):
-    verdict_counts = {"correct": 0, "partial": 0, "incorrect": 0, "error": 0}
-    weighted = 0.0
-
-    lines = [
-        f"# Benchmark Analysis: {space_id}",
-        "",
-        f"**Date:** {date.today().isoformat()}",
-        f"**Questions tested:** {len(results)}",
-        "",
-    ]
-
-    for result in results:
-        verdict = str(result.verdict).lower()
-        verdict = verdict if verdict in verdict_counts else "error"
-        verdict_counts[verdict] += 1
-        weighted += float(result.score)
-
-    percent = (weighted / len(results) * 100) if results else 0.0
-
-    lines.extend(
-        [
-            "## Summary",
-            "",
-            "| Verdict | Count |",
-            "|---------|-------|",
-            f"| Correct | {verdict_counts['correct']} |",
-            f"| Partial | {verdict_counts['partial']} |",
-            f"| Incorrect | {verdict_counts['incorrect']} |",
-            f"| Error | {verdict_counts['error']} |",
-            f"| **Score** | **{weighted:.1f}/{len(results)} ({percent:.0f}%)** |",
-            "",
-            "## Detailed Results",
-            "",
-        ]
-    )
-
-    for idx, result in enumerate(results, start=1):
-        lines.extend(
-            [
-                f"### {idx}. {result.question}",
-                "",
-                f"**Verdict:** {result.verdict}",
-                f"**Score:** {result.score:.1f} (deterministic={result.deterministic_score:.2f})",
-                "",
-                "**Expected SQL:**",
-                "```sql",
-                result.expected_sql or "",
-                "```",
-                "",
-                "**Generated SQL:**",
-                "```sql",
-                result.generated_sql or "",
-                "```",
-                "",
-                f"**Summary:** {result.summary}",
-                f"**Dimensions:** {result.dimension_results}",
-                "",
-                "---",
-                "",
-            ]
-        )
-
-    return "\n".join(lines)
 
 
 # COMMAND ----------
@@ -197,9 +70,9 @@ if benchmark_judge_mode not in {"hybrid", "llm", "execution"}:
     benchmark_judge_mode = "hybrid"
 
 benchmark_timeout_minutes = int(config.get("benchmark_timeout_minutes", 5) or 5)
-create_new_space = _as_bool(config.get("create_new_space", False))
+create_new_space = as_bool(config.get("create_new_space", False))
 optimized_title_prefix = str(config.get("optimized_title_prefix", "[Optimized] "))
-enable_execution_diagnostics = _as_bool(config.get("enable_execution_diagnostics", False))
+enable_execution_diagnostics = as_bool(config.get("enable_execution_diagnostics", False))
 
 approved_for_apply = False
 
@@ -331,7 +204,7 @@ if workflow_mode in {"all", "analyze", "optimize"}:
 
     displayHTML(html_output)
 
-    config_analysis_report = _build_config_report(space_id, checklist_analyses)
+    config_analysis_report = build_config_report(space_id, checklist_analyses)
 else:
     print("Checklist analysis skipped for workflow_mode='benchmark'.")
 
@@ -376,7 +249,7 @@ if workflow_mode in {"all", "benchmark", "optimize"}:
 
         question_widgets = []
         for i, (cb, q) in enumerate(zip(checkboxes, all_questions)):
-            question_text = _join_text(q.get("question"))
+            question_text = join_text(q.get("question"))
             label = widgets.HTML(
                 value=f"<span style='font-family: -apple-system, sans-serif;'><strong>Q{i}</strong>: {question_text}</span>"
             )
@@ -536,7 +409,7 @@ if workflow_mode in {"all", "benchmark", "optimize"}:
                 f"Weighted benchmark score: {weighted_score:.1f}/{len(benchmark_results)} ({weighted_percent:.0f}%)"
             )
 
-            benchmark_analysis_report = _build_benchmark_report(space_id, benchmark_results)
+            benchmark_analysis_report = build_benchmark_report(space_id, benchmark_results)
 
 # COMMAND ----------
 
@@ -556,11 +429,11 @@ if benchmark_results and workflow_mode in {"all", "benchmark", "optimize"}:
         serialized_space=serialized,
     )
     displayHTML(HTMLRenderer.render_benchmark_analysis(benchmark_analysis))
-
-    if benchmark_analysis.get("overall_recommendations"):
-        benchmark_analysis_report += "\n\n## Patterns & Recommendations\n\n"
-        for recommendation in benchmark_analysis["overall_recommendations"]:
-            benchmark_analysis_report += f"- {recommendation}\n"
+    benchmark_analysis_report = build_benchmark_report(
+        space_id,
+        benchmark_results,
+        recommendations=benchmark_analysis.get("overall_recommendations") or None,
+    )
 elif workflow_mode in {"all", "benchmark", "optimize"}:
     print("No benchmark results to analyze.")
 
@@ -592,40 +465,11 @@ if workflow_mode in {"all", "optimize"}:
 
         approved_for_apply = False
         print("Approval gate reset. Set approved_for_apply = True and run the next cell to apply changes.")
-
-        category_counts = {}
-        for change in optimization_changes:
-            category = change.get("category", "other")
-            category_counts[category] = category_counts.get(category, 0) + 1
-
-        optimization_report_lines = [
-            f"# Optimization Report: {space_data['title']}",
-            "",
-            f"**Original Space ID:** `{space_id}`",
-            f"**Date:** {date.today().isoformat()}",
-            "",
-            "## Proposed Changes",
-            "",
-        ]
-        for category, count in sorted(category_counts.items()):
-            optimization_report_lines.append(f"- {category}: {count}")
-        optimization_report_lines.append("")
-        optimization_report_lines.append("## Detailed Changes")
-        optimization_report_lines.append("")
-        for idx, change in enumerate(optimization_changes, start=1):
-            optimization_report_lines.append(
-                f"{idx}. `{change.get('action')}` at `{change.get('path')}`"
-            )
-            optimization_report_lines.append(
-                f"   - Rationale: {change.get('rationale', '')}"
-            )
-            optimization_report_lines.append(
-                f"   - Before: {change.get('before', '')}"
-            )
-            optimization_report_lines.append(
-                f"   - After: {change.get('after', '')}"
-            )
-        optimization_report = "\n".join(optimization_report_lines)
+        optimization_report = build_optimization_report(
+            space_title=space_data["title"],
+            original_space_id=space_id,
+            changes=optimization_changes,
+        )
 else:
     print("Optimization planning skipped for workflow_mode='analyze' or 'benchmark'.")
 
@@ -678,11 +522,11 @@ if workflow_mode in {"all", "optimize"}:
                     f"Created optimized space: {created_space_result['new_space_id']}\n"
                     f"URL: {created_space_result['new_space_url']}"
                 )
-
-                optimization_report += "\n\n## Creation Result\n\n"
-                optimization_report += (
-                    f"- New Space ID: `{created_space_result['new_space_id']}`\n"
-                    f"- New Space URL: `{created_space_result['new_space_url']}`\n"
+                optimization_report = build_optimization_report(
+                    space_title=space_data["title"],
+                    original_space_id=space_id,
+                    changes=optimization_changes,
+                    creation_result=created_space_result,
                 )
             else:
                 print("create_new_space is false. Stopping at validated optimized configuration preview.")

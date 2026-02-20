@@ -9,6 +9,7 @@ import json
 import re
 import uuid
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Any, Optional
 
@@ -50,6 +51,22 @@ def _text_from_value(value: Any) -> str:
     if isinstance(value, list):
         return " ".join(str(v).strip() for v in value if str(v).strip()).strip()
     return str(value).strip()
+
+
+def as_bool(value: Any) -> bool:
+    """Coerce a config value into a boolean."""
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
+
+
+def join_text(value: Any) -> str:
+    """Normalize scalar/list text payloads into a single string."""
+    return _text_from_value(value)
 
 
 def _to_string_segments(value: Any) -> list[str]:
@@ -190,6 +207,183 @@ def _normalize_serialized_space_recursive(value: Any) -> Any:
         return normalized
 
     return value
+
+
+def build_config_report(
+    space_id: str,
+    analyses: dict,
+    report_date: date | None = None,
+) -> str:
+    """Build a markdown report for checklist analysis results."""
+    current_date = report_date or date.today()
+    sections = ["data_sources", "instructions", "benchmarks", "config"]
+    status_counts = {"pass": 0, "fail": 0, "warning": 0, "na": 0}
+
+    lines = [
+        f"# Config Analysis: {space_id}",
+        "",
+        f"**Date:** {current_date.isoformat()}",
+        "",
+    ]
+
+    for section in sections:
+        analysis = analyses.get(section, {})
+        items = analysis.get("items", [])
+        lines.append(f"## {section}")
+        lines.append("")
+        lines.append("| Item | Status | Explanation | Fix |")
+        lines.append("|------|--------|-------------|-----|")
+        for item in items:
+            status = str(item.get("status", "na")).lower()
+            status = status if status in status_counts else "na"
+            status_counts[status] += 1
+            name = str(item.get("name", "")).replace("|", "\\|")
+            explanation = str(item.get("explanation", "")).replace("|", "\\|")
+            fix = str(item.get("fix", "")).replace("|", "\\|")
+            lines.append(f"| {name} | {status} | {explanation} | {fix} |")
+        lines.append("")
+        lines.append(f"Summary: {analysis.get('summary', '')}")
+        lines.append("")
+
+    lines.insert(
+        4,
+        (
+            "**Counts:** "
+            f"pass={status_counts['pass']} | "
+            f"fail={status_counts['fail']} | "
+            f"warning={status_counts['warning']} | "
+            f"na={status_counts['na']}"
+        ),
+    )
+
+    return "\n".join(lines)
+
+
+def build_benchmark_report(
+    space_id: str,
+    results: list[Any],
+    recommendations: list[str] | None = None,
+    report_date: date | None = None,
+) -> str:
+    """Build a markdown report for benchmark run results."""
+    current_date = report_date or date.today()
+    verdict_counts = {"correct": 0, "partial": 0, "incorrect": 0, "error": 0}
+    weighted = 0.0
+
+    lines = [
+        f"# Benchmark Analysis: {space_id}",
+        "",
+        f"**Date:** {current_date.isoformat()}",
+        f"**Questions tested:** {len(results)}",
+        "",
+    ]
+
+    for result in results:
+        verdict = str(getattr(result, "verdict", "error")).lower()
+        verdict = verdict if verdict in verdict_counts else "error"
+        verdict_counts[verdict] += 1
+        weighted += float(getattr(result, "score", 0.0))
+
+    percent = (weighted / len(results) * 100) if results else 0.0
+
+    lines.extend(
+        [
+            "## Summary",
+            "",
+            "| Verdict | Count |",
+            "|---------|-------|",
+            f"| Correct | {verdict_counts['correct']} |",
+            f"| Partial | {verdict_counts['partial']} |",
+            f"| Incorrect | {verdict_counts['incorrect']} |",
+            f"| Error | {verdict_counts['error']} |",
+            f"| **Score** | **{weighted:.1f}/{len(results)} ({percent:.0f}%)** |",
+            "",
+            "## Detailed Results",
+            "",
+        ]
+    )
+
+    for idx, result in enumerate(results, start=1):
+        lines.extend(
+            [
+                f"### {idx}. {getattr(result, 'question', '')}",
+                "",
+                f"**Verdict:** {getattr(result, 'verdict', 'error')}",
+                (
+                    "**Score:** "
+                    f"{float(getattr(result, 'score', 0.0)):.1f} "
+                    f"(deterministic={float(getattr(result, 'deterministic_score', 0.0)):.2f})"
+                ),
+                "",
+                "**Expected SQL:**",
+                "```sql",
+                getattr(result, "expected_sql", "") or "",
+                "```",
+                "",
+                "**Generated SQL:**",
+                "```sql",
+                getattr(result, "generated_sql", "") or "",
+                "```",
+                "",
+                f"**Summary:** {getattr(result, 'summary', '')}",
+                f"**Dimensions:** {getattr(result, 'dimension_results', {})}",
+                "",
+                "---",
+                "",
+            ]
+        )
+
+    if recommendations:
+        lines.extend(["## Patterns & Recommendations", ""])
+        for recommendation in recommendations:
+            lines.append(f"- {recommendation}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def build_optimization_report(
+    space_title: str,
+    original_space_id: str,
+    changes: list[dict],
+    creation_result: dict | None = None,
+    report_date: date | None = None,
+) -> str:
+    """Build a markdown report for generated optimization changes."""
+    current_date = report_date or date.today()
+    category_counts = {}
+    for change in changes:
+        category = change.get("category", "other")
+        category_counts[category] = category_counts.get(category, 0) + 1
+
+    lines = [
+        f"# Optimization Report: {space_title}",
+        "",
+        f"**Original Space ID:** `{original_space_id}`",
+        f"**Date:** {current_date.isoformat()}",
+        "",
+        "## Proposed Changes",
+        "",
+    ]
+    for category, count in sorted(category_counts.items()):
+        lines.append(f"- {category}: {count}")
+    lines.append("")
+    lines.append("## Detailed Changes")
+    lines.append("")
+    for idx, change in enumerate(changes, start=1):
+        lines.append(f"{idx}. `{change.get('action')}` at `{change.get('path')}`")
+        lines.append(f"   - Rationale: {change.get('rationale', '')}")
+        lines.append(f"   - Before: {change.get('before', '')}")
+        lines.append(f"   - After: {change.get('after', '')}")
+
+    if creation_result:
+        lines.append("")
+        lines.append("## Creation Result")
+        lines.append("")
+        lines.append(f"- New Space ID: `{creation_result.get('new_space_id', '')}`")
+        lines.append(f"- New Space URL: `{creation_result.get('new_space_url', '')}`")
+
+    return "\n".join(lines)
 
 
 # =============================================================================
