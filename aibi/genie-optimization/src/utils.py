@@ -17,7 +17,7 @@ import yaml
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.sql import StatementState
 from openai import OpenAI
-from sqlglot import exp, parse_one
+from sqlglot import exp, parse, parse_one
 
 
 def load_config(config_path: str = None) -> dict:
@@ -35,6 +35,17 @@ def load_config(config_path: str = None) -> dict:
 
 
 ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
+SQL_CODE_FENCE_PATTERN = re.compile(
+    r"```(?:\s*sql)?\s*(.*?)```",
+    re.IGNORECASE | re.DOTALL,
+)
+SQL_LABEL_PREFIX_PATTERN = re.compile(
+    r"^\s*(?:sql\s*query|query|sql)\s*:\s*",
+    re.IGNORECASE,
+)
+SQL_NAMED_PARAM_PATTERN = re.compile(r"(?<!:):[A-Za-z_][A-Za-z0-9_]*")
+SQL_JINJA_PARAM_PATTERN = re.compile(r"\{\{[^{}]+\}\}")
+SQL_DOLLAR_PARAM_PATTERN = re.compile(r"\$\{[^{}]+\}")
 
 
 def _as_list(value: Any) -> list:
@@ -51,6 +62,37 @@ def _text_from_value(value: Any) -> str:
     if isinstance(value, list):
         return " ".join(str(v).strip() for v in value if str(v).strip()).strip()
     return str(value).strip()
+
+
+def _sql_from_value(value: Any) -> str:
+    """Normalize SQL payloads while preserving line boundaries for comments/CTEs."""
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        lines = [str(v).rstrip() for v in value if str(v).strip()]
+        return "\n".join(lines).strip()
+    return str(value).strip()
+
+
+def _strip_sql_wrappers(value: Any) -> str:
+    text = _sql_from_value(value)
+    if not text:
+        return ""
+
+    match = SQL_CODE_FENCE_PATTERN.search(text)
+    if match:
+        text = match.group(1).strip()
+
+    text = SQL_LABEL_PREFIX_PATTERN.sub("", text).strip()
+    return text
+
+
+def _normalize_sql_placeholders(sql: str) -> str:
+    """Replace template/parameter placeholders with parse-safe literals."""
+    updated = SQL_NAMED_PARAM_PATTERN.sub("1", sql)
+    updated = SQL_JINJA_PARAM_PATTERN.sub("1", updated)
+    updated = SQL_DOLLAR_PARAM_PATTERN.sub("1", updated)
+    return updated
 
 
 def as_bool(value: Any) -> bool:
@@ -1542,16 +1584,41 @@ class BenchmarkRunner:
         )
 
     def _parse_sql(self, sql: str) -> tuple[Optional[exp.Expression], Optional[str]]:
-        if not sql or not sql.strip():
+        cleaned_sql = _strip_sql_wrappers(sql)
+        if not cleaned_sql:
             return None, "Empty SQL"
 
-        try:
-            return parse_one(sql, read="databricks"), None
-        except Exception as first_error:
+        candidates = [cleaned_sql]
+        normalized_placeholders = _normalize_sql_placeholders(cleaned_sql)
+        if normalized_placeholders != cleaned_sql:
+            candidates.append(normalized_placeholders)
+
+        errors = []
+        for candidate in candidates:
             try:
-                return parse_one(sql), None
-            except Exception as second_error:
-                return None, f"{first_error}; fallback parse failed: {second_error}"
+                statements = parse(candidate, read="databricks")
+                if statements:
+                    query_statement = next(
+                        (stmt for stmt in statements if stmt.find(exp.Select) is not None),
+                        None,
+                    )
+                    return query_statement or statements[0], None
+            except Exception as parse_error:
+                first_error = parse_error
+            else:
+                first_error = None
+
+            try:
+                return parse_one(candidate), None
+            except Exception as fallback_error:
+                if first_error:
+                    errors.append(
+                        f"{first_error}; fallback parse failed: {fallback_error}"
+                    )
+                else:
+                    errors.append(str(fallback_error))
+
+        return None, " | ".join(errors)
 
     def _extract_features(self, parsed: exp.Expression) -> dict[str, Any]:
         tables = set()
@@ -1721,7 +1788,7 @@ class BenchmarkRunner:
         answers = benchmark.get("answer", [])
         for answer in answers:
             if str(answer.get("format", "")).upper() == "SQL":
-                return _text_from_value(answer.get("content"))
+                return _sql_from_value(answer.get("content"))
         return ""
 
     def run_benchmark(self, space_id: str, benchmark: dict) -> BenchmarkResult:
@@ -1814,8 +1881,10 @@ class BenchmarkRunner:
                 )
                 equivalent = bool(llm_cmp.get("equivalent", False))
                 verdict = "correct" if equivalent else "incorrect"
+                parse_issue = deterministic.get("error", "")
                 summary = (
                     "Deterministic parse failed; LLM fallback used. "
+                    f"Parse issue: {parse_issue}. "
                     f"{llm_cmp.get('explanation', '')}"
                 )
                 dimension_results = {"parser": "llm_fallback"}

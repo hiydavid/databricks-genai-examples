@@ -11,7 +11,7 @@
 # MAGIC 5. Validate and optionally create an optimized copy of the space
 
 # COMMAND ----------
-# MAGIC %pip install "databricks-sdk>=0.85" openai sqlglot --quiet
+# MAGIC %pip install "databricks-sdk>=0.85" openai sqlglot pyyaml --quiet
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
