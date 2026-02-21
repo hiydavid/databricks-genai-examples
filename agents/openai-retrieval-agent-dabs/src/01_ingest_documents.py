@@ -101,6 +101,18 @@ parsed_df = files_df.withColumn(
 
 # Extract text elements from parsed documents
 # Schema ref: https://docs.databricks.com/aws/en/sql/language-manual/functions/ai_parse_document
+# Build page-level lookup for image URIs emitted by ai_parse_document
+pages_lookup_df = parsed_df.select(
+    col("path").alias("source_path"),
+    explode(expr("try_cast(parsed_result:document:pages AS ARRAY<VARIANT>)")).alias(
+        "page"
+    ),
+).select(
+    "source_path",
+    expr("page:id::INT").alias("page_number"),
+    expr("page:image_uri::STRING").alias("page_image_uri"),
+)
+
 elements_df = (
     parsed_df.select(
         col("path").alias("source_path"),
@@ -115,25 +127,46 @@ elements_df = (
     )
     .select(
         "source_path",
+        expr("element:type::STRING").alias("element_type"),
         # Use description for figures (AI-generated), content for text elements
-        expr("""
+        expr(
+            """
             CASE
                 WHEN element:type::STRING = 'figure' THEN element:description::STRING
                 ELSE element:content::STRING
             END
-        """).alias("text_content"),
+        """
+        ).alias("base_text"),
         expr("element:bbox[0]:page_id::INT").alias("page_number"),
     )
-)
-
-# Filter out empty content
-elements_df = elements_df.filter(
-    (col("text_content").isNotNull()) & (col("text_content") != "")
-)
-
-# Clean text content - remove excessive whitespace
-elements_df = elements_df.withColumn(
-    "text_content", regexp_replace(col("text_content"), r"\s+", " ")
+    # Filter out empty content
+    .filter((col("base_text").isNotNull()) & (col("base_text") != ""))
+    # Clean element text before formatting - remove excessive whitespace
+    .withColumn("base_text", regexp_replace(col("base_text"), r"\s+", " "))
+    # Attach page image URI and label figure/caption content
+    .join(pages_lookup_df, ["source_path", "page_number"], "left")
+    .withColumn(
+        "text_content",
+        expr(
+            """
+            CASE
+                WHEN element_type IN ('figure', 'caption')
+                     AND page_image_uri IS NOT NULL
+                     AND page_image_uri != ''
+                    THEN concat(
+                        'FIGURE CAPTION: ',
+                        base_text,
+                        '\nIMAGE URI: ',
+                        page_image_uri
+                    )
+                WHEN element_type IN ('figure', 'caption')
+                    THEN concat('FIGURE CAPTION: ', base_text)
+                ELSE base_text
+            END
+        """
+        ),
+    )
+    .select("source_path", "text_content", "page_number")
 )
 
 # Aggregate elements by page - concatenate all text on same page
