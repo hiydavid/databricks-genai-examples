@@ -6,7 +6,7 @@ A retrieval-augmented generation (RAG) agent that parses PDF documents, creates 
 
 This example demonstrates an end-to-end retrieval agent pipeline:
 
-1. **Document Ingestion**: Parse PDFs using `ai_parse_document` and store chunks in Delta
+1. **Document Ingestion**: Parse PDFs using `ai_parse_document`, attach figure descriptions and crop references, and store chunks in Delta
 2. **Vector Search Index**: Create a Delta Sync index with automatic embeddings
 3. **Agent Implementation**: Build a retrieval agent using OpenAI API with MCP tools
 4. **Deployment**: Deploy the agent to Model Serving via `agents.deploy()`
@@ -31,7 +31,7 @@ This example demonstrates an end-to-end retrieval agent pipeline:
         ▼                          ▼                          ▼
 ┌───────────────┐         ┌─────────────────┐         ┌────────────────┐
 │ai_parse_doc() │         │ Delta Sync      │         │ OpenAI API +   │
-│ PDF → Text    │         │ VS Index        │         │ MCP Tools      │
+│ + figure refs │         │ VS Index        │         │ MCP Tools      │
 └───────────────┘         └─────────────────┘         └────────────────┘
                                                               │
                                                               ▼
@@ -50,7 +50,7 @@ agents/openai-retrieval-agent-dabs/
 ├── requirements.txt                    # Python dependencies
 ├── src/
 │   ├── configs.template.yaml           # Agent runtime config template (LLM settings)
-│   ├── 01_ingest_documents.py          # PDF parsing with ai_parse_document
+│   ├── 01_ingest_documents.py          # PDF parsing + figure description/crop references
 │   ├── 02_create_vector_index.py       # Vector Search index creation
 │   ├── agent.py                        # Retrieval agent with MCP
 │   ├── 03_evaluation.py                # Agent evaluation with MLflow
@@ -147,7 +147,7 @@ targets:
 
 ### Step 5: Upload Your Documents
 
-Upload PDF documents to `/Volumes/{catalog}/{schema}/user_guides`.
+Upload PDF documents to `/Volumes/{catalog}/{schema}/user_guide/guide`.
 
 ## Deployment
 
@@ -216,6 +216,11 @@ Each script has hardcoded variable names that derive paths from the DAB `catalog
 | `CHUNKS_TABLE` | `{catalog}.{schema}.user_guide_chunks` | Delta table for parsed chunks |
 | `IMAGES_VOLUME` | `/Volumes/{catalog}/{schema}/user_guide/parsed_images` | Volume for extracted images |
 
+Output schema additions:
+
+- `visual_insight` (STRING): Aggregated page-level figure descriptions and crop references
+- `retrieval_text` (STRING): `text_content` + `visual_insight` (used for embeddings)
+
 **`src/02_create_vector_index.py`**
 
 | Variable | Default Value | Description |
@@ -223,6 +228,7 @@ Each script has hardcoded variable names that derive paths from the DAB `catalog
 | `CHUNKS_TABLE` | `{catalog}.{schema}.user_guide_chunks` | Source table for VS index |
 | `VS_INDEX` | `{catalog}.{schema}.user_guide_chunks_index` | Vector Search index name |
 | `EMBEDDING_MODEL` | `databricks-gte-large-en` | Embedding model endpoint |
+| `EMBEDDING_SOURCE_COLUMN` | `retrieval_text` | Column used to generate embeddings |
 
 **`src/03_evaluation.py`**
 
@@ -253,7 +259,12 @@ Each script has hardcoded variable names that derive paths from the DAB `catalog
 The pipeline uses Delta Sync with automatic embeddings:
 
 - Embedding model: `databricks-gte-large-en`
+- Embedding source column: `retrieval_text`
 - Index type: `TRIGGERED` (manual sync)
+
+### Figure Description Enrichment
+
+`01_ingest_documents.py` enriches pages with `ai_parse_document` figure descriptions and crop references derived from figure bounding boxes.
 
 ## Evaluation
 
