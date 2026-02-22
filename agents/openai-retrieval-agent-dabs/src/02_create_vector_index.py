@@ -41,6 +41,7 @@ VS_INDEX = f"{CATALOG}.{SCHEMA}.user_guide_chunks_index"
 
 # Embedding model to use
 EMBEDDING_MODEL = "databricks-gte-large-en"
+EMBEDDING_SOURCE_COLUMN = "retrieval_text"
 
 print(f"Catalog: {CATALOG}")
 print(f"Schema: {SCHEMA}")
@@ -48,6 +49,7 @@ print(f"Vector Search Endpoint: {VS_ENDPOINT}")
 print(f"Vector Search Index: {VS_INDEX}")
 print(f"Source Table: {CHUNKS_TABLE}")
 print(f"Embedding Model: {EMBEDDING_MODEL}")
+print(f"Embedding Source Column: {EMBEDDING_SOURCE_COLUMN}")
 
 # COMMAND ----------
 
@@ -174,6 +176,13 @@ try:
     # Check if index already exists
     index = vsc.get_index(endpoint_name=VS_ENDPOINT, index_name=VS_INDEX)
     print(f"Index {VS_INDEX} already exists. Triggering sync...")
+    existing_index_info = index.describe()
+    if EMBEDDING_SOURCE_COLUMN not in str(existing_index_info):
+        print(
+            "WARNING: Existing index configuration does not appear to use "
+            f"'{EMBEDDING_SOURCE_COLUMN}' as embedding source. "
+            "A sync will not change embedding source columns; recreate the index if needed."
+        )
     index.sync()
 except Exception as e:
     if "NOT_FOUND" in str(e) or "does not exist" in str(e).lower():
@@ -184,7 +193,7 @@ except Exception as e:
             source_table_name=CHUNKS_TABLE,
             primary_key="chunk_id",
             pipeline_type="TRIGGERED",
-            embedding_source_column="text_content",
+            embedding_source_column=EMBEDDING_SOURCE_COLUMN,
             embedding_model_endpoint_name=EMBEDDING_MODEL,
         )
         print(f"Index {VS_INDEX} creation initiated")
@@ -221,15 +230,23 @@ print(f"\nTest query: '{test_query}'")
 
 results = index.similarity_search(
     query_text=test_query,
-    columns=["chunk_id", "text_content", "source_path"],
+    columns=[
+        "chunk_id",
+        "source_path",
+        "text_content",
+        "visual_insight",
+        "retrieval_text",
+    ],
     num_results=3,
 )
 
 print("\nTop 3 results:")
 for i, row in enumerate(results.get("result", {}).get("data_array", [])):
     print(f"\n{i+1}. Chunk ID: {row[0]}")
-    print(f"   Source: {row[2]}")
-    print(f"   Content: {row[1][:200]}...")
+    print(f"   Source: {row[1]}")
+    print(f"   Text Content: {(row[2] or '')[:160]}...")
+    print(f"   Visual Insight: {(row[3] or '')[:160]}...")
+    print(f"   Retrieval Text: {(row[4] or '')[:200]}...")
 
 # COMMAND ----------
 
