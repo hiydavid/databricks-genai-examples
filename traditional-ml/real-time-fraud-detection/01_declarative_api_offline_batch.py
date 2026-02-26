@@ -2,7 +2,7 @@
 # MAGIC %md
 # MAGIC # Declarative feature engineering and offline batch inference
 # MAGIC
-# MAGIC PrPr:
+# MAGIC Beta:
 # MAGIC * https://docs.databricks.com/aws/en/machine-learning/feature-store/declarative-apis
 # MAGIC * A classic compute cluster running Databricks Runtime 16.4 LTS ML or above.
 
@@ -18,7 +18,9 @@ from datetime import timedelta
 from databricks.feature_engineering import FeatureEngineeringClient
 from databricks.feature_engineering.entities import (
     Avg,
+    ContinuousWindow,
     DeltaTableSource,
+    OfflineStoreConfig,
     SlidingWindow,
     Sum,
     TumblingWindow,
@@ -60,7 +62,7 @@ try:
     feature = fe.create_feature(
         catalog_name=CATALOG_NAME,
         schema_name=SCHEMA_NAME,
-        name="avg_transaction_amount_7d",
+        name="avg_trans_amount_7d",
         source=source_transactions_by_customer,
         inputs=["transaction_amount"],
         function=Avg(),
@@ -72,7 +74,7 @@ try:
 except Exception as e:
     if "already exists" in str(e).lower() or "RESOURCE_ALREADY_EXISTS" in str(e):
         feature = fe.get_feature(
-            full_name=f"{CATALOG_NAME}.{SCHEMA_NAME}.avg_transaction_amount_7d"
+            full_name=f"{CATALOG_NAME}.{SCHEMA_NAME}.avg_transac_amount_7d"
         )
         features.append(feature)
     else:
@@ -83,7 +85,7 @@ try:
     feature = fe.create_feature(
         catalog_name=CATALOG_NAME,
         schema_name=SCHEMA_NAME,
-        name="avg_transaction_amount_30d",
+        name="avg_trans_amount_30d",
         source=source_transactions_by_customer,
         inputs=["transaction_amount"],
         function=Avg(),
@@ -95,7 +97,7 @@ try:
 except Exception as e:
     if "already exists" in str(e).lower() or "RESOURCE_ALREADY_EXISTS" in str(e):
         feature = fe.get_feature(
-            full_name=f"{CATALOG_NAME}.{SCHEMA_NAME}.avg_transaction_amount_30d"
+            full_name=f"{CATALOG_NAME}.{SCHEMA_NAME}.avg_trans_amount_30d"
         )
         features.append(feature)
     else:
@@ -106,7 +108,7 @@ try:
     feature = fe.create_feature(
         catalog_name=CATALOG_NAME,
         schema_name=SCHEMA_NAME,
-        name="sum_transaction_amount_7d",
+        name="sum_trans_amount_7d",
         source=source_transactions_by_customer,
         inputs=["transaction_amount"],
         function=Sum(),
@@ -118,7 +120,7 @@ try:
 except Exception as e:
     if "already exists" in str(e).lower() or "RESOURCE_ALREADY_EXISTS" in str(e):
         feature = fe.get_feature(
-            full_name=f"{CATALOG_NAME}.{SCHEMA_NAME}.sum_transaction_amount_7d"
+            full_name=f"{CATALOG_NAME}.{SCHEMA_NAME}.sum_trans_amount_7d"
         )
         features.append(feature)
     else:
@@ -129,7 +131,7 @@ try:
     feature = fe.create_feature(
         catalog_name=CATALOG_NAME,
         schema_name=SCHEMA_NAME,
-        name="sum_transaction_amount_30d",
+        name="sum_trans_amount_30d",
         source=source_transactions_by_customer,
         inputs=["transaction_amount"],
         function=Sum(),
@@ -141,11 +143,15 @@ try:
 except Exception as e:
     if "already exists" in str(e).lower() or "RESOURCE_ALREADY_EXISTS" in str(e):
         feature = fe.get_feature(
-            full_name=f"{CATALOG_NAME}.{SCHEMA_NAME}.sum_transaction_amount_30d"
+            full_name=f"{CATALOG_NAME}.{SCHEMA_NAME}.sum_trans_amount_30d"
         )
         features.append(feature)
     else:
         raise e
+
+# COMMAND ----------
+
+features
 
 # COMMAND ----------
 
@@ -291,7 +297,7 @@ display(batch_df)
 # COMMAND ----------
 
 score_df = fe.score_batch(
-    model_uri=f"models:/{CATALOG_NAME}.{SCHEMA_NAME}.recommendation_model/5",
+    model_uri=f"models:/{CATALOG_NAME}.{SCHEMA_NAME}.recommendation_model/2",
     df=batch_df,
     result_type="string",
 )
