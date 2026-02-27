@@ -8,6 +8,8 @@ Designed for regulatory-compliant environments requiring:
 - **Git-based deployment** - all configurations in version control
 - **Full audit trail** - git commits + CI/CD logs for change management
 
+`README.md` is the canonical runbook for migration workflow and command execution. Use [docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md) only for detailed service principal provisioning and workspace permission steps.
+
 ## Why This Pattern?
 
 As of December 2025, Databricks Asset Bundles don't natively support Genie Spaces ([GitHub issue #3008](https://github.com/databricks/cli/issues/3008)). This pattern uses the public Genie Management APIs (CreateSpace, UpdateSpace, GetSpace) as a workaround.
@@ -102,6 +104,9 @@ Supports both **Databricks managed SPs** and **Microsoft Entra ID SPs**. See [do
    - Target: CAN USE on SQL Warehouse (required for deploy)
    - Target: CAN MANAGE on `target_parent_path` folder (required to create Genie Spaces)
 
+Where to find `source_space_id`: open the source Genie Space and copy the ID from the URL path after `/genie/`.
+Example: `https://adb-<source-workspace-id>.<region>.azuredatabricks.net/genie/<source-space-id>`
+
 ## Command Reference
 
 ### Export (Source Workspace)
@@ -157,7 +162,7 @@ databricks bundle run deploy_genie_space --target prod
 ├── genie_spaces/               # Exported JSON configs (committed to git)
 │   └── <space_name>.json
 └── docs/
-    └── SETUP_GUIDE.md
+    └── SETUP_GUIDE.md       # Supplemental SP provisioning and permission details
 ```
 
 ## How It Works
