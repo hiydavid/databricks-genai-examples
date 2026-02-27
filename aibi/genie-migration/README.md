@@ -194,6 +194,7 @@ This field is portable and passed directly to `create_space()` or `update_space(
 | No conversation history | Conversations are workspace-specific                                         |
 | Permissions separate    | Unity Catalog grants must be configured separately                           |
 | Table names unchanged   | `serialized_space` deployed as-is; edit JSON before commit if catalogs differ|
+| UC Functions not migrated | `serialized_space` includes references to SQL functions, not function definitions. In the target workspace, ensure referenced UC functions already exist and required permissions are granted. If source and target share a metastore and those functions are already accessible, recreation is not required. |
 
 ## References
 
