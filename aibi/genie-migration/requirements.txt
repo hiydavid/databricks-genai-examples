@@ -5,7 +5,7 @@
 # Databricks SDK for Python
 # Provides unified authentication and Genie API access
 # https://databricks-sdk-py.readthedocs.io/
-databricks-sdk>=0.20.0
+databricks-sdk>=0.76.0
 
 # Databricks CLI (for asset bundle operations)
 # https://docs.databricks.com/dev-tools/cli/index.html
