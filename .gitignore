@@ -2,7 +2,6 @@
 .claude
 .agents
 .mcp.json
-CLAUDE.md
 .env.local
 .env
 *.key
