@@ -20,12 +20,8 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install faker
+# MAGIC %pip install faker --quiet
 # MAGIC %restart_python
-
-# COMMAND ----------
-
-# dbutils.library.restartPython()
 
 # COMMAND ----------
 
@@ -978,8 +974,9 @@ for cust in customers_data:
 
         close_date = None
         if status == "Closed":
-            close_offset = random.randint(180, (date(2024, 12, 31) - open_date).days)
-            close_date = open_date + timedelta(days=max(1, close_offset))
+            max_offset = max(1, (date(2024, 12, 31) - open_date).days)
+            close_offset = random.randint(min(180, max_offset), max_offset)
+            close_date = open_date + timedelta(days=close_offset)
 
         # Balance by account type
         credit_limit = None
