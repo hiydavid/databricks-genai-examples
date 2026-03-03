@@ -1,0 +1,90 @@
+version: "1.1"
+comment: "Portfolio health KPIs for Horizon Bank — account balances, delinquency rate, dormancy rate, and mortgage penetration by customer tier. Source: accounts table with star joins to customers and products."
+source: {CATALOG}.{SCHEMA}.accounts
+
+joins:
+  - name: customer
+    source: {CATALOG}.{SCHEMA}.customers
+    on: source.customer_id = customer.customer_id
+  - name: product
+    source: {CATALOG}.{SCHEMA}.products
+    on: source.product_id = product.product_id
+
+dimensions:
+  - name: Relationship Tier
+    expr: customer.relationship_tier
+    comment: "Customer tier: Standard, Preferred, Private Client"
+  - name: Customer Segment
+    expr: customer.customer_segment
+    comment: "Customer segment classification"
+  - name: Account Type
+    expr: account_type
+    comment: "Account type: Checking, Savings, Mortgage, Auto Loan, Home Equity, Credit Card"
+  - name: Account Status
+    expr: status
+    comment: "Account status: Active, Delinquent, Dormant, Closed"
+  - name: Product Category
+    expr: product.product_category
+    comment: "Product category from the product catalog"
+  - name: Product Name
+    expr: product.product_name
+    comment: "Product name from the product catalog"
+  - name: Region
+    expr: customer.region
+    comment: "Geographic region of the customer"
+  - name: State
+    expr: customer.state
+    comment: "US state of the customer"
+  - name: Acquisition Channel
+    expr: customer.acquisition_channel
+    comment: "Channel through which the customer was acquired"
+  - name: Income Band
+    expr: customer.income_band
+    comment: "Customer income band"
+  - name: Age Band
+    expr: customer.age_band
+    comment: "Customer age band"
+
+measures:
+  - name: Account Count
+    expr: COUNT(1)
+    comment: "Total number of accounts"
+  - name: Active Account Count
+    expr: COUNT(1) FILTER (WHERE status = 'Active')
+    comment: "Number of active accounts"
+  - name: Delinquent Account Count
+    expr: COUNT(1) FILTER (WHERE status = 'Delinquent')
+    comment: "Number of delinquent accounts"
+  - name: Dormant Account Count
+    expr: COUNT(1) FILTER (WHERE status = 'Dormant')
+    comment: "Number of dormant accounts"
+  - name: Total Balance
+    expr: SUM(current_balance_usd)
+    comment: "Total current balance across all accounts"
+  - name: Average Balance
+    expr: AVG(current_balance_usd)
+    comment: "Average current balance per account"
+  - name: Total Deposit Balance
+    expr: SUM(current_balance_usd) FILTER (WHERE account_type IN ('Checking', 'Savings'))
+    comment: "Total balance in deposit accounts (Checking and Savings)"
+  - name: Total Loan Balance
+    expr: SUM(current_balance_usd) FILTER (WHERE account_type IN ('Mortgage', 'Auto Loan', 'Home Equity'))
+    comment: "Total balance in loan accounts (Mortgage, Auto Loan, Home Equity)"
+  - name: Average Credit Limit
+    expr: AVG(credit_limit_usd) FILTER (WHERE credit_limit_usd > 0)
+    comment: "Average credit limit for accounts that carry a credit limit"
+  - name: Unique Customers
+    expr: COUNT(DISTINCT source.customer_id)
+    comment: "Number of distinct customers"
+  - name: Average Balance per Customer
+    expr: SUM(current_balance_usd) / COUNT(DISTINCT source.customer_id)
+    comment: "Average total balance per unique customer"
+  - name: Delinquency Rate Pct
+    expr: COUNT(1) FILTER (WHERE status = 'Delinquent') * 100.0 / COUNT(1)
+    comment: "Percentage of accounts in delinquent status"
+  - name: Dormancy Rate Pct
+    expr: COUNT(1) FILTER (WHERE status = 'Dormant') * 100.0 / COUNT(1)
+    comment: "Percentage of accounts in dormant status"
+  - name: Mortgage Penetration Rate Pct
+    expr: COUNT(DISTINCT source.customer_id) FILTER (WHERE account_type = 'Mortgage') * 100.0 / COUNT(DISTINCT source.customer_id)
+    comment: "Percentage of customers with a mortgage account (Private Client ~60%, Standard ~18%)"

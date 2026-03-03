@@ -19,9 +19,9 @@ This document contains everything needed to configure the **Horizon Bank Analyti
 | `accounts` | Table | Account dimension |
 | `products` | Table | Product catalog |
 | `branches` | Table | Branch dimension |
-| `vw_monthly_transactions` | View | Pre-aggregated trend data |
-| `vw_branch_performance` | View | Branch scorecard |
-| `vw_customer_summary` | View | Customer 360 |
+| `mv_banking_transactions` | Metric View | Transaction KPIs with deposit/fee/digital measures + window measures |
+| `mv_customer_health` | Metric View | Portfolio KPIs: balances, delinquency, mortgage penetration by tier |
+| `mv_service_quality` | Metric View | Service KPIs: complaint rate, escalation rate, MoM complaint window |
 
 ---
 
@@ -32,17 +32,8 @@ Paste the following into the **Space Instructions** field:
 ```
 You are an AI analyst for Horizon Bank, a fictional US retail bank. The dataset covers 2023–2025.
 
-IMPORTANT RULES FOR AMOUNTS:
-- Transaction amounts (amount_usd) are ALWAYS stored as positive values.
-- The direction of money flow is determined by transaction_type:
-  - "Deposit" = money coming into the account (inflow)
-  - "Withdrawal" = money going out of the account (outflow)
-  - "Transfer" = internal movement (treat as outflow from source account)
-  - "Payment" = outflow (bill pay, loan payment)
-  - "Purchase" = credit card spending (outflow)
-  - "Fee" = bank charge (amount_usd = 0; fee captured in fee_usd)
-  - "Interest" = interest credit or charge (direction depends on account type)
-- fee_usd is a SEPARATE column from amount_usd. Total cost to customer = amount_usd + fee_usd.
+METRIC VIEWS:
+The metric views (mv_banking_transactions, mv_customer_health, mv_service_quality) encode all business logic for deposits, fees, net flow, digital share, and complaint trends as named measures. Prefer these views for transaction, customer, and service questions.
 
 KNOWN DATA PATTERNS (mention these when relevant):
 - Nov/Dec each year has ~45% higher transaction volume (holiday season)
@@ -57,11 +48,6 @@ RELATIONSHIP TIERS:
 - Preferred: mid-tier, multi-product customers
 - Private Client: high-net-worth; 3x higher average balances, 60% mortgage penetration
 
-For "deposits" always filter WHERE transaction_type = 'Deposit'.
-For "fee revenue" use SUM(fee_usd) across all transactions.
-For "net flow" compute SUM deposits - SUM withdrawals.
-For "digital transactions" use WHERE channel IN ('Online', 'Mobile').
-For "YTD" use WHERE transaction_date >= DATE_TRUNC('year', CURRENT_DATE()).
 ```
 
 ---
@@ -70,27 +56,28 @@ For "YTD" use WHERE transaction_date >= DATE_TRUNC('year', CURRENT_DATE()).
 
 Add the following as **Verified Answers** or **Synonyms** in the Genie knowledge store:
 
-### Business Term → SQL Mapping
+### Business Term → Metric View Measure
 
-| Business Term | SQL Mapping |
+| Business Term | Metric View Measure |
 |---|---|
-| **deposits** | `SUM(amount_usd) WHERE transaction_type = 'Deposit'` |
-| **deposit volume** | `SUM(amount_usd) WHERE transaction_type = 'Deposit'` |
-| **withdrawals** | `SUM(amount_usd) WHERE transaction_type = 'Withdrawal'` |
-| **net flow** | `SUM(CASE WHEN transaction_type='Deposit' THEN amount_usd ELSE 0 END) - SUM(CASE WHEN transaction_type='Withdrawal' THEN amount_usd ELSE 0 END)` |
-| **fee revenue** | `SUM(fee_usd)` |
-| **active customers** | `COUNT(DISTINCT customer_id) WHERE is_active = TRUE` (from customers table) |
-| **digital transactions** | `COUNT(*) WHERE channel IN ('Online', 'Mobile')` |
-| **digital share** | `COUNT(digital) / COUNT(total) * 100` |
-| **average balance** | `AVG(current_balance_usd)` from accounts table |
-| **credit utilization** | `current_balance_usd / credit_limit_usd` for credit accounts only |
-| **YTD** | `WHERE transaction_date >= DATE_TRUNC('year', CURRENT_DATE())` |
-| **last quarter** | `WHERE transaction_quarter = QUARTER(CURRENT_DATE()) - 1 AND transaction_year = YEAR(CURRENT_DATE())` |
+| **deposits** / **deposit volume** | `MEASURE(\`Deposit Volume\`)` from `mv_banking_transactions` |
+| **withdrawals** / **withdrawal volume** | `MEASURE(\`Withdrawal Volume\`)` from `mv_banking_transactions` |
+| **net flow** | `MEASURE(\`Net Flow\`)` from `mv_banking_transactions` |
+| **fee revenue** | `MEASURE(\`Fee Revenue\`)` from `mv_banking_transactions` |
+| **digital transactions** | `MEASURE(\`Digital Transaction Count\`)` from `mv_banking_transactions` |
+| **digital share** | `MEASURE(\`Digital Share Pct\`)` from `mv_banking_transactions` |
+| **YTD deposits** | `MEASURE(\`YTD Deposit Volume\`)` from `mv_banking_transactions` |
+| **MoM deposit growth** | `MEASURE(\`Month-over-Month Deposit Growth Pct\`)` from `mv_banking_transactions` |
+| **average balance** | `MEASURE(\`Average Balance\`)` from `mv_customer_health` |
+| **delinquency rate** | `MEASURE(\`Delinquency Rate Pct\`)` from `mv_customer_health` |
+| **mortgage penetration** | `MEASURE(\`Mortgage Penetration Rate Pct\`)` from `mv_customer_health` |
+| **complaint count** | `MEASURE(\`Complaint Count\`)` from `mv_service_quality` |
+| **resolution rate** | `MEASURE(\`Resolution Rate Pct\`)` from `mv_service_quality` |
+| **MoM complaint change** | `MEASURE(\`Month-over-Month Complaint Change Pct\`)` from `mv_service_quality` |
+| **active customers** | `COUNT(DISTINCT customer_id) WHERE is_active = TRUE` from `customers` table |
 | **high-value customers** | customers WHERE relationship_tier = 'Private Client' |
-| **top customers** | rank by total deposits or total balance descending |
-| **branch profitability** | total_deposits vs monthly_operating_cost_usd from vw_branch_performance |
-| **churn risk** | churn_risk column in vw_customer_summary |
-| **unresolved requests** | service_requests WHERE status IN ('Open', 'Escalated') |
+| **top customers** | rank by `Deposit Volume` or `Total Balance` descending |
+| **unresolved requests** | `MEASURE(\`Open Count\`) + MEASURE(\`Escalated Count\`)` from `mv_service_quality` |
 
 ---
 
@@ -157,20 +144,36 @@ Use these questions in order during a demo to build from simple to complex.
 | "Build me a complete profile of our Private Client customers" | Agent: 360-degree summary |
 | "Are there any unusual patterns in the January 2024 service requests?" | Agent: anomaly detection |
 
+### Tier 7 — Metric View Semantic Layer
+
+| Question | Metric View Capability |
+|---|---|
+| "What was YTD deposit volume as of December 2024?" | Window measure: `YTD Deposit Volume` |
+| "Show month-over-month deposit growth by relationship tier for 2024" | Window + dimension: `Month-over-Month Deposit Growth Pct` × `Relationship Tier` |
+| "How has digital share changed by relationship tier over the last 3 years?" | Filtered measure: `Digital Share Pct` × `Relationship Tier` × `Transaction Month` |
+| "What is fee revenue per customer for Private Client vs Standard customers?" | Ratio measure: `Fee Revenue per Customer` by `Relationship Tier` |
+| "Show mortgage penetration rate by relationship tier" | Filtered ratio: `Mortgage Penetration Rate Pct` (surfaces 60% Private Client vs 18% Standard) |
+| "What is the delinquency rate by region and account type?" | Filtered measure: `Delinquency Rate Pct` × `Region` × `Account Type` |
+| "Show the month-over-month complaint change for 2024 — when was the worst spike?" | Window measure: `Month-over-Month Complaint Change Pct` (surfaces Jan 2024 +80%) |
+| "What is the trailing 3-month resolution rate trend for escalated vs non-escalated channels?" | Window measure: `Trailing 3-Month Resolution Rate Pct` × `Channel` |
+
 ---
 
 ## 5. Suggested Visualizations
 
-| View / Table | Recommended Chart | Fields |
+| Metric View | Recommended Chart | Fields |
 |---|---|---|
-| `vw_monthly_transactions` | Line chart | x=month_start_date, y=total_deposits, color=region |
-| `vw_monthly_transactions` | Stacked bar | x=month_start_date, y=digital_pct by channel |
-| `vw_monthly_transactions` | Bar chart | x=txn_quarter, y=net_flow, facet=txn_year |
-| `vw_branch_performance` | Scatter plot | x=operating_cost_usd, y=total_deposits, size=unique_customers |
-| `vw_customer_summary` | Bar chart | x=relationship_tier, y=avg total_balance |
-| `vw_customer_summary` | Pie chart | x=churn_risk, y=count |
-| `transactions` | Heatmap | x=transaction_month, y=transaction_year, value=COUNT(*) |
-| `service_requests` | Line chart | x=request_date (monthly), y=complaint_count |
+| `mv_banking_transactions` | Line chart | x=`Transaction Month`, y=`Deposit Volume`, color=`Region` |
+| `mv_banking_transactions` | Stacked bar | x=`Transaction Month`, y=`Digital Share Pct` by `Channel` |
+| `mv_banking_transactions` | Bar chart | x=`Transaction Year`, y=`Net Flow` by `Channel Type` |
+| `mv_banking_transactions` | Line chart | x=`Transaction Month`, y=`YTD Deposit Volume` by `Transaction Year` |
+| `mv_banking_transactions` | Line chart | x=`Transaction Month`, y=`Month-over-Month Deposit Growth Pct` |
+| `mv_customer_health` | Bar chart | x=`Relationship Tier`, y=`Average Balance per Customer` |
+| `mv_customer_health` | Bar chart | x=`Relationship Tier`, y=`Mortgage Penetration Rate Pct` |
+| `mv_customer_health` | Heatmap | x=`Account Type`, y=`Region`, value=`Delinquency Rate Pct` |
+| `mv_service_quality` | Line chart | x=`Request Month`, y=`Complaint Count` + `Month-over-Month Complaint Change Pct` |
+| `mv_service_quality` | Bar chart | x=`Category`, y=`Escalation Rate Pct` by `Relationship Tier` |
+| `transactions` | Heatmap | x=`transaction_month`, y=`transaction_year`, value=COUNT(*) |
 
 ---
 

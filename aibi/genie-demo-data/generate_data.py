@@ -1566,194 +1566,30 @@ print("\nData generation complete.")
 # COMMAND ----------
 
 # =============================================================================
-# CREATE VIEWS
+# CREATE METRIC VIEWS
 # =============================================================================
-print("Creating views...")
+import os
 
-spark.sql(
-    f"""
-CREATE OR REPLACE VIEW `{CATALOG}`.`{SCHEMA}`.vw_monthly_transactions AS
-SELECT
-    t.transaction_year                                             AS txn_year,
-    t.transaction_month                                            AS txn_month,
-    t.transaction_quarter                                          AS txn_quarter,
-    MAKE_DATE(t.transaction_year, t.transaction_month, 1)         AS month_start_date,
-    a.account_type,
-    t.channel,
-    c.region,
-    COUNT(*)                                                       AS total_transactions,
-    SUM(CASE WHEN t.transaction_type = 'Deposit'    THEN t.amount_usd ELSE 0 END)
-                                                                   AS total_deposits,
-    SUM(CASE WHEN t.transaction_type = 'Withdrawal' THEN t.amount_usd ELSE 0 END)
-                                                                   AS total_withdrawals,
-    SUM(CASE WHEN t.transaction_type = 'Deposit'    THEN t.amount_usd ELSE 0 END)
-    - SUM(CASE WHEN t.transaction_type = 'Withdrawal' THEN t.amount_usd ELSE 0 END)
-                                                                   AS net_flow,
-    SUM(t.amount_usd)                                              AS total_amount,
-    ROUND(AVG(t.amount_usd), 2)                                   AS avg_transaction_amount,
-    SUM(t.fee_usd)                                                 AS total_fees,
-    ROUND(AVG(CASE WHEN t.fee_usd > 0 THEN t.fee_usd END), 2)    AS avg_fee_when_charged,
-    COUNT(CASE WHEN t.fee_usd > 0 THEN 1 END)                     AS fee_transaction_count,
-    COUNT(CASE WHEN t.transaction_type = 'Deposit'    THEN 1 END) AS deposit_count,
-    COUNT(CASE WHEN t.transaction_type = 'Withdrawal' THEN 1 END) AS withdrawal_count,
-    COUNT(CASE WHEN t.transaction_type = 'Transfer'   THEN 1 END) AS transfer_count,
-    COUNT(CASE WHEN t.transaction_type = 'Payment'    THEN 1 END) AS payment_count,
-    COUNT(CASE WHEN t.transaction_type = 'Purchase'   THEN 1 END) AS purchase_count,
-    COUNT(CASE WHEN t.transaction_type = 'Fee'        THEN 1 END) AS fee_txn_count,
-    COUNT(CASE WHEN t.transaction_type = 'Interest'   THEN 1 END) AS interest_txn_count,
-    COUNT(CASE WHEN t.channel IN ('Online','Mobile') THEN 1 END)  AS digital_txn_count,
-    ROUND(
-        COUNT(CASE WHEN t.channel IN ('Online','Mobile') THEN 1 END) * 100.0 / COUNT(*),
-        1
-    )                                                              AS digital_pct,
-    COUNT(DISTINCT t.customer_id)                                  AS unique_customers,
-    COUNT(CASE WHEN t.is_flagged = TRUE THEN 1 END)               AS flagged_count,
-    COUNT(CASE WHEN t.status = 'Reversed' THEN 1 END)             AS reversed_count
-FROM `{CATALOG}`.`{SCHEMA}`.transactions  t
-JOIN `{CATALOG}`.`{SCHEMA}`.accounts      a ON t.account_id  = a.account_id
-JOIN `{CATALOG}`.`{SCHEMA}`.customers     c ON t.customer_id = c.customer_id
-GROUP BY
-    t.transaction_year, t.transaction_month, t.transaction_quarter,
-    a.account_type, t.channel, c.region
-"""
-)
+print("Creating metric views...")
 
-spark.sql(
-    f"""
-CREATE OR REPLACE VIEW `{CATALOG}`.`{SCHEMA}`.vw_branch_performance AS
-SELECT
-    b.branch_id, b.branch_name, b.branch_type, b.region, b.state, b.city,
-    t.transaction_year                                             AS txn_year,
-    t.transaction_month                                            AS txn_month,
-    t.transaction_quarter                                          AS txn_quarter,
-    MAKE_DATE(t.transaction_year, t.transaction_month, 1)         AS month_start_date,
-    COUNT(*)                                                       AS transaction_count,
-    SUM(t.amount_usd)                                             AS total_transaction_value,
-    ROUND(AVG(t.amount_usd), 2)                                   AS avg_transaction_value,
-    SUM(CASE WHEN t.transaction_type = 'Deposit'    THEN t.amount_usd ELSE 0 END)
-                                                                   AS total_deposits,
-    SUM(CASE WHEN t.transaction_type = 'Withdrawal' THEN t.amount_usd ELSE 0 END)
-                                                                   AS total_withdrawals,
-    SUM(t.fee_usd)                                                 AS total_fees_collected,
-    COUNT(DISTINCT t.customer_id)                                  AS unique_customers,
-    b.monthly_operating_cost_usd                                   AS operating_cost_usd,
-    b.headcount,
-    ROUND(b.monthly_operating_cost_usd / NULLIF(COUNT(*), 0), 2) AS cost_per_transaction,
-    ROUND((SUM(t.fee_usd) - b.monthly_operating_cost_usd), 2)    AS fee_minus_cost,
-    ROUND(
-        (SUM(CASE WHEN t.transaction_type = 'Deposit'    THEN t.amount_usd ELSE 0 END)
-         - SUM(CASE WHEN t.transaction_type = 'Withdrawal' THEN t.amount_usd ELSE 0 END))
-        / NULLIF(b.monthly_operating_cost_usd, 0),
-        2
-    )                                                              AS deposit_flow_to_cost_ratio
-FROM `{CATALOG}`.`{SCHEMA}`.transactions  t
-JOIN `{CATALOG}`.`{SCHEMA}`.branches      b ON t.branch_id = b.branch_id
-WHERE t.branch_id IS NOT NULL
-GROUP BY
-    b.branch_id, b.branch_name, b.branch_type, b.region, b.state, b.city,
-    b.monthly_operating_cost_usd, b.headcount,
-    t.transaction_year, t.transaction_month, t.transaction_quarter
-"""
-)
+# Derive the metric_views directory relative to this notebook in the Databricks workspace
+_ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+_nb_path = _ctx.notebookPath().get()
+_nb_dir = "/Workspace" + _nb_path.rsplit("/", 1)[0]
+metric_views_dir = _nb_dir + "/metric_views"
 
-spark.sql(
-    f"""
-CREATE OR REPLACE VIEW `{CATALOG}`.`{SCHEMA}`.vw_customer_summary AS
-WITH account_summary AS (
-    SELECT
-        a.customer_id,
-        COUNT(DISTINCT a.account_id)                              AS account_count,
-        SUM(a.current_balance_usd)                               AS total_balance,
-        SUM(CASE WHEN a.account_type IN ('Checking','Savings')
-                 THEN a.current_balance_usd ELSE 0 END)          AS total_deposit_balance,
-        SUM(CASE WHEN a.account_type IN ('Mortgage','Auto Loan','Home Equity')
-                 THEN a.current_balance_usd ELSE 0 END)          AS total_loan_balance,
-        SUM(CASE WHEN a.account_type = 'Credit Card'
-                 THEN a.current_balance_usd ELSE 0 END)          AS total_cc_balance,
-        SUM(CASE WHEN a.account_type = 'Credit Card'
-                 THEN a.credit_limit_usd ELSE 0 END)             AS total_cc_limit,
-        COUNT(CASE WHEN a.status = 'Active'     THEN 1 END)      AS active_account_count,
-        COUNT(CASE WHEN a.status = 'Delinquent' THEN 1 END)      AS delinquent_account_count
-    FROM `{CATALOG}`.`{SCHEMA}`.accounts a
-    GROUP BY a.customer_id
-),
-txn_summary AS (
-    SELECT
-        t.customer_id,
-        COUNT(*)                                                   AS total_transactions,
-        SUM(CASE WHEN t.transaction_type = 'Deposit'
-                 THEN t.amount_usd ELSE 0 END)                   AS total_deposits_all_time,
-        SUM(CASE WHEN t.transaction_type = 'Deposit'
-                  AND t.transaction_year = YEAR(CURRENT_DATE())
-                 THEN t.amount_usd ELSE 0 END)                   AS total_deposits_ytd,
-        SUM(t.fee_usd)                                            AS total_fees_paid,
-        MAX(t.transaction_date)                                   AS last_transaction_date,
-        DATEDIFF(CURRENT_DATE(), MAX(t.transaction_date))        AS days_since_last_transaction,
-        COUNT(CASE WHEN t.is_flagged = TRUE THEN 1 END)          AS flagged_transaction_count
-    FROM `{CATALOG}`.`{SCHEMA}`.transactions t
-    GROUP BY t.customer_id
-),
-sr_summary AS (
-    SELECT
-        sr.customer_id,
-        COUNT(*)                                                   AS service_request_count,
-        COUNT(CASE WHEN sr.status = 'Open'       THEN 1 END)     AS open_requests,
-        COUNT(CASE WHEN sr.status = 'Escalated'  THEN 1 END)     AS escalated_requests,
-        COUNT(CASE WHEN sr.category = 'Complaint' THEN 1 END)    AS complaint_count,
-        ROUND(AVG(sr.satisfaction_score), 2)                     AS avg_satisfaction,
-        ROUND(AVG(sr.resolution_time_days), 1)                   AS avg_resolution_days
-    FROM `{CATALOG}`.`{SCHEMA}`.service_requests sr
-    GROUP BY sr.customer_id
-)
-SELECT
-    c.customer_id, c.customer_name, c.relationship_tier, c.customer_segment,
-    c.state, c.region, c.age_band, c.income_band, c.credit_score_band,
-    c.customer_since_date, c.acquisition_channel, c.is_active,
-    c.has_checking, c.has_savings, c.has_credit_card, c.has_mortgage,
-    COALESCE(a.account_count,            0)                       AS account_count,
-    COALESCE(a.active_account_count,     0)                       AS active_account_count,
-    COALESCE(a.delinquent_account_count, 0)                       AS delinquent_account_count,
-    ROUND(COALESCE(a.total_balance,         0), 2)               AS total_balance,
-    ROUND(COALESCE(a.total_deposit_balance, 0), 2)               AS total_deposit_balance,
-    ROUND(COALESCE(a.total_loan_balance,    0), 2)               AS total_loan_balance,
-    ROUND(COALESCE(a.total_cc_balance,      0), 2)               AS total_cc_balance,
-    ROUND(COALESCE(a.total_cc_limit,        0), 2)               AS total_cc_limit,
-    CASE
-        WHEN COALESCE(a.total_cc_limit, 0) > 0
-        THEN ROUND(a.total_cc_balance / a.total_cc_limit, 4)
-        ELSE NULL
-    END                                                            AS credit_utilization_rate,
-    COALESCE(t.total_transactions,        0)                      AS total_transactions,
-    ROUND(COALESCE(t.total_deposits_all_time, 0), 2)             AS total_deposits_all_time,
-    ROUND(COALESCE(t.total_deposits_ytd,      0), 2)             AS total_deposits_ytd,
-    ROUND(COALESCE(t.total_fees_paid,         0), 2)             AS total_fees_paid,
-    t.last_transaction_date,
-    COALESCE(t.days_since_last_transaction, 0)                    AS days_since_last_transaction,
-    COALESCE(t.flagged_transaction_count,   0)                    AS flagged_transaction_count,
-    COALESCE(sr.service_request_count, 0)                         AS service_request_count,
-    COALESCE(sr.open_requests,         0)                         AS open_service_requests,
-    COALESCE(sr.escalated_requests,    0)                         AS escalated_service_requests,
-    COALESCE(sr.complaint_count,       0)                         AS complaint_count,
-    sr.avg_satisfaction,
-    sr.avg_resolution_days,
-    CASE
-        WHEN c.is_active = FALSE                                   THEN 'Inactive'
-        WHEN COALESCE(t.days_since_last_transaction, 999) > 180   THEN 'High'
-        WHEN COALESCE(sr.escalated_requests,  0) > 0
-          OR COALESCE(a.delinquent_account_count, 0) > 0          THEN 'Medium'
-        WHEN COALESCE(t.days_since_last_transaction, 999) > 60    THEN 'Low-Medium'
-        ELSE 'Low'
-    END                                                            AS churn_risk
-FROM `{CATALOG}`.`{SCHEMA}`.customers        c
-LEFT JOIN account_summary                    a  ON c.customer_id = a.customer_id
-LEFT JOIN txn_summary                        t  ON c.customer_id = t.customer_id
-LEFT JOIN sr_summary                         sr ON c.customer_id = sr.customer_id
-"""
-)
-
-print("  ✓ vw_monthly_transactions")
-print("  ✓ vw_branch_performance")
-print("  ✓ vw_customer_summary")
+for mv_name in ["mv_banking_transactions", "mv_customer_health", "mv_service_quality"]:
+    with open(f"{metric_views_dir}/{mv_name}.yaml") as f:
+        yaml_body = f.read()
+    yaml_body = yaml_body.replace("{CATALOG}", CATALOG).replace("{SCHEMA}", SCHEMA)
+    ddl = (
+        f"CREATE OR REPLACE VIEW `{CATALOG}`.`{SCHEMA}`.`{mv_name}`\n"
+        "WITH METRICS\n"
+        "LANGUAGE YAML\n"
+        "AS $$"
+    ) + yaml_body + "$$"
+    spark.sql(ddl)
+    print(f"  ✓ {mv_name}")
 
 # COMMAND ----------
 
@@ -2083,6 +1919,6 @@ print(f"  Catalog : {CATALOG}")
 print(f"  Schema  : {SCHEMA}")
 print("  Tables  : products, branches, customers, accounts,")
 print("            transactions, service_requests")
-print("  Views   : vw_monthly_transactions, vw_branch_performance,")
-print("            vw_customer_summary")
+print("  Metric Views: mv_banking_transactions, mv_customer_health,")
+print("               mv_service_quality")
 print("  Next    : Configure Genie space — see genie_space_config.md")
