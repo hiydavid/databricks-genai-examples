@@ -11,10 +11,6 @@ joins:
   - name: account
     source: {CATALOG}.{SCHEMA}.accounts
     on: source.account_id = account.account_id
-    joins:
-      - name: product
-        source: {CATALOG}.{SCHEMA}.products
-        on: account.product_id = product.product_id
 
 dimensions:
   - name: Transaction Month
@@ -37,10 +33,6 @@ dimensions:
     expr: customer.state
   - name: Account Type
     expr: account.account_type
-  - name: Product Category
-    expr: product.product_category
-  - name: Product Name
-    expr: product.product_name
 
 measures:
   - name: Transaction Count
@@ -88,5 +80,11 @@ measures:
       - order: Transaction Month
         range: trailing 3 month
         semiadditive: last
+  - name: Current Month Deposit Volume
+    expr: SUM(amount_usd) FILTER (WHERE transaction_type = 'Deposit')
+    window:
+      - order: Transaction Month
+        range: current
+        semiadditive: last
   - name: Month-over-Month Deposit Growth Pct
-    expr: (MEASURE(`Deposit Volume`) - MEASURE(`Previous Month Deposit Volume`)) / MEASURE(`Previous Month Deposit Volume`) * 100
+    expr: (MEASURE(`Current Month Deposit Volume`) - MEASURE(`Previous Month Deposit Volume`)) / MEASURE(`Previous Month Deposit Volume`) * 100

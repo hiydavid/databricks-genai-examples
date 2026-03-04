@@ -58,8 +58,14 @@ measures:
       - order: Request Month
         range: trailing 1 month
         semiadditive: last
+  - name: Current Month Complaint Count
+    expr: COUNT(1) FILTER (WHERE category = 'Complaint')
+    window:
+      - order: Request Month
+        range: current
+        semiadditive: last
   - name: Month-over-Month Complaint Change Pct
-    expr: (MEASURE(`Complaint Count`) - MEASURE(`Previous Month Complaint Count`)) / MEASURE(`Previous Month Complaint Count`) * 100
+    expr: (MEASURE(`Current Month Complaint Count`) - MEASURE(`Previous Month Complaint Count`)) / MEASURE(`Previous Month Complaint Count`) * 100
   - name: Trailing 3-Month Resolution Rate Pct
     expr: COUNT(1) FILTER (WHERE status = 'Resolved') * 100.0 / COUNT(1)
     window:
