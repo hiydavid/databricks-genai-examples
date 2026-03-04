@@ -20,88 +20,62 @@ joins:
 dimensions:
   - name: Transaction Month
     expr: DATE_TRUNC('MONTH', transaction_date)
-    comment: "Calendar month of the transaction"
   - name: Transaction Year
     expr: transaction_year
-    comment: "Calendar year of the transaction"
   - name: Channel
     expr: channel
-    comment: "Transaction channel: Branch, ATM, Online, Mobile, Phone"
   - name: Transaction Type
     expr: transaction_type
-    comment: "Type: Deposit, Withdrawal, Transfer, Payment, Purchase, Fee, Interest"
   - name: Channel Type
     expr: CASE WHEN channel IN ('Mobile', 'Online') THEN 'Digital' ELSE 'In-Person' END
-    comment: "Digital (Mobile/Online) vs In-Person (Branch/ATM/Phone)"
   - name: Relationship Tier
     expr: customer.relationship_tier
-    comment: "Customer tier: Standard, Preferred, Private Client"
   - name: Customer Segment
     expr: customer.customer_segment
-    comment: "Customer segment classification"
   - name: Region
     expr: customer.region
-    comment: "Geographic region of the customer"
   - name: State
     expr: customer.state
-    comment: "US state of the customer"
   - name: Account Type
     expr: account.account_type
-    comment: "Account type: Checking, Savings, Mortgage, Auto Loan, Home Equity, Credit Card"
   - name: Product Category
     expr: product.product_category
-    comment: "Product category from the product catalog"
   - name: Product Name
     expr: product.product_name
-    comment: "Product name from the product catalog"
 
 measures:
   - name: Transaction Count
     expr: COUNT(1)
-    comment: "Total number of transactions"
   - name: Total Transaction Amount
     expr: SUM(amount_usd)
-    comment: "Sum of all transaction amounts (always positive; direction determined by Transaction Type)"
   - name: Deposit Volume
     expr: SUM(amount_usd) FILTER (WHERE transaction_type = 'Deposit')
-    comment: "Total deposit amount (money into accounts)"
   - name: Withdrawal Volume
     expr: SUM(amount_usd) FILTER (WHERE transaction_type = 'Withdrawal')
-    comment: "Total withdrawal amount (money out of accounts)"
   - name: Net Flow
     expr: SUM(amount_usd) FILTER (WHERE transaction_type = 'Deposit') - SUM(amount_usd) FILTER (WHERE transaction_type = 'Withdrawal')
-    comment: "Net money flow: total deposits minus total withdrawals"
   - name: Fee Revenue
     expr: SUM(fee_usd)
-    comment: "Total fee revenue collected (fee_usd column, separate from amount_usd)"
   - name: Unique Customers
     expr: COUNT(DISTINCT source.customer_id)
-    comment: "Number of distinct customers who transacted"
   - name: Average Transaction Amount
     expr: AVG(amount_usd)
-    comment: "Average transaction amount"
   - name: Digital Transaction Count
     expr: COUNT(1) FILTER (WHERE channel IN ('Mobile', 'Online'))
-    comment: "Count of transactions via Mobile or Online channels"
   - name: Digital Share Pct
     expr: COUNT(1) FILTER (WHERE channel IN ('Mobile', 'Online')) * 100.0 / COUNT(1)
-    comment: "Percentage of transactions via digital channels (grew from 25% in Jan 2023 to 48% in Dec 2025)"
   - name: Flagged Transaction Count
     expr: COUNT(1) FILTER (WHERE is_flagged = TRUE)
-    comment: "Number of transactions flagged for review"
   - name: Fee Revenue per Customer
     expr: SUM(fee_usd) / COUNT(DISTINCT source.customer_id)
-    comment: "Average fee revenue per unique customer"
   - name: Previous Month Deposit Volume
     expr: SUM(amount_usd) FILTER (WHERE transaction_type = 'Deposit')
-    comment: "Deposit volume from the prior month (trailing 1-month window)"
     window:
       - order: Transaction Month
         range: trailing 1 month
         semiadditive: last
   - name: YTD Deposit Volume
     expr: SUM(amount_usd) FILTER (WHERE transaction_type = 'Deposit')
-    comment: "Year-to-date deposit volume (cumulative within the current year)"
     window:
       - order: Transaction Month
         range: cumulative
@@ -111,11 +85,9 @@ measures:
         semiadditive: last
   - name: Trailing 3-Month Fee Revenue
     expr: SUM(fee_usd)
-    comment: "Fee revenue over the trailing 3 months (excludes current month)"
     window:
       - order: Transaction Month
         range: trailing 3 month
         semiadditive: last
   - name: Month-over-Month Deposit Growth Pct
     expr: (MEASURE(`Deposit Volume`) - MEASURE(`Previous Month Deposit Volume`)) / MEASURE(`Previous Month Deposit Volume`) * 100
-    comment: "Month-over-month percentage change in deposit volume"

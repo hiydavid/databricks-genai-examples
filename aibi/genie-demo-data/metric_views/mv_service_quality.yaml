@@ -13,79 +13,56 @@ joins:
 dimensions:
   - name: Request Month
     expr: DATE_TRUNC('MONTH', request_date)
-    comment: "Calendar month of the service request"
   - name: Request Year
     expr: request_year
-    comment: "Calendar year of the service request"
   - name: Channel
     expr: channel
-    comment: "Service channel: Branch, Phone, Chat, App (NULL branch dims for non-branch channels)"
   - name: Category
     expr: category
-    comment: "Request category: Complaint, Inquiry, Account Service, Technical Support, Fraud Report"
   - name: Status
     expr: status
-    comment: "Request status: Open, Resolved, Escalated, Closed"
   - name: Relationship Tier
     expr: customer.relationship_tier
-    comment: "Customer tier: Standard, Preferred, Private Client"
   - name: Customer Segment
     expr: customer.customer_segment
-    comment: "Customer segment classification"
   - name: Region
     expr: customer.region
-    comment: "Geographic region of the customer"
   - name: Branch Region
     expr: branch.region
-    comment: "Geographic region of the branch (NULL for non-branch channels)"
 
 measures:
   - name: Request Count
     expr: COUNT(1)
-    comment: "Total number of service requests"
   - name: Complaint Count
     expr: COUNT(1) FILTER (WHERE category = 'Complaint')
-    comment: "Number of complaint requests (spiked +80% in Jan 2024 due to system outage)"
   - name: Escalated Count
     expr: COUNT(1) FILTER (WHERE status = 'Escalated')
-    comment: "Number of escalated requests"
   - name: Resolved Count
     expr: COUNT(1) FILTER (WHERE status = 'Resolved')
-    comment: "Number of resolved requests"
   - name: Open Count
     expr: COUNT(1) FILTER (WHERE status = 'Open')
-    comment: "Number of open (unresolved) requests"
   - name: Unique Customers
     expr: COUNT(DISTINCT source.customer_id)
-    comment: "Number of distinct customers with service requests"
   - name: Average Resolution Time Days
     expr: AVG(resolution_time_days) FILTER (WHERE status = 'Resolved')
-    comment: "Average days to resolve a request (resolved requests only)"
   - name: Average Satisfaction Score
     expr: AVG(satisfaction_score)
-    comment: "Average customer satisfaction score (1-5)"
   - name: Resolution Rate Pct
     expr: COUNT(1) FILTER (WHERE status = 'Resolved') * 100.0 / COUNT(1)
-    comment: "Percentage of requests resolved"
   - name: Escalation Rate Pct
     expr: COUNT(1) FILTER (WHERE status = 'Escalated') * 100.0 / COUNT(1)
-    comment: "Percentage of requests escalated"
   - name: Complaint Rate Pct
     expr: COUNT(1) FILTER (WHERE category = 'Complaint') * 100.0 / COUNT(1)
-    comment: "Percentage of requests that are complaints"
   - name: Previous Month Complaint Count
     expr: COUNT(1) FILTER (WHERE category = 'Complaint')
-    comment: "Complaint count from the prior month (trailing 1-month window)"
     window:
       - order: Request Month
         range: trailing 1 month
         semiadditive: last
   - name: Month-over-Month Complaint Change Pct
     expr: (MEASURE(`Complaint Count`) - MEASURE(`Previous Month Complaint Count`)) / MEASURE(`Previous Month Complaint Count`) * 100
-    comment: "Month-over-month percentage change in complaints (Jan 2024 shows ~+80% spike)"
   - name: Trailing 3-Month Resolution Rate Pct
     expr: COUNT(1) FILTER (WHERE status = 'Resolved') * 100.0 / COUNT(1)
-    comment: "Resolution rate over the trailing 3 months (excludes current month)"
     window:
       - order: Request Month
         range: trailing 3 month
