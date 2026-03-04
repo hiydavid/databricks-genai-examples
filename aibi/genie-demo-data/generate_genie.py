@@ -24,9 +24,9 @@
 # =============================================================================
 # CONFIGURATION — Edit only this section before running
 # =============================================================================
-CATALOG = "my_catalog"   # Unity Catalog name (must match generate_data.py)
+CATALOG = "my_catalog"  # Unity Catalog name (must match generate_data.py)
 SCHEMA = "horizon_bank"  # Schema name (must match generate_data.py)
-WAREHOUSE_ID = ""        # SQL Warehouse ID — leave empty to auto-detect
+WAREHOUSE_ID = ""  # SQL Warehouse ID — leave empty to auto-detect
 
 # SPACE_VERSION: 2 = metric views in data_sources.metric_views[] (v2 API).
 # If the workspace rejects v2, revert to 1 and move metric views back to tables[].
@@ -46,21 +46,24 @@ SPACE_DESCRIPTION = (
 )
 
 # Raw Delta tables (facts + dimensions)
-TABLE_NAMES = ["transactions", "service_requests", "customers", "accounts", "products", "branches"]
+TABLE_NAMES = [
+    "transactions",
+    "service_requests",
+    "customers",
+    "accounts",
+    "products",
+    "branches",
+]
 
 # Metric views (v2: in data_sources.metric_views[], not tables[])
-METRIC_VIEW_NAMES = ["mv_banking_transactions", "mv_customer_health", "mv_service_quality"]
+METRIC_VIEW_NAMES = [
+    "mv_banking_transactions",
+    "mv_customer_health",
+    "mv_service_quality",
+]
 
 SPACE_INSTRUCTIONS = """\
 You are an AI analyst for Horizon Bank, a fictional US retail bank. The dataset covers 2023–2025.
-
-KNOWN DATA PATTERNS (mention these when relevant):
-- Nov/Dec each year has ~45% higher transaction volume (holiday season)
-- Q2 2024 shows a deposit dip (-15%) due to macro softness
-- Mobile channel share grew from 25% (Jan 2023) to 48% (Dec 2025)
-- Top 10% of customers (Private Client tier) account for ~35% of total deposit volume
-- Southeast region branches have ~20% higher average transaction values
-- Jan 2024 saw an 80% spike in Complaint service requests (system outage)
 
 RELATIONSHIP TIERS:
 - Standard: mass-market customers
@@ -71,46 +74,18 @@ RELATIONSHIP TIERS:
 SAMPLE_QUESTIONS = [
     # Tier 1 — Simple Aggregations & Filtering
     "What was total deposit volume in 2024?",
-    "How many active customers do we have?",
-    "What are the top 5 products by number of accounts?",
-    "Show me all transactions over $5,000 in the Northeast in Q4 2024",
-    "What is the total fee revenue collected in 2025?",
     # Tier 2 — Time-Series & Period Comparison
     "Show monthly deposit trend from Jan 2023 to Dec 2025",
-    "Compare Q2 2024 vs Q2 2023 net flow by region",
-    "How has the mobile channel share changed over time?",
-    "Show me a chart of monthly transaction volume by channel for 2024",
-    "What months had the highest fee revenue in 2024?",
     # Tier 3 — Multi-Table JOINs & Segmentation
     "What is the average account balance for Private Client customers by state?",
-    "What is the delinquency rate by relationship tier and region?",
-    "Break down transaction volume by account type and year",
-    "Which acquisition channel produces the highest-balance customers?",
-    "What percentage of Preferred customers have a mortgage?",
     # Tier 4 — Rankings & Top-N
     "Which 10 branches had the highest deposit volume this year?",
-    "Who are our top 20 customers by total deposits in 2024?",
-    "Which merchant categories drive the most credit card spending?",
-    "Rank regions by average transaction value",
     # Tier 5 — Complex KPIs & Multi-Table Analysis
     "What is fee revenue per customer by relationship tier?",
-    "Do customers with unresolved service complaints have lower average balances?",
-    "Which states have the highest concentration of delinquent accounts?",
-    "Compare customer lifetime deposit value by acquisition channel",
-    "What is the complaint resolution time trend in 2024 vs 2023?",
     # Tier 6 — Agent Mode (Multi-Step Exploration)
-    "Analyze branch profitability — which branches are underperforming vs. their operating cost?",
-    "Which customer segments are most at risk of churning based on recent activity?",
     "Explain the deposit trends in 2024 — what drove the Q2 dip and the Q4 recovery?",
-    "Build me a complete profile of our Private Client customers",
-    "Are there any unusual patterns in the January 2024 service requests?",
     # Tier 7 — Metric View Semantic Layer
     "What was YTD deposit volume as of December 2024?",
-    "Show month-over-month deposit growth by relationship tier for 2024",
-    "Show the month-over-month complaint change for 2024 — when was the worst spike?",
-    "How has digital share changed by relationship tier over the last 3 years?",
-    "What is fee revenue per customer for Private Client vs Standard customers?",
-    "What is the trailing 3-month resolution rate trend for escalated vs non-escalated channels?",
 ]
 
 # COMMAND ----------
@@ -126,6 +101,7 @@ import uuid
 from databricks.sdk import WorkspaceClient
 
 # COMMAND ----------
+
 
 def _new_id() -> str:
     return uuid.uuid4().hex
@@ -149,19 +125,20 @@ def _build_table_configs(catalog: str, schema: str) -> list:
                 },
                 {
                     "column_name": "channel",
-                    "description": "Mobile/Branch/ATM/Online/Wire. Mobile grew from 25% (Jan 2023) to 48% (Dec 2025).",
                     "synonyms": ["digital", "in-branch", "mobile channel"],
                     "enable_entity_matching": True,
                 },
                 {
                     "column_name": "amount_usd",
-                    "description": "Transaction amount in USD; always positive regardless of direction.",
                     "synonyms": ["amount", "transaction amount", "volume"],
                 },
                 {
                     "column_name": "fee_usd",
-                    "description": "Separate fee charged on the transaction (wire, overdraft, or service fees). Zero for non-fee transactions.",
                     "synonyms": ["fee", "fees", "fee revenue"],
+                },
+                {
+                    "column_name": "balance_after_usd",
+                    "synonyms": ["balance after", "post-transaction balance"],
                 },
                 {
                     "column_name": "merchant_category",
@@ -169,8 +146,29 @@ def _build_table_configs(catalog: str, schema: str) -> list:
                     "enable_entity_matching": True,
                 },
                 {
+                    "column_name": "status",
+                    "synonyms": ["transaction status", "settlement status"],
+                    "enable_entity_matching": True,
+                },
+                {
                     "column_name": "is_flagged",
-                    "description": "TRUE for ~0.5% of transactions flagged for fraud or AML monitoring.",
+                    "synonyms": ["flagged", "fraud flag"],
+                },
+                {
+                    "column_name": "is_international",
+                    "synonyms": ["international", "cross-border", "foreign"],
+                },
+                {
+                    "column_name": "transaction_year",
+                    "synonyms": ["year"],
+                },
+                {
+                    "column_name": "transaction_month",
+                    "synonyms": ["month"],
+                },
+                {
+                    "column_name": "transaction_quarter",
+                    "synonyms": ["quarter", "qtr"],
                 },
             ],
         },
@@ -193,8 +191,29 @@ def _build_table_configs(catalog: str, schema: str) -> list:
                     "enable_entity_matching": True,
                 },
                 {
+                    "column_name": "channel",
+                    "synonyms": ["contact channel", "support channel"],
+                    "enable_entity_matching": True,
+                },
+                {
+                    "column_name": "resolution_time_days",
+                    "synonyms": ["resolution time", "time to resolve", "days to resolve"],
+                },
+                {
                     "column_name": "satisfaction_score",
-                    "description": "Customer satisfaction rating 1-5. NULL if request is unresolved. Complaints skew low (1-2); resolved inquiries skew high (4-5).",
+                    "synonyms": ["CSAT", "satisfaction", "rating"],
+                },
+                {
+                    "column_name": "is_resolved",
+                    "synonyms": ["resolved", "was resolved"],
+                },
+                {
+                    "column_name": "request_year",
+                    "synonyms": ["year"],
+                },
+                {
+                    "column_name": "request_month",
+                    "synonyms": ["month"],
                 },
             ],
         },
@@ -208,8 +227,11 @@ def _build_table_configs(catalog: str, schema: str) -> list:
             ),
             "column_configs": [
                 {
+                    "column_name": "customer_name",
+                    "synonyms": ["name", "customer"],
+                },
+                {
                     "column_name": "relationship_tier",
-                    "description": "Standard / Preferred / Private Client. Private Client = high-net-worth, 60% mortgage penetration.",
                     "synonyms": ["tier", "customer tier", "segment tier"],
                     "enable_entity_matching": True,
                 },
@@ -224,9 +246,53 @@ def _build_table_configs(catalog: str, schema: str) -> list:
                     "enable_entity_matching": True,
                 },
                 {
+                    "column_name": "state",
+                    "synonyms": ["home state"],
+                    "enable_entity_matching": True,
+                },
+                {
+                    "column_name": "region",
+                    "synonyms": ["area", "geography"],
+                    "enable_entity_matching": True,
+                },
+                {
+                    "column_name": "age_band",
+                    "synonyms": ["age", "age group", "age range"],
+                    "enable_entity_matching": True,
+                },
+                {
+                    "column_name": "income_band",
+                    "synonyms": ["income", "income level", "income range"],
+                    "enable_entity_matching": True,
+                },
+                {
+                    "column_name": "credit_score_band",
+                    "synonyms": ["credit score", "credit rating"],
+                    "enable_entity_matching": True,
+                },
+                {
                     "column_name": "is_active",
-                    "description": "TRUE for ~94% of customers.",
                     "synonyms": ["active", "active customer"],
+                },
+                {
+                    "column_name": "has_checking",
+                    "synonyms": ["checking holder"],
+                },
+                {
+                    "column_name": "has_savings",
+                    "synonyms": ["savings holder"],
+                },
+                {
+                    "column_name": "has_credit_card",
+                    "synonyms": ["credit card holder", "card holder"],
+                },
+                {
+                    "column_name": "has_mortgage",
+                    "synonyms": ["mortgage holder", "homeowner"],
+                },
+                {
+                    "column_name": "customer_since_date",
+                    "synonyms": ["join date", "tenure", "since date"],
                 },
             ],
         },
@@ -245,13 +311,24 @@ def _build_table_configs(catalog: str, schema: str) -> list:
                 },
                 {
                     "column_name": "status",
-                    "description": "Active (78%) / Dormant (10%) / Closed (8%) / Delinquent (4%).",
                     "synonyms": ["account status", "account health"],
                     "enable_entity_matching": True,
                 },
                 {
                     "column_name": "current_balance_usd",
                     "synonyms": ["balance", "account balance", "current balance"],
+                },
+                {
+                    "column_name": "credit_limit_usd",
+                    "synonyms": ["credit limit", "limit"],
+                },
+                {
+                    "column_name": "interest_rate_pct",
+                    "synonyms": ["interest rate", "rate", "APR", "APY"],
+                },
+                {
+                    "column_name": "is_primary_account",
+                    "synonyms": ["primary account", "main account"],
                 },
             ],
         },
@@ -261,9 +338,35 @@ def _build_table_configs(catalog: str, schema: str) -> list:
             "description": "20-row product catalog across Deposit (9), Credit (4), and Lending (7) product categories.",
             "column_configs": [
                 {
+                    "column_name": "product_name",
+                    "synonyms": ["name", "product"],
+                },
+                {
                     "column_name": "product_category",
-                    "synonyms": ["category", "product type", "product line"],
+                    "synonyms": ["category", "product line"],
                     "enable_entity_matching": True,
+                },
+                {
+                    "column_name": "product_type",
+                    "synonyms": ["type"],
+                    "enable_entity_matching": True,
+                },
+                {
+                    "column_name": "annual_fee_usd",
+                    "synonyms": ["annual fee", "fee"],
+                },
+                {
+                    "column_name": "base_interest_rate_pct",
+                    "synonyms": ["interest rate", "base rate", "APR", "APY"],
+                },
+                {
+                    "column_name": "reward_program",
+                    "synonyms": ["rewards", "loyalty program"],
+                    "enable_entity_matching": True,
+                },
+                {
+                    "column_name": "min_balance_usd",
+                    "synonyms": ["minimum balance", "min balance"],
                 },
             ],
         },
@@ -273,15 +376,40 @@ def _build_table_configs(catalog: str, schema: str) -> list:
             "description": "25 branches across 5 US regions. Southeast branches have ~20% higher average transaction values.",
             "column_configs": [
                 {
-                    "column_name": "region",
-                    "description": "Northeast / Southeast / Midwest / West / Southwest. Southeast branches average 20% higher transaction amounts.",
-                    "synonyms": ["area", "territory", "geography"],
-                    "enable_entity_matching": True,
+                    "column_name": "branch_name",
+                    "synonyms": ["name", "branch"],
                 },
                 {
                     "column_name": "branch_type",
                     "synonyms": ["type", "branch kind"],
                     "enable_entity_matching": True,
+                },
+                {
+                    "column_name": "region",
+                    "synonyms": ["area", "territory", "geography"],
+                    "enable_entity_matching": True,
+                },
+                {
+                    "column_name": "state",
+                    "synonyms": ["location"],
+                    "enable_entity_matching": True,
+                },
+                {
+                    "column_name": "city",
+                    "synonyms": ["location"],
+                    "enable_entity_matching": True,
+                },
+                {
+                    "column_name": "monthly_operating_cost_usd",
+                    "synonyms": ["operating cost", "branch cost", "overhead"],
+                },
+                {
+                    "column_name": "headcount",
+                    "synonyms": ["employees", "staff count", "FTE"],
+                },
+                {
+                    "column_name": "is_active",
+                    "synonyms": ["active", "open"],
                 },
             ],
         },
@@ -328,68 +456,108 @@ def _build_example_sqls(catalog: str, schema: str) -> list:
         {
             "id": _new_id(),
             "question": ["What was total deposit volume in 2024?"],
-            "sql": [f"SELECT MEASURE(`Deposit Volume`) FROM {cs}.mv_banking_transactions WHERE transaction_year = 2024"],
-            "usage_guidance": ["Use MEASURE(`Deposit Volume`) from mv_banking_transactions for any deposit aggregation"],
+            "sql": [
+                f"SELECT MEASURE(`Deposit Volume`) FROM {cs}.mv_banking_transactions WHERE transaction_year = 2024"
+            ],
+            "usage_guidance": [
+                "Use MEASURE(`Deposit Volume`) from mv_banking_transactions for any deposit aggregation"
+            ],
         },
         {
             "id": _new_id(),
             "question": ["What was YTD deposit volume as of December 2024?"],
-            "sql": [f"SELECT MEASURE(`YTD Deposit Volume`) FROM {cs}.mv_banking_transactions WHERE transaction_year = 2024 AND transaction_month = 12"],
-            "usage_guidance": ["YTD Deposit Volume is a window measure on mv_banking_transactions — always filter by year and month"],
+            "sql": [
+                f"SELECT MEASURE(`YTD Deposit Volume`) FROM {cs}.mv_banking_transactions WHERE transaction_year = 2024 AND transaction_month = 12"
+            ],
+            "usage_guidance": [
+                "YTD Deposit Volume is a window measure on mv_banking_transactions — always filter by year and month"
+            ],
         },
         {
             "id": _new_id(),
-            "question": ["Show month-over-month deposit growth by relationship tier for 2024"],
+            "question": [
+                "Show month-over-month deposit growth by relationship tier for 2024"
+            ],
             "sql": [
                 f"SELECT `Relationship Tier`, `Transaction Month`, ",
                 f"MEASURE(`Month-over-Month Deposit Growth Pct`) ",
                 f"FROM {cs}.mv_banking_transactions ",
                 f"WHERE transaction_year = 2024",
             ],
-            "usage_guidance": ["Window measures like MoM growth must use mv_banking_transactions, not the raw transactions table"],
+            "usage_guidance": [
+                "Window measures like MoM growth must use mv_banking_transactions, not the raw transactions table"
+            ],
         },
         {
             "id": _new_id(),
             "question": ["What was total withdrawal volume in 2024?"],
-            "sql": [f"SELECT MEASURE(`Withdrawal Volume`) FROM {cs}.mv_banking_transactions WHERE transaction_year = 2024"],
-            "usage_guidance": ["Use MEASURE(`Withdrawal Volume`) from mv_banking_transactions for withdrawal aggregations"],
+            "sql": [
+                f"SELECT MEASURE(`Withdrawal Volume`) FROM {cs}.mv_banking_transactions WHERE transaction_year = 2024"
+            ],
+            "usage_guidance": [
+                "Use MEASURE(`Withdrawal Volume`) from mv_banking_transactions for withdrawal aggregations"
+            ],
         },
         {
             "id": _new_id(),
             "question": ["What is the net flow by region for 2024?"],
-            "sql": [f"SELECT Region, MEASURE(`Net Flow`) FROM {cs}.mv_banking_transactions WHERE transaction_year = 2024 GROUP BY Region"],
-            "usage_guidance": ["Net Flow = Deposit Volume minus Withdrawal Volume; use mv_banking_transactions"],
+            "sql": [
+                f"SELECT Region, MEASURE(`Net Flow`) FROM {cs}.mv_banking_transactions WHERE transaction_year = 2024 GROUP BY Region"
+            ],
+            "usage_guidance": [
+                "Net Flow = Deposit Volume minus Withdrawal Volume; use mv_banking_transactions"
+            ],
         },
         {
             "id": _new_id(),
             "question": ["What is the total fee revenue collected in 2024?"],
-            "sql": [f"SELECT MEASURE(`Fee Revenue`) FROM {cs}.mv_banking_transactions WHERE transaction_year = 2024"],
-            "usage_guidance": ["Use MEASURE(`Fee Revenue`) from mv_banking_transactions for fee revenue questions"],
+            "sql": [
+                f"SELECT MEASURE(`Fee Revenue`) FROM {cs}.mv_banking_transactions WHERE transaction_year = 2024"
+            ],
+            "usage_guidance": [
+                "Use MEASURE(`Fee Revenue`) from mv_banking_transactions for fee revenue questions"
+            ],
         },
         {
             "id": _new_id(),
             "question": ["How many digital transactions were made in 2024?"],
-            "sql": [f"SELECT MEASURE(`Digital Transaction Count`) FROM {cs}.mv_banking_transactions WHERE transaction_year = 2024"],
-            "usage_guidance": ["Digital Transaction Count counts Mobile + Online channel transactions; use mv_banking_transactions"],
+            "sql": [
+                f"SELECT MEASURE(`Digital Transaction Count`) FROM {cs}.mv_banking_transactions WHERE transaction_year = 2024"
+            ],
+            "usage_guidance": [
+                "Digital Transaction Count counts Mobile + Online channel transactions; use mv_banking_transactions"
+            ],
         },
         {
             "id": _new_id(),
             "question": ["What is the digital share percentage for 2024?"],
-            "sql": [f"SELECT MEASURE(`Digital Share Pct`) FROM {cs}.mv_banking_transactions WHERE transaction_year = 2024"],
-            "usage_guidance": ["Digital Share Pct = Digital Transaction Count / Total Transactions; use mv_banking_transactions"],
+            "sql": [
+                f"SELECT MEASURE(`Digital Share Pct`) FROM {cs}.mv_banking_transactions WHERE transaction_year = 2024"
+            ],
+            "usage_guidance": [
+                "Digital Share Pct = Digital Transaction Count / Total Transactions; use mv_banking_transactions"
+            ],
         },
         # --- Customer KPIs ---
         {
             "id": _new_id(),
             "question": ["How many active customers do we have?"],
-            "sql": [f"SELECT COUNT(DISTINCT customer_id) FROM {cs}.customers WHERE is_active = TRUE"],
-            "usage_guidance": ["Filter customers table with is_active = TRUE for active customer counts"],
+            "sql": [
+                f"SELECT COUNT(DISTINCT customer_id) FROM {cs}.customers WHERE is_active = TRUE"
+            ],
+            "usage_guidance": [
+                "Filter customers table with is_active = TRUE for active customer counts"
+            ],
         },
         {
             "id": _new_id(),
             "question": ["Who are our high-value customers?"],
-            "sql": [f"SELECT * FROM {cs}.customers WHERE relationship_tier = 'Private Client' ORDER BY customer_id"],
-            "usage_guidance": ["High-value customers = relationship_tier = 'Private Client'; they hold ~35% of deposit volume"],
+            "sql": [
+                f"SELECT * FROM {cs}.customers WHERE relationship_tier = 'Private Client' ORDER BY customer_id"
+            ],
+            "usage_guidance": [
+                "High-value customers = relationship_tier = 'Private Client'; they hold ~35% of deposit volume"
+            ],
         },
         {
             "id": _new_id(),
@@ -400,39 +568,61 @@ def _build_example_sqls(catalog: str, schema: str) -> list:
                 f"WHERE transaction_year = 2024 ",
                 f"GROUP BY customer_id ORDER BY deposit_volume DESC LIMIT 10",
             ],
-            "usage_guidance": ["Rank customers by MEASURE(`Deposit Volume`) from mv_banking_transactions for deposit-based rankings"],
+            "usage_guidance": [
+                "Rank customers by MEASURE(`Deposit Volume`) from mv_banking_transactions for deposit-based rankings"
+            ],
         },
         # --- Portfolio KPIs ---
         {
             "id": _new_id(),
             "question": ["What is the average account balance by relationship tier?"],
-            "sql": [f"SELECT `Relationship Tier`, MEASURE(`Average Balance`) FROM {cs}.mv_customer_health GROUP BY `Relationship Tier`"],
-            "usage_guidance": ["Use MEASURE(`Average Balance`) from mv_customer_health for balance KPIs segmented by tier"],
+            "sql": [
+                f"SELECT `Relationship Tier`, MEASURE(`Average Balance`) FROM {cs}.mv_customer_health GROUP BY `Relationship Tier`"
+            ],
+            "usage_guidance": [
+                "Use MEASURE(`Average Balance`) from mv_customer_health for balance KPIs segmented by tier"
+            ],
         },
         {
             "id": _new_id(),
             "question": ["What is the delinquency rate by relationship tier?"],
-            "sql": [f"SELECT `Relationship Tier`, MEASURE(`Delinquency Rate Pct`) FROM {cs}.mv_customer_health GROUP BY `Relationship Tier`"],
-            "usage_guidance": ["Use MEASURE(`Delinquency Rate Pct`) from mv_customer_health for delinquency analysis"],
+            "sql": [
+                f"SELECT `Relationship Tier`, MEASURE(`Delinquency Rate Pct`) FROM {cs}.mv_customer_health GROUP BY `Relationship Tier`"
+            ],
+            "usage_guidance": [
+                "Use MEASURE(`Delinquency Rate Pct`) from mv_customer_health for delinquency analysis"
+            ],
         },
         {
             "id": _new_id(),
             "question": ["What is the mortgage penetration rate by relationship tier?"],
-            "sql": [f"SELECT `Relationship Tier`, MEASURE(`Mortgage Penetration Rate Pct`) FROM {cs}.mv_customer_health GROUP BY `Relationship Tier`"],
-            "usage_guidance": ["Use MEASURE(`Mortgage Penetration Rate Pct`) from mv_customer_health; Private Client = 60%, Standard = 18%"],
+            "sql": [
+                f"SELECT `Relationship Tier`, MEASURE(`Mortgage Penetration Rate Pct`) FROM {cs}.mv_customer_health GROUP BY `Relationship Tier`"
+            ],
+            "usage_guidance": [
+                "Use MEASURE(`Mortgage Penetration Rate Pct`) from mv_customer_health; Private Client = 60%, Standard = 18%"
+            ],
         },
         # --- Service KPIs ---
         {
             "id": _new_id(),
             "question": ["What was the complaint count in January 2024?"],
-            "sql": [f"SELECT MEASURE(`Complaint Count`) FROM {cs}.mv_service_quality WHERE request_year = 2024 AND request_month = 1"],
-            "usage_guidance": ["Use MEASURE(`Complaint Count`) from mv_service_quality; Jan 2024 had an 80% spike due to system outage"],
+            "sql": [
+                f"SELECT MEASURE(`Complaint Count`) FROM {cs}.mv_service_quality WHERE request_year = 2024 AND request_month = 1"
+            ],
+            "usage_guidance": [
+                "Use MEASURE(`Complaint Count`) from mv_service_quality; Jan 2024 had an 80% spike due to system outage"
+            ],
         },
         {
             "id": _new_id(),
             "question": ["What is the complaint resolution rate by channel?"],
-            "sql": [f"SELECT Channel, MEASURE(`Resolution Rate Pct`) FROM {cs}.mv_service_quality GROUP BY Channel"],
-            "usage_guidance": ["Use MEASURE(`Resolution Rate Pct`) from mv_service_quality for complaint resolution analysis"],
+            "sql": [
+                f"SELECT Channel, MEASURE(`Resolution Rate Pct`) FROM {cs}.mv_service_quality GROUP BY Channel"
+            ],
+            "usage_guidance": [
+                "Use MEASURE(`Resolution Rate Pct`) from mv_service_quality for complaint resolution analysis"
+            ],
         },
         {
             "id": _new_id(),
@@ -442,7 +632,9 @@ def _build_example_sqls(catalog: str, schema: str) -> list:
                 f"FROM {cs}.mv_service_quality ",
                 f"WHERE request_year = 2024",
             ],
-            "usage_guidance": ["MoM Complaint Change is a window measure on mv_service_quality; surfaces the Jan 2024 spike"],
+            "usage_guidance": [
+                "MoM Complaint Change is a window measure on mv_service_quality; surfaces the Jan 2024 spike"
+            ],
         },
         {
             "id": _new_id(),
@@ -451,7 +643,9 @@ def _build_example_sqls(catalog: str, schema: str) -> list:
                 f"SELECT MEASURE(`Open Count`) + MEASURE(`Escalated Count`) AS unresolved_requests ",
                 f"FROM {cs}.mv_service_quality",
             ],
-            "usage_guidance": ["Unresolved = Open + Escalated; use mv_service_quality with Open Count and Escalated Count measures"],
+            "usage_guidance": [
+                "Unresolved = Open + Escalated; use mv_service_quality with Open Count and Escalated Count measures"
+            ],
         },
     ]
 
@@ -463,142 +657,221 @@ def _build_benchmarks(catalog: str, schema: str) -> dict:
             {
                 "id": _new_id(),
                 "question": ["What was total deposit volume in 2024?"],
-                "answer": [{"format": "SQL", "content": [
-                    f"SELECT MEASURE(`Deposit Volume`) ",
-                    f"FROM {cs}.mv_banking_transactions ",
-                    f"WHERE transaction_year = 2024",
-                ]}],
+                "answer": [
+                    {
+                        "format": "SQL",
+                        "content": [
+                            f"SELECT MEASURE(`Deposit Volume`) ",
+                            f"FROM {cs}.mv_banking_transactions ",
+                            f"WHERE transaction_year = 2024",
+                        ],
+                    }
+                ],
             },
             {
                 "id": _new_id(),
                 "question": ["How many active customers do we have?"],
-                "answer": [{"format": "SQL", "content": [
-                    f"SELECT COUNT(DISTINCT customer_id) ",
-                    f"FROM {cs}.customers ",
-                    f"WHERE is_active = TRUE",
-                ]}],
+                "answer": [
+                    {
+                        "format": "SQL",
+                        "content": [
+                            f"SELECT COUNT(DISTINCT customer_id) ",
+                            f"FROM {cs}.customers ",
+                            f"WHERE is_active = TRUE",
+                        ],
+                    }
+                ],
             },
             {
                 "id": _new_id(),
                 "question": ["What are the top 5 products by number of accounts?"],
-                "answer": [{"format": "SQL", "content": [
-                    f"SELECT p.product_name, COUNT(*) AS account_count ",
-                    f"FROM {cs}.accounts a JOIN {cs}.products p ON a.product_id = p.product_id ",
-                    f"GROUP BY p.product_name ORDER BY account_count DESC LIMIT 5",
-                ]}],
+                "answer": [
+                    {
+                        "format": "SQL",
+                        "content": [
+                            f"SELECT p.product_name, COUNT(*) AS account_count ",
+                            f"FROM {cs}.accounts a JOIN {cs}.products p ON a.product_id = p.product_id ",
+                            f"GROUP BY p.product_name ORDER BY account_count DESC LIMIT 5",
+                        ],
+                    }
+                ],
             },
             {
                 "id": _new_id(),
                 "question": ["What is the total fee revenue collected in 2025?"],
-                "answer": [{"format": "SQL", "content": [
-                    f"SELECT MEASURE(`Fee Revenue`) ",
-                    f"FROM {cs}.mv_banking_transactions ",
-                    f"WHERE transaction_year = 2025",
-                ]}],
+                "answer": [
+                    {
+                        "format": "SQL",
+                        "content": [
+                            f"SELECT MEASURE(`Fee Revenue`) ",
+                            f"FROM {cs}.mv_banking_transactions ",
+                            f"WHERE transaction_year = 2025",
+                        ],
+                    }
+                ],
             },
             {
                 "id": _new_id(),
                 "question": ["Show monthly deposit volume from Jan 2023 to Dec 2025"],
-                "answer": [{"format": "SQL", "content": [
-                    f"SELECT `Transaction Month`, `Transaction Year`, MEASURE(`Deposit Volume`) ",
-                    f"FROM {cs}.mv_banking_transactions ",
-                    f"GROUP BY `Transaction Month`, `Transaction Year` ",
-                    f"ORDER BY `Transaction Year`, `Transaction Month`",
-                ]}],
+                "answer": [
+                    {
+                        "format": "SQL",
+                        "content": [
+                            f"SELECT `Transaction Month`, `Transaction Year`, MEASURE(`Deposit Volume`) ",
+                            f"FROM {cs}.mv_banking_transactions ",
+                            f"GROUP BY `Transaction Month`, `Transaction Year` ",
+                            f"ORDER BY `Transaction Year`, `Transaction Month`",
+                        ],
+                    }
+                ],
             },
             {
                 "id": _new_id(),
                 "question": ["Compare Q2 2024 vs Q2 2023 net flow by region"],
-                "answer": [{"format": "SQL", "content": [
-                    f"SELECT Region, `Transaction Year`, MEASURE(`Net Flow`) ",
-                    f"FROM {cs}.mv_banking_transactions ",
-                    f"WHERE transaction_quarter = 2 AND transaction_year IN (2023, 2024) ",
-                    f"GROUP BY Region, `Transaction Year`",
-                ]}],
+                "answer": [
+                    {
+                        "format": "SQL",
+                        "content": [
+                            f"SELECT Region, `Transaction Year`, MEASURE(`Net Flow`) ",
+                            f"FROM {cs}.mv_banking_transactions ",
+                            f"WHERE transaction_quarter = 2 AND transaction_year IN (2023, 2024) ",
+                            f"GROUP BY Region, `Transaction Year`",
+                        ],
+                    }
+                ],
             },
             {
                 "id": _new_id(),
                 "question": ["What is digital share as of December 2025?"],
-                "answer": [{"format": "SQL", "content": [
-                    f"SELECT MEASURE(`Digital Share Pct`) ",
-                    f"FROM {cs}.mv_banking_transactions ",
-                    f"WHERE transaction_year = 2025 AND transaction_month = 12",
-                ]}],
+                "answer": [
+                    {
+                        "format": "SQL",
+                        "content": [
+                            f"SELECT MEASURE(`Digital Share Pct`) ",
+                            f"FROM {cs}.mv_banking_transactions ",
+                            f"WHERE transaction_year = 2025 AND transaction_month = 12",
+                        ],
+                    }
+                ],
             },
             {
                 "id": _new_id(),
-                "question": ["What is the average account balance for Private Client customers?"],
-                "answer": [{"format": "SQL", "content": [
-                    f"SELECT MEASURE(`Average Balance`) ",
-                    f"FROM {cs}.mv_customer_health ",
-                    f"WHERE `Relationship Tier` = 'Private Client'",
-                ]}],
+                "question": [
+                    "What is the average account balance for Private Client customers?"
+                ],
+                "answer": [
+                    {
+                        "format": "SQL",
+                        "content": [
+                            f"SELECT MEASURE(`Average Balance`) ",
+                            f"FROM {cs}.mv_customer_health ",
+                            f"WHERE `Relationship Tier` = 'Private Client'",
+                        ],
+                    }
+                ],
             },
             {
                 "id": _new_id(),
                 "question": ["What is the delinquency rate by relationship tier?"],
-                "answer": [{"format": "SQL", "content": [
-                    f"SELECT `Relationship Tier`, MEASURE(`Delinquency Rate Pct`) ",
-                    f"FROM {cs}.mv_customer_health ",
-                    f"GROUP BY `Relationship Tier`",
-                ]}],
+                "answer": [
+                    {
+                        "format": "SQL",
+                        "content": [
+                            f"SELECT `Relationship Tier`, MEASURE(`Delinquency Rate Pct`) ",
+                            f"FROM {cs}.mv_customer_health ",
+                            f"GROUP BY `Relationship Tier`",
+                        ],
+                    }
+                ],
             },
             {
                 "id": _new_id(),
-                "question": ["Which 10 branches had the highest deposit volume in 2024?"],
-                "answer": [{"format": "SQL", "content": [
-                    f"SELECT Branch, MEASURE(`Deposit Volume`) AS deposit_volume ",
-                    f"FROM {cs}.mv_banking_transactions ",
-                    f"WHERE transaction_year = 2024 ",
-                    f"GROUP BY Branch ORDER BY deposit_volume DESC LIMIT 10",
-                ]}],
+                "question": [
+                    "Which 10 branches had the highest deposit volume in 2024?"
+                ],
+                "answer": [
+                    {
+                        "format": "SQL",
+                        "content": [
+                            f"SELECT Branch, MEASURE(`Deposit Volume`) AS deposit_volume ",
+                            f"FROM {cs}.mv_banking_transactions ",
+                            f"WHERE transaction_year = 2024 ",
+                            f"GROUP BY Branch ORDER BY deposit_volume DESC LIMIT 10",
+                        ],
+                    }
+                ],
             },
             {
                 "id": _new_id(),
                 "question": ["What was YTD deposit volume as of December 2024?"],
-                "answer": [{"format": "SQL", "content": [
-                    f"SELECT MEASURE(`YTD Deposit Volume`) ",
-                    f"FROM {cs}.mv_banking_transactions ",
-                    f"WHERE transaction_year = 2024 AND transaction_month = 12",
-                ]}],
+                "answer": [
+                    {
+                        "format": "SQL",
+                        "content": [
+                            f"SELECT MEASURE(`YTD Deposit Volume`) ",
+                            f"FROM {cs}.mv_banking_transactions ",
+                            f"WHERE transaction_year = 2024 AND transaction_month = 12",
+                        ],
+                    }
+                ],
             },
             {
                 "id": _new_id(),
                 "question": ["Show month-over-month deposit growth for 2024"],
-                "answer": [{"format": "SQL", "content": [
-                    f"SELECT `Transaction Month`, MEASURE(`Month-over-Month Deposit Growth Pct`) ",
-                    f"FROM {cs}.mv_banking_transactions ",
-                    f"WHERE transaction_year = 2024 ",
-                    f"GROUP BY `Transaction Month`",
-                ]}],
+                "answer": [
+                    {
+                        "format": "SQL",
+                        "content": [
+                            f"SELECT `Transaction Month`, MEASURE(`Month-over-Month Deposit Growth Pct`) ",
+                            f"FROM {cs}.mv_banking_transactions ",
+                            f"WHERE transaction_year = 2024 ",
+                            f"GROUP BY `Transaction Month`",
+                        ],
+                    }
+                ],
             },
             {
                 "id": _new_id(),
                 "question": ["What was the complaint count in January 2024?"],
-                "answer": [{"format": "SQL", "content": [
-                    f"SELECT MEASURE(`Complaint Count`) ",
-                    f"FROM {cs}.mv_service_quality ",
-                    f"WHERE request_year = 2024 AND request_month = 1",
-                ]}],
+                "answer": [
+                    {
+                        "format": "SQL",
+                        "content": [
+                            f"SELECT MEASURE(`Complaint Count`) ",
+                            f"FROM {cs}.mv_service_quality ",
+                            f"WHERE request_year = 2024 AND request_month = 1",
+                        ],
+                    }
+                ],
             },
             {
                 "id": _new_id(),
                 "question": ["Show the month-over-month complaint change for 2024"],
-                "answer": [{"format": "SQL", "content": [
-                    f"SELECT `Request Month`, MEASURE(`Month-over-Month Complaint Change Pct`) ",
-                    f"FROM {cs}.mv_service_quality ",
-                    f"WHERE request_year = 2024 ",
-                    f"GROUP BY `Request Month`",
-                ]}],
+                "answer": [
+                    {
+                        "format": "SQL",
+                        "content": [
+                            f"SELECT `Request Month`, MEASURE(`Month-over-Month Complaint Change Pct`) ",
+                            f"FROM {cs}.mv_service_quality ",
+                            f"WHERE request_year = 2024 ",
+                            f"GROUP BY `Request Month`",
+                        ],
+                    }
+                ],
             },
             {
                 "id": _new_id(),
                 "question": ["What is mortgage penetration rate by relationship tier?"],
-                "answer": [{"format": "SQL", "content": [
-                    f"SELECT `Relationship Tier`, MEASURE(`Mortgage Penetration Rate Pct`) ",
-                    f"FROM {cs}.mv_customer_health ",
-                    f"GROUP BY `Relationship Tier`",
-                ]}],
+                "answer": [
+                    {
+                        "format": "SQL",
+                        "content": [
+                            f"SELECT `Relationship Tier`, MEASURE(`Mortgage Penetration Rate Pct`) ",
+                            f"FROM {cs}.mv_customer_health ",
+                            f"GROUP BY `Relationship Tier`",
+                        ],
+                    }
+                ],
             },
         ]
     }
@@ -619,22 +892,27 @@ def build_serialized_space(
         "instructions": {
             "text_instructions": [{"id": _new_id(), "content": [instructions]}],
             "example_question_sqls": _build_example_sqls(catalog, schema),
-            "join_specs": [],        # auto-derived from UC PK/FK constraints
-            "sql_snippets": {},      # covered by metric view MEASURE() semantics
+            "join_specs": [],  # auto-derived from UC PK/FK constraints
+            "sql_snippets": {},  # covered by metric view MEASURE() semantics
         },
         "config": {
-            "sample_questions": [{"id": _new_id(), "question": [q]} for q in sample_questions],
+            "sample_questions": [
+                {"id": _new_id(), "question": [q]} for q in sample_questions
+            ],
         },
         "benchmarks": _build_benchmarks(catalog, schema),
     }
 
+
 # COMMAND ----------
+
 
 def get_warehouse_id(w: WorkspaceClient, override: str = "") -> str:
     """Return the override ID if set, otherwise auto-detect the first available warehouse."""
     if override.strip():
         return override.strip()
     from databricks.sdk.service.sql import State
+
     warehouses = list(w.warehouses.list())
     for state in (State.RUNNING, State.STARTING, State.STOPPED):
         for wh in warehouses:
@@ -642,7 +920,9 @@ def get_warehouse_id(w: WorkspaceClient, override: str = "") -> str:
                 return wh.id
     raise RuntimeError("No SQL warehouses found. Create one and re-run.")
 
+
 # COMMAND ----------
+
 
 def find_space_by_title(w: WorkspaceClient, title: str):
     """Return the first Genie space matching the given title, or None."""
@@ -651,7 +931,9 @@ def find_space_by_title(w: WorkspaceClient, title: str):
             return space
     return None
 
+
 # COMMAND ----------
+
 
 def create_or_update_genie_space(
     catalog: str,
@@ -689,6 +971,7 @@ def create_or_update_genie_space(
         )
         return result.space_id
 
+
 # COMMAND ----------
 
 # MAGIC %md
@@ -710,4 +993,6 @@ w = WorkspaceClient()
 space_url = f"{w.config.host.rstrip('/')}/genie/rooms/{space_id}"
 print(f"  Space ID : {space_id}")
 print(f"  URL      : {space_url}")
-displayHTML(f'<a href="{space_url}" target="_blank" style="font-size:16px">Open Horizon Bank Analytics in Genie</a>')
+displayHTML(
+    f'<a href="{space_url}" target="_blank" style="font-size:16px">Open Horizon Bank Analytics in Genie</a>'
+)
