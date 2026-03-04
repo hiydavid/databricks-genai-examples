@@ -1638,11 +1638,15 @@ for mv_name in ["mv_banking_transactions", "mv_customer_health", "mv_service_qua
         yaml_body = f.read()
     yaml_body = yaml_body.replace("{CATALOG}", CATALOG).replace("{SCHEMA}", SCHEMA)
     ddl = (
-        f"CREATE OR REPLACE VIEW `{CATALOG}`.`{SCHEMA}`.`{mv_name}`\n"
-        "WITH METRICS\n"
-        "LANGUAGE YAML\n"
-        "AS $$"
-    ) + yaml_body + "$$"
+        (
+            f"CREATE OR REPLACE VIEW `{CATALOG}`.`{SCHEMA}`.`{mv_name}`\n"
+            "WITH METRICS\n"
+            "LANGUAGE YAML\n"
+            "AS $$"
+        )
+        + yaml_body
+        + "$$"
+    )
     spark.sql(ddl)
     print(f"  ✓ {mv_name}")
 
@@ -1985,8 +1989,8 @@ print("SETUP COMPLETE")
 print("=" * 60)
 print(f"  Catalog : {CATALOG}")
 print(f"  Schema  : {SCHEMA}")
-print("  Tables  : products, branches, customers, accounts,")
-print("            transactions, service_requests")
-print("  Metric Views: mv_banking_transactions, mv_customer_health,")
-print("               mv_service_quality")
+print(
+    "  Tables  : products, branches, customers, accounts,transactions, service_requests"
+)
+print("  Metric Views: mv_banking_transactions, mv_customer_health, mv_service_quality")
 print("  Next    : Configure Genie space — see genie_space_config.md")
