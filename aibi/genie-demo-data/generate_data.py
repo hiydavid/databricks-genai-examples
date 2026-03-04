@@ -25,11 +25,21 @@
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ## 1. Configuration
+
+# COMMAND ----------
+
 # =============================================================================
 # CONFIGURATION — Edit only this section before running
 # =============================================================================
 CATALOG = "my_catalog"  # Unity Catalog name
 SCHEMA = "horizon_bank"  # Schema / database name
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 2. Imports & Global Setup
 
 # COMMAND ----------
 
@@ -114,6 +124,11 @@ CUSTOMER_STATES = [
 STATE_WEIGHTS = [13, 12, 10, 10, 7, 6, 5, 4, 4, 4, 4, 3, 3, 3, 3, 2, 2, 2, 2, 1]
 
 print("Setup complete.")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 3. Table 1: Products
 
 # COMMAND ----------
 
@@ -399,6 +414,11 @@ def pick_product(account_type, tier):
 
 df_products = pd.DataFrame(products_data)
 print(f"products: {len(df_products)} rows")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 4. Table 2: Branches
 
 # COMMAND ----------
 
@@ -718,6 +738,11 @@ print(f"branches: {len(df_branches)} rows")
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ## 5. Table 3: Customers
+
+# COMMAND ----------
+
 # =============================================================================
 # TABLE 3: CUSTOMERS (1,000 rows)
 # =============================================================================
@@ -844,6 +869,11 @@ for i in range(1, 1001):
 df_customers = pd.DataFrame(customers_data)
 print(f"customers: {len(df_customers)} rows")
 print(df_customers["relationship_tier"].value_counts().to_dict())
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 6. Table 4: Accounts
 
 # COMMAND ----------
 
@@ -1006,6 +1036,11 @@ for cust in customers_data:
 df_accounts = pd.DataFrame(accounts_data)
 print(f"accounts: {len(df_accounts)} rows")
 print(df_accounts["account_type"].value_counts().to_dict())
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 7. Table 5: Transactions
 
 # COMMAND ----------
 
@@ -1276,6 +1311,11 @@ print(df_transactions["channel"].value_counts().to_dict())
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ## 8. Table 6: Service Requests
+
+# COMMAND ----------
+
 # =============================================================================
 # TABLE 6: SERVICE REQUESTS (3,000 rows)
 # =============================================================================
@@ -1381,6 +1421,11 @@ print(df_service_requests["category"].value_counts().to_dict())
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ## 9. Create Schema & Write Delta Tables
+
+# COMMAND ----------
+
 # =============================================================================
 # CREATE SCHEMA & WRITE DELTA TABLES
 # =============================================================================
@@ -1412,6 +1457,11 @@ write_table(df_accounts, "accounts")
 write_table(df_transactions, "transactions")
 write_table(df_service_requests, "service_requests")
 print("All tables written.")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 10. Verification
 
 # COMMAND ----------
 
@@ -1565,6 +1615,11 @@ print("\nData generation complete.")
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ## 11. Create Metric Views
+
+# COMMAND ----------
+
 # =============================================================================
 # CREATE METRIC VIEWS
 # =============================================================================
@@ -1593,12 +1648,25 @@ for mv_name in ["mv_banking_transactions", "mv_customer_health", "mv_service_qua
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ## 12. Register Constraints & Column Comments
+
+# COMMAND ----------
+
 # =============================================================================
 # REGISTER CONSTRAINTS & COLUMN COMMENTS
 # =============================================================================
 print("Registering constraints and column comments...")
 
 C = f"`{CATALOG}`.`{SCHEMA}`"  # shorthand for fully-qualified table refs
+
+# --- Set PK columns NOT NULL (required before adding primary key constraints) ---
+spark.sql(f"ALTER TABLE {C}.products         ALTER COLUMN product_id    SET NOT NULL")
+spark.sql(f"ALTER TABLE {C}.branches         ALTER COLUMN branch_id     SET NOT NULL")
+spark.sql(f"ALTER TABLE {C}.customers        ALTER COLUMN customer_id   SET NOT NULL")
+spark.sql(f"ALTER TABLE {C}.accounts         ALTER COLUMN account_id    SET NOT NULL")
+spark.sql(f"ALTER TABLE {C}.transactions     ALTER COLUMN transaction_id SET NOT NULL")
+spark.sql(f"ALTER TABLE {C}.service_requests ALTER COLUMN request_id    SET NOT NULL")
 
 # --- Primary keys ---
 spark.sql(
