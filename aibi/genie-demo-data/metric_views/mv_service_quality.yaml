@@ -1,5 +1,4 @@
 version: "0.1"
-comment: "Service quality KPIs for Horizon Bank — complaint rate, escalation rate, resolution time, and month-over-month complaint window measures. Source: service_requests fact table with star joins to customers and branches."
 source: {CATALOG}.{SCHEMA}.service_requests
 
 joins:

@@ -1,5 +1,4 @@
 version: "1.1"
-comment: "Portfolio health KPIs for Horizon Bank — account balances, delinquency rate, dormancy rate, and mortgage penetration by customer tier. Source: accounts table with star joins to customers and products."
 source: {CATALOG}.{SCHEMA}.accounts
 
 joins:

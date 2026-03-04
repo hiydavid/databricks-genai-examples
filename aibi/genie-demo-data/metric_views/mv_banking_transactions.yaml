@@ -1,5 +1,4 @@
 version: "0.1"
-comment: "Transaction KPIs for Horizon Bank — deposit/fee/digital measures with month-over-month and YTD window measures. Source: transactions fact table with star joins to customers, branches, and accounts (snowflake to products)."
 source: {CATALOG}.{SCHEMA}.transactions
 
 joins:
