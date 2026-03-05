@@ -11,7 +11,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install databricks-sdk --quiet
+# MAGIC %pip install "databricks-sdk>=0.74.0" --quiet
 # MAGIC %restart_python
 
 # COMMAND ----------
@@ -112,120 +112,89 @@ def _build_table_configs(catalog: str, schema: str) -> list:
     cs = f"{catalog}.{schema}"
     return [
         {
-            "id": _new_id(),
-            "identifier": f"{cs}.transactions",
-            "description": (
-                "Primary fact table: 10,000 transactions from 2023-01-01 to 2025-12-31 across "
-                "Deposit, Withdrawal, Transfer, Payment, Purchase (credit), Fee, and Interest types."
-            ),
+            "identifier": f"{cs}.accounts",
+            "description": [
+                "~2,500 accounts linking customers to products. "
+                "current_balance_usd is updated to reflect all transactions."
+            ],
             "column_configs": [
                 {
-                    "column_name": "transaction_type",
-                    "synonyms": ["type", "txn type"],
-                    "enable_entity_matching": True,
-                },
-                {
-                    "column_name": "channel",
-                    "synonyms": ["digital", "in-branch", "mobile channel"],
-                    "enable_entity_matching": True,
-                },
-                {
-                    "column_name": "amount_usd",
-                    "synonyms": ["amount", "transaction amount", "volume"],
-                },
-                {
-                    "column_name": "fee_usd",
-                    "synonyms": ["fee", "fees", "fee revenue"],
-                },
-                {
-                    "column_name": "balance_after_usd",
-                    "synonyms": ["balance after", "post-transaction balance"],
-                },
-                {
-                    "column_name": "merchant_category",
-                    "synonyms": ["merchant", "category", "spend category"],
+                    "column_name": "account_type",
+                    "synonyms": ["type", "product type", "account kind"],
                     "enable_entity_matching": True,
                 },
                 {
                     "column_name": "status",
-                    "synonyms": ["transaction status", "settlement status"],
+                    "synonyms": ["account status", "account health"],
                     "enable_entity_matching": True,
                 },
                 {
-                    "column_name": "is_flagged",
-                    "synonyms": ["flagged", "fraud flag"],
+                    "column_name": "current_balance_usd",
+                    "synonyms": ["balance", "account balance", "current balance"],
                 },
                 {
-                    "column_name": "is_international",
-                    "synonyms": ["international", "cross-border", "foreign"],
+                    "column_name": "credit_limit_usd",
+                    "synonyms": ["credit limit", "limit"],
                 },
                 {
-                    "column_name": "transaction_year",
-                    "synonyms": ["year"],
+                    "column_name": "interest_rate_pct",
+                    "synonyms": ["interest rate", "rate", "APR", "APY"],
                 },
                 {
-                    "column_name": "transaction_month",
-                    "synonyms": ["month"],
-                },
-                {
-                    "column_name": "transaction_quarter",
-                    "synonyms": ["quarter", "qtr"],
+                    "column_name": "is_primary_account",
+                    "synonyms": ["primary account", "main account"],
                 },
             ],
         },
         {
-            "id": _new_id(),
-            "identifier": f"{cs}.service_requests",
-            "description": (
-                "Secondary fact table: 3,000 customer service interactions from 2023-2025. "
-                "Includes a Jan 2024 complaint spike (+80%) simulating a system outage."
-            ),
+            "identifier": f"{cs}.branches",
+            "description": ["25 branches across 5 US regions. Southeast branches have ~20% higher average transaction values."],
             "column_configs": [
                 {
-                    "column_name": "category",
-                    "synonyms": ["request type", "inquiry type", "service type"],
+                    "column_name": "branch_name",
+                    "synonyms": ["name", "branch"],
+                },
+                {
+                    "column_name": "branch_type",
+                    "synonyms": ["type", "branch kind"],
                     "enable_entity_matching": True,
                 },
                 {
-                    "column_name": "status",
-                    "synonyms": ["request status", "resolution status"],
+                    "column_name": "region",
+                    "synonyms": ["area", "territory", "geography"],
                     "enable_entity_matching": True,
                 },
                 {
-                    "column_name": "channel",
-                    "synonyms": ["contact channel", "support channel"],
+                    "column_name": "state",
+                    "synonyms": ["location"],
                     "enable_entity_matching": True,
                 },
                 {
-                    "column_name": "resolution_time_days",
-                    "synonyms": ["resolution time", "time to resolve", "days to resolve"],
+                    "column_name": "city",
+                    "synonyms": ["location"],
+                    "enable_entity_matching": True,
                 },
                 {
-                    "column_name": "satisfaction_score",
-                    "synonyms": ["CSAT", "satisfaction", "rating"],
+                    "column_name": "monthly_operating_cost_usd",
+                    "synonyms": ["operating cost", "branch cost", "overhead"],
                 },
                 {
-                    "column_name": "is_resolved",
-                    "synonyms": ["resolved", "was resolved"],
+                    "column_name": "headcount",
+                    "synonyms": ["employees", "staff count", "FTE"],
                 },
                 {
-                    "column_name": "request_year",
-                    "synonyms": ["year"],
-                },
-                {
-                    "column_name": "request_month",
-                    "synonyms": ["month"],
+                    "column_name": "is_active",
+                    "synonyms": ["active", "open"],
                 },
             ],
         },
         {
-            "id": _new_id(),
             "identifier": f"{cs}.customers",
-            "description": (
+            "description": [
                 "1,000 customer records. Relationship tiers: Standard (60%), Preferred (30%), "
                 "Private Client (10%). Private Client holds ~35% of total deposit volume and has "
                 "3x higher average balances."
-            ),
+            ],
             "column_configs": [
                 {
                     "column_name": "customer_name",
@@ -298,45 +267,8 @@ def _build_table_configs(catalog: str, schema: str) -> list:
             ],
         },
         {
-            "id": _new_id(),
-            "identifier": f"{cs}.accounts",
-            "description": (
-                "~2,500 accounts linking customers to products. "
-                "current_balance_usd is updated to reflect all transactions."
-            ),
-            "column_configs": [
-                {
-                    "column_name": "account_type",
-                    "synonyms": ["type", "product type", "account kind"],
-                    "enable_entity_matching": True,
-                },
-                {
-                    "column_name": "status",
-                    "synonyms": ["account status", "account health"],
-                    "enable_entity_matching": True,
-                },
-                {
-                    "column_name": "current_balance_usd",
-                    "synonyms": ["balance", "account balance", "current balance"],
-                },
-                {
-                    "column_name": "credit_limit_usd",
-                    "synonyms": ["credit limit", "limit"],
-                },
-                {
-                    "column_name": "interest_rate_pct",
-                    "synonyms": ["interest rate", "rate", "APR", "APY"],
-                },
-                {
-                    "column_name": "is_primary_account",
-                    "synonyms": ["primary account", "main account"],
-                },
-            ],
-        },
-        {
-            "id": _new_id(),
             "identifier": f"{cs}.products",
-            "description": "20-row product catalog across Deposit (9), Credit (4), and Lending (7) product categories.",
+            "description": ["20-row product catalog across Deposit (9), Credit (4), and Lending (7) product categories."],
             "column_configs": [
                 {
                     "column_name": "product_name",
@@ -372,45 +304,107 @@ def _build_table_configs(catalog: str, schema: str) -> list:
             ],
         },
         {
-            "id": _new_id(),
-            "identifier": f"{cs}.branches",
-            "description": "25 branches across 5 US regions. Southeast branches have ~20% higher average transaction values.",
+            "identifier": f"{cs}.service_requests",
+            "description": [
+                "Secondary fact table: 3,000 customer service interactions from 2023-2025. "
+                "Includes a Jan 2024 complaint spike (+80%) simulating a system outage."
+            ],
             "column_configs": [
                 {
-                    "column_name": "branch_name",
-                    "synonyms": ["name", "branch"],
-                },
-                {
-                    "column_name": "branch_type",
-                    "synonyms": ["type", "branch kind"],
+                    "column_name": "category",
+                    "synonyms": ["request type", "inquiry type", "service type"],
                     "enable_entity_matching": True,
                 },
                 {
-                    "column_name": "region",
-                    "synonyms": ["area", "territory", "geography"],
+                    "column_name": "status",
+                    "synonyms": ["request status", "resolution status"],
                     "enable_entity_matching": True,
                 },
                 {
-                    "column_name": "state",
-                    "synonyms": ["location"],
+                    "column_name": "channel",
+                    "synonyms": ["contact channel", "support channel"],
                     "enable_entity_matching": True,
                 },
                 {
-                    "column_name": "city",
-                    "synonyms": ["location"],
+                    "column_name": "resolution_time_days",
+                    "synonyms": ["resolution time", "time to resolve", "days to resolve"],
+                },
+                {
+                    "column_name": "satisfaction_score",
+                    "synonyms": ["CSAT", "satisfaction", "rating"],
+                },
+                {
+                    "column_name": "is_resolved",
+                    "synonyms": ["resolved", "was resolved"],
+                },
+                {
+                    "column_name": "request_year",
+                    "synonyms": ["year"],
+                },
+                {
+                    "column_name": "request_month",
+                    "synonyms": ["month"],
+                },
+            ],
+        },
+        {
+            "identifier": f"{cs}.transactions",
+            "description": [
+                "Primary fact table: 10,000 transactions from 2023-01-01 to 2025-12-31 across "
+                "Deposit, Withdrawal, Transfer, Payment, Purchase (credit), Fee, and Interest types."
+            ],
+            "column_configs": [
+                {
+                    "column_name": "transaction_type",
+                    "synonyms": ["type", "txn type"],
                     "enable_entity_matching": True,
                 },
                 {
-                    "column_name": "monthly_operating_cost_usd",
-                    "synonyms": ["operating cost", "branch cost", "overhead"],
+                    "column_name": "channel",
+                    "synonyms": ["digital", "in-branch", "mobile channel"],
+                    "enable_entity_matching": True,
                 },
                 {
-                    "column_name": "headcount",
-                    "synonyms": ["employees", "staff count", "FTE"],
+                    "column_name": "amount_usd",
+                    "synonyms": ["amount", "transaction amount", "volume"],
                 },
                 {
-                    "column_name": "is_active",
-                    "synonyms": ["active", "open"],
+                    "column_name": "fee_usd",
+                    "synonyms": ["fee", "fees", "fee revenue"],
+                },
+                {
+                    "column_name": "balance_after_usd",
+                    "synonyms": ["balance after", "post-transaction balance"],
+                },
+                {
+                    "column_name": "merchant_category",
+                    "synonyms": ["merchant", "category", "spend category"],
+                    "enable_entity_matching": True,
+                },
+                {
+                    "column_name": "status",
+                    "synonyms": ["transaction status", "settlement status"],
+                    "enable_entity_matching": True,
+                },
+                {
+                    "column_name": "is_flagged",
+                    "synonyms": ["flagged", "fraud flag"],
+                },
+                {
+                    "column_name": "is_international",
+                    "synonyms": ["international", "cross-border", "foreign"],
+                },
+                {
+                    "column_name": "transaction_year",
+                    "synonyms": ["year"],
+                },
+                {
+                    "column_name": "transaction_month",
+                    "synonyms": ["month"],
+                },
+                {
+                    "column_name": "transaction_quarter",
+                    "synonyms": ["quarter", "qtr"],
                 },
             ],
         },
@@ -421,31 +415,28 @@ def _build_metric_view_configs(catalog: str, schema: str) -> list:
     cs = f"{catalog}.{schema}"
     return [
         {
-            "id": _new_id(),
             "identifier": f"{cs}.mv_banking_transactions",
-            "description": (
+            "description": [
                 "Transaction KPIs including deposit volume, withdrawal volume, net flow, fee revenue, "
                 "digital share percentage, and month-over-month / YTD window measures. "
                 "Preferred source for all transaction and channel questions."
-            ),
+            ],
         },
         {
-            "id": _new_id(),
             "identifier": f"{cs}.mv_customer_health",
-            "description": (
+            "description": [
                 "Portfolio KPIs including total balance, average balance, delinquency rate, "
                 "mortgage penetration rate, and dormancy rate — segmented by relationship tier, "
                 "account type, region, and product."
-            ),
+            ],
         },
         {
-            "id": _new_id(),
             "identifier": f"{cs}.mv_service_quality",
-            "description": (
+            "description": [
                 "Service KPIs including complaint count, resolution rate, escalation rate, "
                 "and month-over-month complaint change. "
                 "Preferred source for all service request and complaint questions."
-            ),
+            ],
         },
     ]
 
@@ -884,24 +875,42 @@ def build_serialized_space(
     instructions: str,
     sample_questions: list,
 ) -> dict:
+    # Build raw configs
+    tables = _build_table_configs(catalog, schema)
+    metric_views = _build_metric_view_configs(catalog, schema)
+    example_sqls = _build_example_sqls(catalog, schema)
+    benchmarks = _build_benchmarks(catalog, schema)
+    sample_qs = [{"id": _new_id(), "question": [q]} for q in sample_questions]
+
+    # --- Enforce sorting rules (see docs: validation-rules-for-serialized_space) ---
+    # Tables & metric views sorted by identifier
+    tables.sort(key=lambda t: t["identifier"])
+    metric_views.sort(key=lambda m: m["identifier"])
+    # Column configs sorted by column_name within each table
+    for t in tables:
+        if "column_configs" in t:
+            t["column_configs"].sort(key=lambda c: c["column_name"])
+    # All id-bearing collections sorted by id
+    sample_qs.sort(key=lambda x: x["id"])
+    example_sqls.sort(key=lambda x: x["id"])
+    benchmarks["questions"].sort(key=lambda x: x["id"])
+
     return {
         "version": SPACE_VERSION,
         "data_sources": {
-            "tables": _build_table_configs(catalog, schema),
-            "metric_views": _build_metric_view_configs(catalog, schema),
+            "tables": tables,
+            "metric_views": metric_views,
         },
         "instructions": {
             "text_instructions": [{"id": _new_id(), "content": [instructions]}],
-            "example_question_sqls": _build_example_sqls(catalog, schema),
+            "example_question_sqls": example_sqls,
             "join_specs": [],  # auto-derived from UC PK/FK constraints
             "sql_snippets": {},  # covered by metric view MEASURE() semantics
         },
         "config": {
-            "sample_questions": [
-                {"id": _new_id(), "question": [q]} for q in sample_questions
-            ],
+            "sample_questions": sample_qs,
         },
-        "benchmarks": _build_benchmarks(catalog, schema),
+        "benchmarks": benchmarks,
     }
 
 
@@ -927,7 +936,8 @@ def get_warehouse_id(w: WorkspaceClient, override: str = "") -> str:
 
 def find_space_by_title(w: WorkspaceClient, title: str):
     """Return the first Genie space matching the given title, or None."""
-    for space in w.genie.list_spaces():
+    response = w.genie.list_spaces()
+    for space in response.spaces or []:
         if space.title == title:
             return space
     return None
