@@ -27,6 +27,7 @@
 CATALOG = "my_catalog"  # Unity Catalog name (must match generate_data.py)
 SCHEMA = "horizon_bank"  # Schema name (must match generate_data.py)
 WAREHOUSE_ID = ""  # SQL Warehouse ID — leave empty to auto-detect
+PARENT_PATH = ""  # Workspace folder for the Genie space — leave empty for current notebook directory
 
 # SPACE_VERSION: 2 = metric views in data_sources.metric_views[] (v2 API).
 # If the workspace rejects v2, revert to 1 and move metric views back to tables[].
@@ -943,6 +944,7 @@ def create_or_update_genie_space(
     description: str,
     instructions: str,
     sample_questions: list,
+    parent_path: str = "",
 ) -> str:
     """Create a new Genie space or update an existing one with the same title. Returns space_id."""
     w = WorkspaceClient()
@@ -963,12 +965,15 @@ def create_or_update_genie_space(
         return existing.space_id
     else:
         print(f"Creating new Genie space '{title}'...")
-        result = w.genie.create_space(
+        create_kwargs = dict(
             warehouse_id=wh_id,
             serialized_space=serialized,
             title=title,
             description=description,
         )
+        if parent_path.strip():
+            create_kwargs["parent_path"] = parent_path.strip()
+        result = w.genie.create_space(**create_kwargs)
         return result.space_id
 
 
@@ -979,6 +984,13 @@ def create_or_update_genie_space(
 
 # COMMAND ----------
 
+# Resolve parent_path: use configured value or fall back to notebook's directory
+if PARENT_PATH.strip():
+    _resolved_parent = PARENT_PATH.strip()
+else:
+    _ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+    _resolved_parent = _ctx.notebookPath().get().rsplit("/", 1)[0]
+
 space_id = create_or_update_genie_space(
     catalog=CATALOG,
     schema=SCHEMA,
@@ -987,6 +999,7 @@ space_id = create_or_update_genie_space(
     description=SPACE_DESCRIPTION,
     instructions=SPACE_INSTRUCTIONS,
     sample_questions=SAMPLE_QUESTIONS,
+    parent_path=_resolved_parent,
 )
 
 w = WorkspaceClient()
