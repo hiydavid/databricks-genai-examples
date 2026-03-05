@@ -87,4 +87,4 @@ measures:
         range: current
         semiadditive: last
   - name: Month-over-Month Deposit Growth Pct
-    expr: (MEASURE(`Current Month Deposit Volume`) - MEASURE(`Previous Month Deposit Volume`)) / MEASURE(`Previous Month Deposit Volume`) * 100
+    expr: try_divide(MEASURE(`Current Month Deposit Volume`) - MEASURE(`Previous Month Deposit Volume`), MEASURE(`Previous Month Deposit Volume`)) * 100

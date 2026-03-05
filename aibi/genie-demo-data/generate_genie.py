@@ -148,7 +148,9 @@ def _build_table_configs(catalog: str, schema: str) -> list:
         },
         {
             "identifier": f"{cs}.branches",
-            "description": ["25 branches across 5 US regions. Southeast branches have ~20% higher average transaction values."],
+            "description": [
+                "25 branches across 5 US regions. Southeast branches have ~20% higher average transaction values."
+            ],
             "column_configs": [
                 {
                     "column_name": "branch_name",
@@ -268,7 +270,9 @@ def _build_table_configs(catalog: str, schema: str) -> list:
         },
         {
             "identifier": f"{cs}.products",
-            "description": ["20-row product catalog across Deposit (9), Credit (4), and Lending (7) product categories."],
+            "description": [
+                "20-row product catalog across Deposit (9), Credit (4), and Lending (7) product categories."
+            ],
             "column_configs": [
                 {
                     "column_name": "product_name",
@@ -327,7 +331,11 @@ def _build_table_configs(catalog: str, schema: str) -> list:
                 },
                 {
                     "column_name": "resolution_time_days",
-                    "synonyms": ["resolution time", "time to resolve", "days to resolve"],
+                    "synonyms": [
+                        "resolution time",
+                        "time to resolve",
+                        "days to resolve",
+                    ],
                 },
                 {
                     "column_name": "satisfaction_score",

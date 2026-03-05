@@ -65,7 +65,7 @@ measures:
         range: current
         semiadditive: last
   - name: Month-over-Month Complaint Change Pct
-    expr: (MEASURE(`Current Month Complaint Count`) - MEASURE(`Previous Month Complaint Count`)) / MEASURE(`Previous Month Complaint Count`) * 100
+    expr: try_divide(MEASURE(`Current Month Complaint Count`) - MEASURE(`Previous Month Complaint Count`), MEASURE(`Previous Month Complaint Count`)) * 100
   - name: Trailing 3-Month Resolution Rate Pct
     expr: COUNT(1) FILTER (WHERE status = 'Resolved') * 100.0 / COUNT(1)
     window:
