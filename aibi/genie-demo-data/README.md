@@ -1,26 +1,27 @@
 # Horizon Bank — Demo Dataset Setup
 
-Synthetic retail banking dataset for demonstrating Databricks AI/BI Genie. Generates 6 Delta tables and 3 views in Unity Catalog.
+Synthetic retail banking dataset for demonstrating Databricks AI/BI Genie. Generates 6 Delta tables and 3 metric views in Unity Catalog.
 
 ## Files
 
 | File | Purpose |
 |---|---|
 | `generate_data.py` | Databricks notebook — generates all 6 tables, views, and constraints end-to-end |
-| `genie_space_config.md` | Genie space instructions, synonyms, and demo question bank |
+| `generate_genie.py` | Databricks notebook — creates or updates the Genie space via the Databricks SDK |
 
 ## Prerequisites
 
 - Databricks workspace with Unity Catalog enabled
 - A catalog and schema you have `CREATE TABLE` privileges on
 - A SQL warehouse or cluster with access to that catalog
-- `faker` library (installed automatically by the notebook)
+- `faker` library (installed automatically by `generate_data.py`)
+- `databricks-sdk` (installed automatically by `generate_genie.py`)
 
 ## Setup Steps
 
 ### Step 1 — Set your catalog and schema
 
-At the top of `generate_data.py`, set your catalog and schema:
+At the top of both `generate_data.py` and `generate_genie.py`, set your catalog and schema:
 
 ```python
 CATALOG = "my_catalog"   # your Unity Catalog name
@@ -32,14 +33,12 @@ SCHEMA  = "horizon_bank" # your target schema
 1. In the Databricks workspace, go to **Workspace → Import**
 2. Upload `generate_data.py`
 3. Open it and attach to a cluster
-4. Uncomment the `%pip install faker` and `dbutils.library.restartPython()` lines in the first two cells
-5. Click **Run All**
+4. Click **Run All**
 
 The notebook will:
-- Load catalog/schema from `config.py`
 - Create the catalog/schema if they don't already exist
 - Write all 6 tables as Delta tables
-- Create the 3 analytical views
+- Create the 3 metric views
 - Register PK/FK constraints and column comments
 - Print row counts and run pattern validation queries at the end
 
@@ -55,17 +54,17 @@ service_requests:   3,000 rows
 
 ### Step 3 — Create the Genie space
 
-1. In Databricks, navigate to **AI/BI → Genie**
-2. Create a new space named **"Horizon Bank Analytics"**
-3. Add all 6 tables and 3 views from your catalog/schema
-4. Paste the **Space Instructions** from `genie_space_config.md` → Section 2
-5. Optionally add the synonyms and verified answers from Section 3
+1. Import `generate_genie.py` into your Databricks workspace
+2. Set `CATALOG`, `SCHEMA`, and optionally `WAREHOUSE_ID` at the top of the notebook (must match `generate_data.py`)
+3. Click **Run All**
+
+The notebook will create (or update) the **Horizon Bank Analytics** Genie space with all tables, metric views, space instructions, sample questions, and verified SQL examples.
 
 ## Schema Overview
 
 ```
 products (20)          branches (25)
-    │                      │
+    │                       │
     └──── accounts (~2,500) ┘
               │
           customers (1,000)
