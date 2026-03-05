@@ -148,7 +148,9 @@ def _build_table_configs(catalog: str, schema: str) -> list:
         },
         {
             "identifier": f"{cs}.branches",
-            "description": ["25 branches across 5 US regions. Southeast branches have ~20% higher average transaction values."],
+            "description": [
+                "25 branches across 5 US regions. Southeast branches have ~20% higher average transaction values."
+            ],
             "column_configs": [
                 {
                     "column_name": "branch_name",
@@ -268,7 +270,9 @@ def _build_table_configs(catalog: str, schema: str) -> list:
         },
         {
             "identifier": f"{cs}.products",
-            "description": ["20-row product catalog across Deposit (9), Credit (4), and Lending (7) product categories."],
+            "description": [
+                "20-row product catalog across Deposit (9), Credit (4), and Lending (7) product categories."
+            ],
             "column_configs": [
                 {
                     "column_name": "product_name",
@@ -327,7 +331,11 @@ def _build_table_configs(catalog: str, schema: str) -> list:
                 },
                 {
                     "column_name": "resolution_time_days",
-                    "synonyms": ["resolution time", "time to resolve", "days to resolve"],
+                    "synonyms": [
+                        "resolution time",
+                        "time to resolve",
+                        "days to resolve",
+                    ],
                 },
                 {
                     "column_name": "satisfaction_score",
@@ -449,7 +457,7 @@ def _build_example_sqls(catalog: str, schema: str) -> list:
             "id": _new_id(),
             "question": ["What was total deposit volume in 2024?"],
             "sql": [
-                f"SELECT MEASURE(`Deposit Volume`) FROM {cs}.mv_banking_transactions WHERE transaction_year = 2024"
+                f"SELECT MEASURE(`Deposit Volume`) FROM {cs}.mv_banking_transactions WHERE `Transaction Year` = 2024"
             ],
             "usage_guidance": [
                 "Use MEASURE(`Deposit Volume`) from mv_banking_transactions for any deposit aggregation"
@@ -459,7 +467,7 @@ def _build_example_sqls(catalog: str, schema: str) -> list:
             "id": _new_id(),
             "question": ["What was YTD deposit volume as of December 2024?"],
             "sql": [
-                f"SELECT MEASURE(`YTD Deposit Volume`) FROM {cs}.mv_banking_transactions WHERE transaction_year = 2024 AND transaction_month = 12"
+                f"SELECT MEASURE(`YTD Deposit Volume`) FROM {cs}.mv_banking_transactions WHERE `Transaction Year` = 2024 AND `Transaction Month` = '2024-12-01'"
             ],
             "usage_guidance": [
                 "YTD Deposit Volume is a window measure on mv_banking_transactions — always filter by year and month"
@@ -474,7 +482,7 @@ def _build_example_sqls(catalog: str, schema: str) -> list:
                 f"SELECT `Relationship Tier`, `Transaction Month`, ",
                 f"MEASURE(`Month-over-Month Deposit Growth Pct`) ",
                 f"FROM {cs}.mv_banking_transactions ",
-                f"WHERE transaction_year = 2024",
+                f"WHERE `Transaction Year` = 2024",
             ],
             "usage_guidance": [
                 "Window measures like MoM growth must use mv_banking_transactions, not the raw transactions table"
@@ -484,7 +492,7 @@ def _build_example_sqls(catalog: str, schema: str) -> list:
             "id": _new_id(),
             "question": ["What was total withdrawal volume in 2024?"],
             "sql": [
-                f"SELECT MEASURE(`Withdrawal Volume`) FROM {cs}.mv_banking_transactions WHERE transaction_year = 2024"
+                f"SELECT MEASURE(`Withdrawal Volume`) FROM {cs}.mv_banking_transactions WHERE `Transaction Year` = 2024"
             ],
             "usage_guidance": [
                 "Use MEASURE(`Withdrawal Volume`) from mv_banking_transactions for withdrawal aggregations"
@@ -494,7 +502,7 @@ def _build_example_sqls(catalog: str, schema: str) -> list:
             "id": _new_id(),
             "question": ["What is the net flow by region for 2024?"],
             "sql": [
-                f"SELECT Region, MEASURE(`Net Flow`) FROM {cs}.mv_banking_transactions WHERE transaction_year = 2024 GROUP BY Region"
+                f"SELECT `Region`, MEASURE(`Net Flow`) FROM {cs}.mv_banking_transactions WHERE `Transaction Year` = 2024 GROUP BY `Region`"
             ],
             "usage_guidance": [
                 "Net Flow = Deposit Volume minus Withdrawal Volume; use mv_banking_transactions"
@@ -504,7 +512,7 @@ def _build_example_sqls(catalog: str, schema: str) -> list:
             "id": _new_id(),
             "question": ["What is the total fee revenue collected in 2024?"],
             "sql": [
-                f"SELECT MEASURE(`Fee Revenue`) FROM {cs}.mv_banking_transactions WHERE transaction_year = 2024"
+                f"SELECT MEASURE(`Fee Revenue`) FROM {cs}.mv_banking_transactions WHERE `Transaction Year` = 2024"
             ],
             "usage_guidance": [
                 "Use MEASURE(`Fee Revenue`) from mv_banking_transactions for fee revenue questions"
@@ -514,7 +522,7 @@ def _build_example_sqls(catalog: str, schema: str) -> list:
             "id": _new_id(),
             "question": ["How many digital transactions were made in 2024?"],
             "sql": [
-                f"SELECT MEASURE(`Digital Transaction Count`) FROM {cs}.mv_banking_transactions WHERE transaction_year = 2024"
+                f"SELECT MEASURE(`Digital Transaction Count`) FROM {cs}.mv_banking_transactions WHERE `Transaction Year` = 2024"
             ],
             "usage_guidance": [
                 "Digital Transaction Count counts Mobile + Online channel transactions; use mv_banking_transactions"
@@ -524,7 +532,7 @@ def _build_example_sqls(catalog: str, schema: str) -> list:
             "id": _new_id(),
             "question": ["What is the digital share percentage for 2024?"],
             "sql": [
-                f"SELECT MEASURE(`Digital Share Pct`) FROM {cs}.mv_banking_transactions WHERE transaction_year = 2024"
+                f"SELECT MEASURE(`Digital Share Pct`) FROM {cs}.mv_banking_transactions WHERE `Transaction Year` = 2024"
             ],
             "usage_guidance": [
                 "Digital Share Pct = Digital Transaction Count / Total Transactions; use mv_banking_transactions"
@@ -555,13 +563,14 @@ def _build_example_sqls(catalog: str, schema: str) -> list:
             "id": _new_id(),
             "question": ["Who are our top 10 customers by deposit volume in 2024?"],
             "sql": [
-                f"SELECT customer_id, MEASURE(`Deposit Volume`) AS deposit_volume ",
-                f"FROM {cs}.mv_banking_transactions ",
-                f"WHERE transaction_year = 2024 ",
-                f"GROUP BY customer_id ORDER BY deposit_volume DESC LIMIT 10",
+                f"SELECT c.customer_id, c.customer_name, SUM(t.amount_usd) AS deposit_volume ",
+                f"FROM {cs}.transactions t ",
+                f"JOIN {cs}.customers c ON t.customer_id = c.customer_id ",
+                f"WHERE t.transaction_type = 'Deposit' AND t.transaction_year = 2024 ",
+                f"GROUP BY c.customer_id, c.customer_name ORDER BY deposit_volume DESC LIMIT 10",
             ],
             "usage_guidance": [
-                "Rank customers by MEASURE(`Deposit Volume`) from mv_banking_transactions for deposit-based rankings"
+                "Use raw transactions table joined with customers for per-customer rankings (customer_id is not a metric view dimension)"
             ],
         },
         # --- Portfolio KPIs ---
@@ -600,7 +609,7 @@ def _build_example_sqls(catalog: str, schema: str) -> list:
             "id": _new_id(),
             "question": ["What was the complaint count in January 2024?"],
             "sql": [
-                f"SELECT MEASURE(`Complaint Count`) FROM {cs}.mv_service_quality WHERE request_year = 2024 AND request_month = 1"
+                f"SELECT MEASURE(`Complaint Count`) FROM {cs}.mv_service_quality WHERE `Request Year` = 2024 AND `Request Month` = '2024-01-01'"
             ],
             "usage_guidance": [
                 "Use MEASURE(`Complaint Count`) from mv_service_quality; Jan 2024 had an 80% spike due to system outage"
@@ -610,7 +619,7 @@ def _build_example_sqls(catalog: str, schema: str) -> list:
             "id": _new_id(),
             "question": ["What is the complaint resolution rate by channel?"],
             "sql": [
-                f"SELECT Channel, MEASURE(`Resolution Rate Pct`) FROM {cs}.mv_service_quality GROUP BY Channel"
+                f"SELECT `Channel`, MEASURE(`Resolution Rate Pct`) FROM {cs}.mv_service_quality GROUP BY `Channel`"
             ],
             "usage_guidance": [
                 "Use MEASURE(`Resolution Rate Pct`) from mv_service_quality for complaint resolution analysis"
@@ -622,7 +631,7 @@ def _build_example_sqls(catalog: str, schema: str) -> list:
             "sql": [
                 f"SELECT `Request Month`, MEASURE(`Month-over-Month Complaint Change Pct`) ",
                 f"FROM {cs}.mv_service_quality ",
-                f"WHERE request_year = 2024",
+                f"WHERE `Request Year` = 2024",
             ],
             "usage_guidance": [
                 "MoM Complaint Change is a window measure on mv_service_quality; surfaces the Jan 2024 spike"
@@ -655,7 +664,7 @@ def _build_benchmarks(catalog: str, schema: str) -> dict:
                         "content": [
                             f"SELECT MEASURE(`Deposit Volume`) ",
                             f"FROM {cs}.mv_banking_transactions ",
-                            f"WHERE transaction_year = 2024",
+                            f"WHERE `Transaction Year` = 2024",
                         ],
                     }
                 ],
@@ -697,7 +706,7 @@ def _build_benchmarks(catalog: str, schema: str) -> dict:
                         "content": [
                             f"SELECT MEASURE(`Fee Revenue`) ",
                             f"FROM {cs}.mv_banking_transactions ",
-                            f"WHERE transaction_year = 2025",
+                            f"WHERE `Transaction Year` = 2025",
                         ],
                     }
                 ],
@@ -724,10 +733,11 @@ def _build_benchmarks(catalog: str, schema: str) -> dict:
                     {
                         "format": "SQL",
                         "content": [
-                            f"SELECT Region, `Transaction Year`, MEASURE(`Net Flow`) ",
+                            f"SELECT `Region`, `Transaction Year`, MEASURE(`Net Flow`) ",
                             f"FROM {cs}.mv_banking_transactions ",
-                            f"WHERE transaction_quarter = 2 AND transaction_year IN (2023, 2024) ",
-                            f"GROUP BY Region, `Transaction Year`",
+                            f"WHERE `Transaction Month` BETWEEN '2023-04-01' AND '2023-06-01' ",
+                            f"OR `Transaction Month` BETWEEN '2024-04-01' AND '2024-06-01' ",
+                            f"GROUP BY `Region`, `Transaction Year`",
                         ],
                     }
                 ],
@@ -741,7 +751,7 @@ def _build_benchmarks(catalog: str, schema: str) -> dict:
                         "content": [
                             f"SELECT MEASURE(`Digital Share Pct`) ",
                             f"FROM {cs}.mv_banking_transactions ",
-                            f"WHERE transaction_year = 2025 AND transaction_month = 12",
+                            f"WHERE `Transaction Year` = 2025 AND `Transaction Month` = '2025-12-01'",
                         ],
                     }
                 ],
@@ -785,10 +795,11 @@ def _build_benchmarks(catalog: str, schema: str) -> dict:
                     {
                         "format": "SQL",
                         "content": [
-                            f"SELECT Branch, MEASURE(`Deposit Volume`) AS deposit_volume ",
-                            f"FROM {cs}.mv_banking_transactions ",
-                            f"WHERE transaction_year = 2024 ",
-                            f"GROUP BY Branch ORDER BY deposit_volume DESC LIMIT 10",
+                            f"SELECT b.branch_name, SUM(t.amount_usd) AS deposit_volume ",
+                            f"FROM {cs}.transactions t ",
+                            f"JOIN {cs}.branches b ON t.branch_id = b.branch_id ",
+                            f"WHERE t.transaction_type = 'Deposit' AND t.transaction_year = 2024 ",
+                            f"GROUP BY b.branch_name ORDER BY deposit_volume DESC LIMIT 10",
                         ],
                     }
                 ],
@@ -802,7 +813,7 @@ def _build_benchmarks(catalog: str, schema: str) -> dict:
                         "content": [
                             f"SELECT MEASURE(`YTD Deposit Volume`) ",
                             f"FROM {cs}.mv_banking_transactions ",
-                            f"WHERE transaction_year = 2024 AND transaction_month = 12",
+                            f"WHERE `Transaction Year` = 2024 AND `Transaction Month` = '2024-12-01'",
                         ],
                     }
                 ],
@@ -816,7 +827,7 @@ def _build_benchmarks(catalog: str, schema: str) -> dict:
                         "content": [
                             f"SELECT `Transaction Month`, MEASURE(`Month-over-Month Deposit Growth Pct`) ",
                             f"FROM {cs}.mv_banking_transactions ",
-                            f"WHERE transaction_year = 2024 ",
+                            f"WHERE `Transaction Year` = 2024 ",
                             f"GROUP BY `Transaction Month`",
                         ],
                     }
@@ -831,7 +842,7 @@ def _build_benchmarks(catalog: str, schema: str) -> dict:
                         "content": [
                             f"SELECT MEASURE(`Complaint Count`) ",
                             f"FROM {cs}.mv_service_quality ",
-                            f"WHERE request_year = 2024 AND request_month = 1",
+                            f"WHERE `Request Year` = 2024 AND `Request Month` = '2024-01-01'",
                         ],
                     }
                 ],
@@ -845,7 +856,7 @@ def _build_benchmarks(catalog: str, schema: str) -> dict:
                         "content": [
                             f"SELECT `Request Month`, MEASURE(`Month-over-Month Complaint Change Pct`) ",
                             f"FROM {cs}.mv_service_quality ",
-                            f"WHERE request_year = 2024 ",
+                            f"WHERE `Request Year` = 2024 ",
                             f"GROUP BY `Request Month`",
                         ],
                     }
