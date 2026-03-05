@@ -875,24 +875,42 @@ def build_serialized_space(
     instructions: str,
     sample_questions: list,
 ) -> dict:
+    # Build raw configs
+    tables = _build_table_configs(catalog, schema)
+    metric_views = _build_metric_view_configs(catalog, schema)
+    example_sqls = _build_example_sqls(catalog, schema)
+    benchmarks = _build_benchmarks(catalog, schema)
+    sample_qs = [{"id": _new_id(), "question": [q]} for q in sample_questions]
+
+    # --- Enforce sorting rules (see docs: validation-rules-for-serialized_space) ---
+    # Tables & metric views sorted by identifier
+    tables.sort(key=lambda t: t["identifier"])
+    metric_views.sort(key=lambda m: m["identifier"])
+    # Column configs sorted by column_name within each table
+    for t in tables:
+        if "column_configs" in t:
+            t["column_configs"].sort(key=lambda c: c["column_name"])
+    # All id-bearing collections sorted by id
+    sample_qs.sort(key=lambda x: x["id"])
+    example_sqls.sort(key=lambda x: x["id"])
+    benchmarks["questions"].sort(key=lambda x: x["id"])
+
     return {
         "version": SPACE_VERSION,
         "data_sources": {
-            "tables": _build_table_configs(catalog, schema),
-            "metric_views": _build_metric_view_configs(catalog, schema),
+            "tables": tables,
+            "metric_views": metric_views,
         },
         "instructions": {
             "text_instructions": [{"id": _new_id(), "content": [instructions]}],
-            "example_question_sqls": _build_example_sqls(catalog, schema),
+            "example_question_sqls": example_sqls,
             "join_specs": [],  # auto-derived from UC PK/FK constraints
             "sql_snippets": {},  # covered by metric view MEASURE() semantics
         },
         "config": {
-            "sample_questions": [
-                {"id": _new_id(), "question": [q]} for q in sample_questions
-            ],
+            "sample_questions": sample_qs,
         },
-        "benchmarks": _build_benchmarks(catalog, schema),
+        "benchmarks": benchmarks,
     }
 
 
