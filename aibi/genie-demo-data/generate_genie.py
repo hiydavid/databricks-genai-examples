@@ -112,107 +112,79 @@ def _build_table_configs(catalog: str, schema: str) -> list:
     cs = f"{catalog}.{schema}"
     return [
         {
-            "identifier": f"{cs}.transactions",
+            "identifier": f"{cs}.accounts",
             "description": [
-                "Primary fact table: 10,000 transactions from 2023-01-01 to 2025-12-31 across "
-                "Deposit, Withdrawal, Transfer, Payment, Purchase (credit), Fee, and Interest types."
+                "~2,500 accounts linking customers to products. "
+                "current_balance_usd is updated to reflect all transactions."
             ],
             "column_configs": [
                 {
-                    "column_name": "transaction_type",
-                    "synonyms": ["type", "txn type"],
-                    "enable_entity_matching": True,
-                },
-                {
-                    "column_name": "channel",
-                    "synonyms": ["digital", "in-branch", "mobile channel"],
-                    "enable_entity_matching": True,
-                },
-                {
-                    "column_name": "amount_usd",
-                    "synonyms": ["amount", "transaction amount", "volume"],
-                },
-                {
-                    "column_name": "fee_usd",
-                    "synonyms": ["fee", "fees", "fee revenue"],
-                },
-                {
-                    "column_name": "balance_after_usd",
-                    "synonyms": ["balance after", "post-transaction balance"],
-                },
-                {
-                    "column_name": "merchant_category",
-                    "synonyms": ["merchant", "category", "spend category"],
+                    "column_name": "account_type",
+                    "synonyms": ["type", "product type", "account kind"],
                     "enable_entity_matching": True,
                 },
                 {
                     "column_name": "status",
-                    "synonyms": ["transaction status", "settlement status"],
+                    "synonyms": ["account status", "account health"],
                     "enable_entity_matching": True,
                 },
                 {
-                    "column_name": "is_flagged",
-                    "synonyms": ["flagged", "fraud flag"],
+                    "column_name": "current_balance_usd",
+                    "synonyms": ["balance", "account balance", "current balance"],
                 },
                 {
-                    "column_name": "is_international",
-                    "synonyms": ["international", "cross-border", "foreign"],
+                    "column_name": "credit_limit_usd",
+                    "synonyms": ["credit limit", "limit"],
                 },
                 {
-                    "column_name": "transaction_year",
-                    "synonyms": ["year"],
+                    "column_name": "interest_rate_pct",
+                    "synonyms": ["interest rate", "rate", "APR", "APY"],
                 },
                 {
-                    "column_name": "transaction_month",
-                    "synonyms": ["month"],
-                },
-                {
-                    "column_name": "transaction_quarter",
-                    "synonyms": ["quarter", "qtr"],
+                    "column_name": "is_primary_account",
+                    "synonyms": ["primary account", "main account"],
                 },
             ],
         },
         {
-            "identifier": f"{cs}.service_requests",
-            "description": [
-                "Secondary fact table: 3,000 customer service interactions from 2023-2025. "
-                "Includes a Jan 2024 complaint spike (+80%) simulating a system outage."
-            ],
+            "identifier": f"{cs}.branches",
+            "description": ["25 branches across 5 US regions. Southeast branches have ~20% higher average transaction values."],
             "column_configs": [
                 {
-                    "column_name": "category",
-                    "synonyms": ["request type", "inquiry type", "service type"],
+                    "column_name": "branch_name",
+                    "synonyms": ["name", "branch"],
+                },
+                {
+                    "column_name": "branch_type",
+                    "synonyms": ["type", "branch kind"],
                     "enable_entity_matching": True,
                 },
                 {
-                    "column_name": "status",
-                    "synonyms": ["request status", "resolution status"],
+                    "column_name": "region",
+                    "synonyms": ["area", "territory", "geography"],
                     "enable_entity_matching": True,
                 },
                 {
-                    "column_name": "channel",
-                    "synonyms": ["contact channel", "support channel"],
+                    "column_name": "state",
+                    "synonyms": ["location"],
                     "enable_entity_matching": True,
                 },
                 {
-                    "column_name": "resolution_time_days",
-                    "synonyms": ["resolution time", "time to resolve", "days to resolve"],
+                    "column_name": "city",
+                    "synonyms": ["location"],
+                    "enable_entity_matching": True,
                 },
                 {
-                    "column_name": "satisfaction_score",
-                    "synonyms": ["CSAT", "satisfaction", "rating"],
+                    "column_name": "monthly_operating_cost_usd",
+                    "synonyms": ["operating cost", "branch cost", "overhead"],
                 },
                 {
-                    "column_name": "is_resolved",
-                    "synonyms": ["resolved", "was resolved"],
+                    "column_name": "headcount",
+                    "synonyms": ["employees", "staff count", "FTE"],
                 },
                 {
-                    "column_name": "request_year",
-                    "synonyms": ["year"],
-                },
-                {
-                    "column_name": "request_month",
-                    "synonyms": ["month"],
+                    "column_name": "is_active",
+                    "synonyms": ["active", "open"],
                 },
             ],
         },
@@ -295,41 +267,6 @@ def _build_table_configs(catalog: str, schema: str) -> list:
             ],
         },
         {
-            "identifier": f"{cs}.accounts",
-            "description": [
-                "~2,500 accounts linking customers to products. "
-                "current_balance_usd is updated to reflect all transactions."
-            ],
-            "column_configs": [
-                {
-                    "column_name": "account_type",
-                    "synonyms": ["type", "product type", "account kind"],
-                    "enable_entity_matching": True,
-                },
-                {
-                    "column_name": "status",
-                    "synonyms": ["account status", "account health"],
-                    "enable_entity_matching": True,
-                },
-                {
-                    "column_name": "current_balance_usd",
-                    "synonyms": ["balance", "account balance", "current balance"],
-                },
-                {
-                    "column_name": "credit_limit_usd",
-                    "synonyms": ["credit limit", "limit"],
-                },
-                {
-                    "column_name": "interest_rate_pct",
-                    "synonyms": ["interest rate", "rate", "APR", "APY"],
-                },
-                {
-                    "column_name": "is_primary_account",
-                    "synonyms": ["primary account", "main account"],
-                },
-            ],
-        },
-        {
             "identifier": f"{cs}.products",
             "description": ["20-row product catalog across Deposit (9), Credit (4), and Lending (7) product categories."],
             "column_configs": [
@@ -367,44 +304,107 @@ def _build_table_configs(catalog: str, schema: str) -> list:
             ],
         },
         {
-            "identifier": f"{cs}.branches",
-            "description": ["25 branches across 5 US regions. Southeast branches have ~20% higher average transaction values."],
+            "identifier": f"{cs}.service_requests",
+            "description": [
+                "Secondary fact table: 3,000 customer service interactions from 2023-2025. "
+                "Includes a Jan 2024 complaint spike (+80%) simulating a system outage."
+            ],
             "column_configs": [
                 {
-                    "column_name": "branch_name",
-                    "synonyms": ["name", "branch"],
-                },
-                {
-                    "column_name": "branch_type",
-                    "synonyms": ["type", "branch kind"],
+                    "column_name": "category",
+                    "synonyms": ["request type", "inquiry type", "service type"],
                     "enable_entity_matching": True,
                 },
                 {
-                    "column_name": "region",
-                    "synonyms": ["area", "territory", "geography"],
+                    "column_name": "status",
+                    "synonyms": ["request status", "resolution status"],
                     "enable_entity_matching": True,
                 },
                 {
-                    "column_name": "state",
-                    "synonyms": ["location"],
+                    "column_name": "channel",
+                    "synonyms": ["contact channel", "support channel"],
                     "enable_entity_matching": True,
                 },
                 {
-                    "column_name": "city",
-                    "synonyms": ["location"],
+                    "column_name": "resolution_time_days",
+                    "synonyms": ["resolution time", "time to resolve", "days to resolve"],
+                },
+                {
+                    "column_name": "satisfaction_score",
+                    "synonyms": ["CSAT", "satisfaction", "rating"],
+                },
+                {
+                    "column_name": "is_resolved",
+                    "synonyms": ["resolved", "was resolved"],
+                },
+                {
+                    "column_name": "request_year",
+                    "synonyms": ["year"],
+                },
+                {
+                    "column_name": "request_month",
+                    "synonyms": ["month"],
+                },
+            ],
+        },
+        {
+            "identifier": f"{cs}.transactions",
+            "description": [
+                "Primary fact table: 10,000 transactions from 2023-01-01 to 2025-12-31 across "
+                "Deposit, Withdrawal, Transfer, Payment, Purchase (credit), Fee, and Interest types."
+            ],
+            "column_configs": [
+                {
+                    "column_name": "transaction_type",
+                    "synonyms": ["type", "txn type"],
                     "enable_entity_matching": True,
                 },
                 {
-                    "column_name": "monthly_operating_cost_usd",
-                    "synonyms": ["operating cost", "branch cost", "overhead"],
+                    "column_name": "channel",
+                    "synonyms": ["digital", "in-branch", "mobile channel"],
+                    "enable_entity_matching": True,
                 },
                 {
-                    "column_name": "headcount",
-                    "synonyms": ["employees", "staff count", "FTE"],
+                    "column_name": "amount_usd",
+                    "synonyms": ["amount", "transaction amount", "volume"],
                 },
                 {
-                    "column_name": "is_active",
-                    "synonyms": ["active", "open"],
+                    "column_name": "fee_usd",
+                    "synonyms": ["fee", "fees", "fee revenue"],
+                },
+                {
+                    "column_name": "balance_after_usd",
+                    "synonyms": ["balance after", "post-transaction balance"],
+                },
+                {
+                    "column_name": "merchant_category",
+                    "synonyms": ["merchant", "category", "spend category"],
+                    "enable_entity_matching": True,
+                },
+                {
+                    "column_name": "status",
+                    "synonyms": ["transaction status", "settlement status"],
+                    "enable_entity_matching": True,
+                },
+                {
+                    "column_name": "is_flagged",
+                    "synonyms": ["flagged", "fraud flag"],
+                },
+                {
+                    "column_name": "is_international",
+                    "synonyms": ["international", "cross-border", "foreign"],
+                },
+                {
+                    "column_name": "transaction_year",
+                    "synonyms": ["year"],
+                },
+                {
+                    "column_name": "transaction_month",
+                    "synonyms": ["month"],
+                },
+                {
+                    "column_name": "transaction_quarter",
+                    "synonyms": ["quarter", "qtr"],
                 },
             ],
         },
