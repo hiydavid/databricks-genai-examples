@@ -112,7 +112,6 @@ def _build_table_configs(catalog: str, schema: str) -> list:
     cs = f"{catalog}.{schema}"
     return [
         {
-            "id": _new_id(),
             "identifier": f"{cs}.transactions",
             "description": (
                 "Primary fact table: 10,000 transactions from 2023-01-01 to 2025-12-31 across "
@@ -174,7 +173,6 @@ def _build_table_configs(catalog: str, schema: str) -> list:
             ],
         },
         {
-            "id": _new_id(),
             "identifier": f"{cs}.service_requests",
             "description": (
                 "Secondary fact table: 3,000 customer service interactions from 2023-2025. "
@@ -219,7 +217,6 @@ def _build_table_configs(catalog: str, schema: str) -> list:
             ],
         },
         {
-            "id": _new_id(),
             "identifier": f"{cs}.customers",
             "description": (
                 "1,000 customer records. Relationship tiers: Standard (60%), Preferred (30%), "
@@ -298,7 +295,6 @@ def _build_table_configs(catalog: str, schema: str) -> list:
             ],
         },
         {
-            "id": _new_id(),
             "identifier": f"{cs}.accounts",
             "description": (
                 "~2,500 accounts linking customers to products. "
@@ -334,7 +330,6 @@ def _build_table_configs(catalog: str, schema: str) -> list:
             ],
         },
         {
-            "id": _new_id(),
             "identifier": f"{cs}.products",
             "description": "20-row product catalog across Deposit (9), Credit (4), and Lending (7) product categories.",
             "column_configs": [
@@ -372,7 +367,6 @@ def _build_table_configs(catalog: str, schema: str) -> list:
             ],
         },
         {
-            "id": _new_id(),
             "identifier": f"{cs}.branches",
             "description": "25 branches across 5 US regions. Southeast branches have ~20% higher average transaction values.",
             "column_configs": [
@@ -421,7 +415,6 @@ def _build_metric_view_configs(catalog: str, schema: str) -> list:
     cs = f"{catalog}.{schema}"
     return [
         {
-            "id": _new_id(),
             "identifier": f"{cs}.mv_banking_transactions",
             "description": (
                 "Transaction KPIs including deposit volume, withdrawal volume, net flow, fee revenue, "
@@ -430,7 +423,6 @@ def _build_metric_view_configs(catalog: str, schema: str) -> list:
             ),
         },
         {
-            "id": _new_id(),
             "identifier": f"{cs}.mv_customer_health",
             "description": (
                 "Portfolio KPIs including total balance, average balance, delinquency rate, "
@@ -439,7 +431,6 @@ def _build_metric_view_configs(catalog: str, schema: str) -> list:
             ),
         },
         {
-            "id": _new_id(),
             "identifier": f"{cs}.mv_service_quality",
             "description": (
                 "Service KPIs including complaint count, resolution rate, escalation rate, "
@@ -927,7 +918,8 @@ def get_warehouse_id(w: WorkspaceClient, override: str = "") -> str:
 
 def find_space_by_title(w: WorkspaceClient, title: str):
     """Return the first Genie space matching the given title, or None."""
-    for space in w.genie.list_spaces():
+    response = w.genie.list_spaces()
+    for space in response.spaces or []:
         if space.title == title:
             return space
     return None
