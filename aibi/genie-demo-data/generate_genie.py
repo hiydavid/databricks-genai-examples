@@ -113,10 +113,10 @@ def _build_table_configs(catalog: str, schema: str) -> list:
     return [
         {
             "identifier": f"{cs}.transactions",
-            "description": (
+            "description": [
                 "Primary fact table: 10,000 transactions from 2023-01-01 to 2025-12-31 across "
                 "Deposit, Withdrawal, Transfer, Payment, Purchase (credit), Fee, and Interest types."
-            ),
+            ],
             "column_configs": [
                 {
                     "column_name": "transaction_type",
@@ -174,10 +174,10 @@ def _build_table_configs(catalog: str, schema: str) -> list:
         },
         {
             "identifier": f"{cs}.service_requests",
-            "description": (
+            "description": [
                 "Secondary fact table: 3,000 customer service interactions from 2023-2025. "
                 "Includes a Jan 2024 complaint spike (+80%) simulating a system outage."
-            ),
+            ],
             "column_configs": [
                 {
                     "column_name": "category",
@@ -218,11 +218,11 @@ def _build_table_configs(catalog: str, schema: str) -> list:
         },
         {
             "identifier": f"{cs}.customers",
-            "description": (
+            "description": [
                 "1,000 customer records. Relationship tiers: Standard (60%), Preferred (30%), "
                 "Private Client (10%). Private Client holds ~35% of total deposit volume and has "
                 "3x higher average balances."
-            ),
+            ],
             "column_configs": [
                 {
                     "column_name": "customer_name",
@@ -296,10 +296,10 @@ def _build_table_configs(catalog: str, schema: str) -> list:
         },
         {
             "identifier": f"{cs}.accounts",
-            "description": (
+            "description": [
                 "~2,500 accounts linking customers to products. "
                 "current_balance_usd is updated to reflect all transactions."
-            ),
+            ],
             "column_configs": [
                 {
                     "column_name": "account_type",
@@ -331,7 +331,7 @@ def _build_table_configs(catalog: str, schema: str) -> list:
         },
         {
             "identifier": f"{cs}.products",
-            "description": "20-row product catalog across Deposit (9), Credit (4), and Lending (7) product categories.",
+            "description": ["20-row product catalog across Deposit (9), Credit (4), and Lending (7) product categories."],
             "column_configs": [
                 {
                     "column_name": "product_name",
@@ -368,7 +368,7 @@ def _build_table_configs(catalog: str, schema: str) -> list:
         },
         {
             "identifier": f"{cs}.branches",
-            "description": "25 branches across 5 US regions. Southeast branches have ~20% higher average transaction values.",
+            "description": ["25 branches across 5 US regions. Southeast branches have ~20% higher average transaction values."],
             "column_configs": [
                 {
                     "column_name": "branch_name",
@@ -416,27 +416,27 @@ def _build_metric_view_configs(catalog: str, schema: str) -> list:
     return [
         {
             "identifier": f"{cs}.mv_banking_transactions",
-            "description": (
+            "description": [
                 "Transaction KPIs including deposit volume, withdrawal volume, net flow, fee revenue, "
                 "digital share percentage, and month-over-month / YTD window measures. "
                 "Preferred source for all transaction and channel questions."
-            ),
+            ],
         },
         {
             "identifier": f"{cs}.mv_customer_health",
-            "description": (
+            "description": [
                 "Portfolio KPIs including total balance, average balance, delinquency rate, "
                 "mortgage penetration rate, and dormancy rate — segmented by relationship tier, "
                 "account type, region, and product."
-            ),
+            ],
         },
         {
             "identifier": f"{cs}.mv_service_quality",
-            "description": (
+            "description": [
                 "Service KPIs including complaint count, resolution rate, escalation rate, "
                 "and month-over-month complaint change. "
                 "Preferred source for all service request and complaint questions."
-            ),
+            ],
         },
     ]
 
