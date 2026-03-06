@@ -27,6 +27,7 @@ Install relevant Databricks Agent Skills from [databricks-solutions/ai-dev-kit](
 ## AI/BI
 
 * (WIP) Genie Space Optimization
+* Genie for Banking Analytics (Demo)
 * Genie Space Migration with DABs
 
 ## Batch Inference
