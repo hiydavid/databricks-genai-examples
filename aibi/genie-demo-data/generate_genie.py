@@ -741,8 +741,6 @@ def _build_benchmarks(catalog: str, schema: str) -> dict:
                         "format": "SQL",
                         "content": [
                             f"SELECT c.relationship_tier, ",
-                            f"       SUM(t.fee_usd) AS total_fee_revenue, ",
-                            f"       COUNT(DISTINCT c.customer_id) AS customer_count, ",
                             f"       SUM(t.fee_usd) / COUNT(DISTINCT c.customer_id) AS fee_per_customer ",
                             f"FROM {cs}.transactions t ",
                             f"JOIN {cs}.accounts a ON t.account_id = a.account_id ",
@@ -815,8 +813,6 @@ def _build_benchmarks(catalog: str, schema: str) -> dict:
                             f"  GROUP BY b.branch_name, t.transaction_year ",
                             f") ",
                             f"SELECT d24.branch_name, ",
-                            f"       d24.deposit_volume AS volume_2024, ",
-                            f"       d23.deposit_volume AS volume_2023, ",
                             f"       d24.deposit_volume - d23.deposit_volume AS yoy_increase ",
                             f"FROM branch_deposits d24 ",
                             f"JOIN branch_deposits d23 ON d24.branch_name = d23.branch_name ",
@@ -836,14 +832,14 @@ def _build_benchmarks(catalog: str, schema: str) -> dict:
                     {
                         "format": "SQL",
                         "content": [
-                            f"SELECT c.customer_id, c.customer_name, c.relationship_tier, ",
+                            f"SELECT c.customer_id, c.customer_name, ",
                             f"       SUM(t.amount_usd) AS deposit_volume ",
                             f"FROM {cs}.customers c ",
                             f"JOIN {cs}.accounts a ON c.customer_id = a.customer_id ",
                             f"JOIN {cs}.transactions t ON a.account_id = t.account_id ",
                             f"WHERE c.has_checking = TRUE AND c.has_credit_card = FALSE ",
                             f"  AND t.transaction_type = 'Deposit' AND t.transaction_year = 2024 ",
-                            f"GROUP BY c.customer_id, c.customer_name, c.relationship_tier ",
+                            f"GROUP BY c.customer_id, c.customer_name ",
                             f"ORDER BY deposit_volume DESC LIMIT 20",
                         ],
                     }
