@@ -46,6 +46,10 @@ Install relevant Databricks Agent Skills from [databricks-solutions/ai-dev-kit](
 
 * Evaluate Entity Extraction Use Case with MLflow 3
 
+## Feature Store
+
+* (WIP) Real-Time Fruad Detection
+
 ## Fine-Tuning
 
 * Structured Extraction with LLM
@@ -55,10 +59,6 @@ Install relevant Databricks Agent Skills from [databricks-solutions/ai-dev-kit](
 
 * Serving the FLUX1-Dev on a Custom Multi-GPU Endpoint
 * Serving a Custom GLM on a Custom CPU Endpoint
-
-## Traditional ML
-
-* (WIP) Real-Time Fruad Detection
 
 ## Vector Search
 
