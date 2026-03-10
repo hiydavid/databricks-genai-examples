@@ -655,20 +655,7 @@ def _build_benchmarks(catalog: str, schema: str) -> dict:
     cs = f"{catalog}.{schema}"
     return {
         "questions": [
-            {
-                "id": _new_id(),
-                "question": ["What was total deposit volume in 2024?"],
-                "answer": [
-                    {
-                        "format": "SQL",
-                        "content": [
-                            f"SELECT MEASURE(`Deposit Volume`) ",
-                            f"FROM {cs}.mv_banking_transactions ",
-                            f"WHERE `Transaction Year` = 2024",
-                        ],
-                    }
-                ],
-            },
+            # --- Easy (2) ---
             {
                 "id": _new_id(),
                 "question": ["How many active customers do we have?"],
@@ -685,6 +672,21 @@ def _build_benchmarks(catalog: str, schema: str) -> dict:
             },
             {
                 "id": _new_id(),
+                "question": ["What was total deposit volume in 2024?"],
+                "answer": [
+                    {
+                        "format": "SQL",
+                        "content": [
+                            f"SELECT MEASURE(`Deposit Volume`) ",
+                            f"FROM {cs}.mv_banking_transactions ",
+                            f"WHERE `Transaction Year` = 2024",
+                        ],
+                    }
+                ],
+            },
+            # --- Medium (3) ---
+            {
+                "id": _new_id(),
                 "question": ["What are the top 5 products by number of accounts?"],
                 "answer": [
                     {
@@ -693,20 +695,6 @@ def _build_benchmarks(catalog: str, schema: str) -> dict:
                             f"SELECT p.product_name, COUNT(*) AS account_count ",
                             f"FROM {cs}.accounts a JOIN {cs}.products p ON a.product_id = p.product_id ",
                             f"GROUP BY p.product_name ORDER BY account_count DESC LIMIT 5",
-                        ],
-                    }
-                ],
-            },
-            {
-                "id": _new_id(),
-                "question": ["What is the total fee revenue collected in 2025?"],
-                "answer": [
-                    {
-                        "format": "SQL",
-                        "content": [
-                            f"SELECT MEASURE(`Fee Revenue`) ",
-                            f"FROM {cs}.mv_banking_transactions ",
-                            f"WHERE `Transaction Year` = 2025",
                         ],
                     }
                 ],
@@ -742,16 +730,25 @@ def _build_benchmarks(catalog: str, schema: str) -> dict:
                     }
                 ],
             },
+            # --- Hard — Realistic (3) ---
             {
                 "id": _new_id(),
-                "question": ["What is digital share as of December 2025?"],
+                "question": [
+                    "What is fee revenue per customer by relationship tier in 2024?"
+                ],
                 "answer": [
                     {
                         "format": "SQL",
                         "content": [
-                            f"SELECT MEASURE(`Digital Share Pct`) ",
-                            f"FROM {cs}.mv_banking_transactions ",
-                            f"WHERE `Transaction Year` = 2025 AND `Transaction Month` = '2025-12-01'",
+                            f"SELECT c.relationship_tier, ",
+                            f"       SUM(t.fee_usd) AS total_fee_revenue, ",
+                            f"       COUNT(DISTINCT c.customer_id) AS customer_count, ",
+                            f"       SUM(t.fee_usd) / COUNT(DISTINCT c.customer_id) AS fee_per_customer ",
+                            f"FROM {cs}.transactions t ",
+                            f"JOIN {cs}.accounts a ON t.account_id = a.account_id ",
+                            f"JOIN {cs}.customers c ON a.customer_id = c.customer_id ",
+                            f"WHERE t.transaction_year = 2024 ",
+                            f"GROUP BY c.relationship_tier",
                         ],
                     }
                 ],
@@ -759,29 +756,21 @@ def _build_benchmarks(catalog: str, schema: str) -> dict:
             {
                 "id": _new_id(),
                 "question": [
-                    "What is the average account balance for Private Client customers?"
+                    "List Private Client customers who have at least one open service "
+                    "request and total account balances above $100,000"
                 ],
                 "answer": [
                     {
                         "format": "SQL",
                         "content": [
-                            f"SELECT MEASURE(`Average Balance`) ",
-                            f"FROM {cs}.mv_customer_health ",
-                            f"WHERE `Relationship Tier` = 'Private Client'",
-                        ],
-                    }
-                ],
-            },
-            {
-                "id": _new_id(),
-                "question": ["What is the delinquency rate by relationship tier?"],
-                "answer": [
-                    {
-                        "format": "SQL",
-                        "content": [
-                            f"SELECT `Relationship Tier`, MEASURE(`Delinquency Rate Pct`) ",
-                            f"FROM {cs}.mv_customer_health ",
-                            f"GROUP BY `Relationship Tier`",
+                            f"SELECT c.customer_id, c.customer_name, SUM(a.current_balance_usd) AS total_balance, ",
+                            f"       COUNT(sr.request_id) AS open_requests ",
+                            f"FROM {cs}.customers c ",
+                            f"JOIN {cs}.accounts a ON c.customer_id = a.customer_id ",
+                            f"JOIN {cs}.service_requests sr ON c.customer_id = sr.customer_id ",
+                            f"WHERE c.relationship_tier = 'Private Client' AND sr.status = 'Open' ",
+                            f"GROUP BY c.customer_id, c.customer_name ",
+                            f"HAVING SUM(a.current_balance_usd) > 100000",
                         ],
                     }
                 ],
@@ -789,89 +778,73 @@ def _build_benchmarks(catalog: str, schema: str) -> dict:
             {
                 "id": _new_id(),
                 "question": [
-                    "Which 10 branches had the highest deposit volume in 2024?"
+                    "What is the monthly digital transaction share by region for 2024?"
                 ],
                 "answer": [
                     {
                         "format": "SQL",
                         "content": [
-                            f"SELECT b.branch_name, SUM(t.amount_usd) AS deposit_volume ",
+                            f"SELECT b.region, t.transaction_month, ",
+                            f"       COUNT(CASE WHEN t.channel IN ('Mobile', 'Online') THEN 1 END) * 100.0 / COUNT(*) AS digital_share_pct ",
                             f"FROM {cs}.transactions t ",
                             f"JOIN {cs}.branches b ON t.branch_id = b.branch_id ",
-                            f"WHERE t.transaction_type = 'Deposit' AND t.transaction_year = 2024 ",
-                            f"GROUP BY b.branch_name ORDER BY deposit_volume DESC LIMIT 10",
+                            f"WHERE t.transaction_year = 2024 ",
+                            f"GROUP BY b.region, t.transaction_month ",
+                            f"ORDER BY b.region, t.transaction_month",
+                        ],
+                    }
+                ],
+            },
+            # --- Hard — Push the Limits (2) ---
+            {
+                "id": _new_id(),
+                "question": [
+                    "Which 5 branches had the largest year-over-year increase in "
+                    "deposit volume from 2023 to 2024?"
+                ],
+                "answer": [
+                    {
+                        "format": "SQL",
+                        "content": [
+                            f"WITH branch_deposits AS ( ",
+                            f"  SELECT b.branch_name, t.transaction_year, ",
+                            f"         SUM(t.amount_usd) AS deposit_volume ",
+                            f"  FROM {cs}.transactions t ",
+                            f"  JOIN {cs}.branches b ON t.branch_id = b.branch_id ",
+                            f"  WHERE t.transaction_type = 'Deposit' AND t.transaction_year IN (2023, 2024) ",
+                            f"  GROUP BY b.branch_name, t.transaction_year ",
+                            f") ",
+                            f"SELECT d24.branch_name, ",
+                            f"       d24.deposit_volume AS volume_2024, ",
+                            f"       d23.deposit_volume AS volume_2023, ",
+                            f"       d24.deposit_volume - d23.deposit_volume AS yoy_increase ",
+                            f"FROM branch_deposits d24 ",
+                            f"JOIN branch_deposits d23 ON d24.branch_name = d23.branch_name ",
+                            f"WHERE d24.transaction_year = 2024 AND d23.transaction_year = 2023 ",
+                            f"ORDER BY yoy_increase DESC LIMIT 5",
                         ],
                     }
                 ],
             },
             {
                 "id": _new_id(),
-                "question": ["What was YTD deposit volume as of December 2024?"],
-                "answer": [
-                    {
-                        "format": "SQL",
-                        "content": [
-                            f"SELECT MEASURE(`YTD Deposit Volume`) ",
-                            f"FROM {cs}.mv_banking_transactions ",
-                            f"WHERE `Transaction Year` = 2024 AND `Transaction Month` = '2024-12-01'",
-                        ],
-                    }
+                "question": [
+                    "Who are the top 20 customers with a checking account but no "
+                    "credit card, ranked by 2024 deposit volume?"
                 ],
-            },
-            {
-                "id": _new_id(),
-                "question": ["Show month-over-month deposit growth for 2024"],
                 "answer": [
                     {
                         "format": "SQL",
                         "content": [
-                            f"SELECT `Transaction Month`, MEASURE(`Month-over-Month Deposit Growth Pct`) ",
-                            f"FROM {cs}.mv_banking_transactions ",
-                            f"WHERE `Transaction Year` = 2024 ",
-                            f"GROUP BY `Transaction Month`",
-                        ],
-                    }
-                ],
-            },
-            {
-                "id": _new_id(),
-                "question": ["What was the complaint count in January 2024?"],
-                "answer": [
-                    {
-                        "format": "SQL",
-                        "content": [
-                            f"SELECT MEASURE(`Complaint Count`) ",
-                            f"FROM {cs}.mv_service_quality ",
-                            f"WHERE `Request Year` = 2024 AND `Request Month` = '2024-01-01'",
-                        ],
-                    }
-                ],
-            },
-            {
-                "id": _new_id(),
-                "question": ["Show the month-over-month complaint change for 2024"],
-                "answer": [
-                    {
-                        "format": "SQL",
-                        "content": [
-                            f"SELECT `Request Month`, MEASURE(`Month-over-Month Complaint Change Pct`) ",
-                            f"FROM {cs}.mv_service_quality ",
-                            f"WHERE `Request Year` = 2024 ",
-                            f"GROUP BY `Request Month`",
-                        ],
-                    }
-                ],
-            },
-            {
-                "id": _new_id(),
-                "question": ["What is mortgage penetration rate by relationship tier?"],
-                "answer": [
-                    {
-                        "format": "SQL",
-                        "content": [
-                            f"SELECT `Relationship Tier`, MEASURE(`Mortgage Penetration Rate Pct`) ",
-                            f"FROM {cs}.mv_customer_health ",
-                            f"GROUP BY `Relationship Tier`",
+                            f"SELECT c.customer_id, c.customer_name, c.relationship_tier, ",
+                            f"       SUM(t.amount_usd) AS deposit_volume ",
+                            f"FROM {cs}.customers c ",
+                            f"JOIN {cs}.accounts a ON c.customer_id = a.customer_id ",
+                            f"JOIN {cs}.transactions t ON a.account_id = t.account_id ",
+                            f"WHERE c.has_checking = TRUE AND c.has_credit_card = FALSE ",
+                            f"  AND t.transaction_type = 'Deposit' AND t.transaction_year = 2024 ",
+                            f"GROUP BY c.customer_id, c.customer_name, c.relationship_tier ",
+                            f"ORDER BY deposit_volume DESC LIMIT 20",
                         ],
                     }
                 ],
