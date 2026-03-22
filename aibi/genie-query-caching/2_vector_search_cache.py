@@ -260,7 +260,7 @@ for i, question in enumerate(demo_questions):
 
 if demo_questions:
     original = demo_questions[0]
-    paraphrased = "Can you tell me the total revenue from the previous quarter?"
+    paraphrased = "How much total deposit volume did we have in 2024?"
     print(f"Original:    {original}")
     print(f"Paraphrased: {paraphrased}")
 
