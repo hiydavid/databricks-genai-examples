@@ -1,0 +1,45 @@
+# Genie Query Caching Configuration
+# Copy this file to configs.yaml and fill in your values before running.
+
+# Unity Catalog
+catalog: "your_catalog"                    # TODO
+schema: "genie_cache"                      # TODO
+
+# Genie Space
+genie_space_id: "your_genie_space_id"      # TODO - from Genie Space URL
+genie_timeout_minutes: 5
+
+# Lakebase (Scenarios 1 & 3)
+lakebase:
+  host: "your-lakebase-host.cloud.databricks.com"  # TODO
+  port: 5432
+  database: "your_database"                # TODO
+  secret_scope: "your_scope"               # TODO
+  secret_key_username: "lakebase_username"  # TODO
+  secret_key_password: "lakebase_password"  # TODO
+
+# Vector Search (Scenarios 2 & 3)
+vs_endpoint: "genie-cache-vs-endpoint"     # TODO
+
+# Embedding model (Foundation Model API, used for Lakebase pgvector)
+embedding_model: "databricks-gte-large-en"
+embedding_dimension: 768
+
+# Retry / backoff for Genie API calls
+retry:
+  max_attempts: 5
+  base_delay: 1.0      # seconds
+  max_delay: 60.0       # seconds
+
+# Cache similarity thresholds
+thresholds:
+  lakebase_similarity: 0.92       # Scenario 1 - pgvector cosine similarity
+  lakebase_hybrid: 0.93           # Scenario 3 - L1 pgvector threshold (stricter)
+  vs_auto_execute: 0.90           # Scenarios 2 & 3 - auto-execute cached SQL
+  vs_confirm: 0.75                # Scenario 2 - return but flag for user confirmation
+
+# Demo questions (used across all scenario notebooks)
+demo_questions:
+  - "What is the total revenue for last quarter?"
+  - "Show me the top 10 customers by order volume"
+  - "What is the average order value by region?"
