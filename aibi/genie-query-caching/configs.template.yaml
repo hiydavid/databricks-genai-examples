@@ -39,7 +39,11 @@ thresholds:
   vs_confirm: 0.75                # Scenario 2 - return but flag for user confirmation
 
 # Demo questions (used across all scenario notebooks)
+# These match the seed data in seed_cache.py — run that notebook first to
+# pre-populate the cache so the demo shows HITs on the first pass.
 demo_questions:
-  - "What is the total revenue for last quarter?"
-  - "Show me the top 10 customers by order volume"
-  - "What is the average order value by region?"
+  - "What was total deposit volume in 2024?"
+  - "Show monthly deposit trend from Jan 2023 to Dec 2025"
+  - "What is the average account balance for Private Client customers by state?"
+  - "Which 10 branches had the highest deposit volume this year?"
+  - "What is fee revenue per customer by relationship tier?"
