@@ -1,5 +1,7 @@
 # Genie Query Caching
 
+> **WIP — This project is a work in progress and not ready for use.**
+
 Demonstrates three caching strategies for Databricks Genie API responses, reducing latency and API load by serving repeated or semantically similar questions from cache.
 
 ## Scenarios
