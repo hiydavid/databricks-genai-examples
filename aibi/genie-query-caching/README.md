@@ -63,7 +63,8 @@ See `configs.template.yaml` for all settings:
 ## Key Design Decisions
 
 - **Retry strategy**: Decorrelated jitter (`delay = min(max_delay, uniform(base_delay, prev_delay * 3))`) — avoids thundering herd while providing fast initial retries
-- **Embedding model**: `databricks-gte-large-en` (768 dimensions) via Foundation Model API for Lakebase pgvector; managed embeddings for Vector Search
+- **Genie API approach**: Uses the [Databricks Python SDK](https://docs.databricks.com/aws/en/genie/conversation-api) (`start_conversation_and_wait`) rather than the REST API (requires manual polling) or [Managed MCP](https://docs.databricks.com/aws/en/generative-ai/mcp/managed-mcp) (designed for AI agent tool use, not programmatic caching where structured response parsing is required)
+- **Embedding model**: [`databricks-qwen3-embedding-0-6b`](https://www.databricks.com/blog/sota-embedding-model-agentic-workflows-now-public-preview) (1024 dimensions, configurable via Matryoshka) via Foundation Model API for Lakebase pgvector; managed embeddings for Vector Search. Supports optional `instruction` parameter for task-specific retrieval boost (1-5%)
 - **Lakebase connectivity**: `psycopg` (psycopg3) + `pgvector` Python package for native PostgreSQL vector search; credentials via Databricks Secrets
 - **Vector Search**: Delta Sync indexes with managed embeddings and `HYBRID` query type (semantic + BM25)
 - **Code structure**: Shared `utils.py` module imported by all notebooks; each notebook adds scenario-specific cache logic

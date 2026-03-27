@@ -22,8 +22,11 @@ lakebase:
 vs_endpoint: "genie-cache-vs-endpoint"     # TODO
 
 # Embedding model (Foundation Model API, used for Lakebase pgvector)
-embedding_model: "databricks-gte-large-en"
-embedding_dimension: 768
+embedding_model: "databricks-qwen3-embedding-0-6b"
+embedding_dimension: 1024
+# Optional: task-specific instruction for improved retrieval accuracy (1-5% boost).
+# Only used by models that support the instruction parameter (e.g., Qwen3).
+embedding_instruction: "Represent this question for finding semantically similar questions:"
 
 # Retry / backoff for Genie API calls
 retry:
