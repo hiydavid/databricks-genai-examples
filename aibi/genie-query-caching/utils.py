@@ -19,7 +19,7 @@ import yaml
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.dashboards import MessageStatus
 
-DEFAULT_EMBEDDING_MODEL = "databricks-gte-large-en"
+DEFAULT_EMBEDDING_MODEL = "databricks-qwen3-embedding-0-6b"
 
 
 # ---------------------------------------------------------------------------
@@ -62,17 +62,33 @@ def _get_workspace_client() -> WorkspaceClient:
     return _workspace_client
 
 
-def generate_embedding(text: str, model: str = DEFAULT_EMBEDDING_MODEL) -> list[float]:
+def generate_embedding(
+    text: str,
+    model: str = DEFAULT_EMBEDDING_MODEL,
+    instruction: Optional[str] = None,
+    dimensions: Optional[int] = None,
+) -> list[float]:
     """Generate an embedding vector via the Databricks Foundation Model API.
 
     Uses ``WorkspaceClient().serving_endpoints.query()`` which returns an
     OpenAI-compatible response with ``data[0].embedding``.
+
+    Parameters
+    ----------
+    instruction : str, optional
+        Task-specific instruction for instruction-aware models (e.g.,
+        ``databricks-qwen3-embedding-0-6b``).  Can improve retrieval by 1-5%.
+    dimensions : int, optional
+        Output dimensionality for models supporting Matryoshka embeddings
+        (32-1024 for Qwen3).  Omit to use the model's native dimension.
     """
     w = _get_workspace_client()
-    response = w.serving_endpoints.query(
-        name=model,
-        input=[text],
-    )
+    kwargs: dict = {"name": model, "input": [text]}
+    if instruction is not None:
+        kwargs["instruction"] = instruction
+    if dimensions is not None:
+        kwargs["dimensions"] = dimensions
+    response = w.serving_endpoints.query(**kwargs)
     return response.data[0].embedding
 
 
@@ -111,6 +127,14 @@ def retry_with_backoff(
 # ---------------------------------------------------------------------------
 # Genie API wrapper
 # ---------------------------------------------------------------------------
+# We use the Databricks Python SDK (start_conversation_and_wait) rather than:
+#   - REST API: Would require manual polling of POST /api/2.0/genie/spaces/
+#     {space_id}/start-conversation every 5-10s with no benefit over the SDK.
+#   - Databricks Managed MCP: Designed for AI agent tool use, not programmatic
+#     caching.  MCP output is not meant to be parsed programmatically, which
+#     conflicts with our need to extract SQL and response text from attachments.
+# The SDK handles long-polling automatically and provides typed response objects.
+# See: https://docs.databricks.com/aws/en/genie/conversation-api
 
 @dataclass
 class GenieResult:
@@ -282,6 +306,7 @@ def lakebase_cache_lookup(
     """
     normalized = normalize_question(question)
     embedding_model = config.get("embedding_model", DEFAULT_EMBEDDING_MODEL)
+    embedding_instruction = config.get("embedding_instruction")
 
     conn = get_lakebase_connection(config)
     with conn.cursor() as cur:
@@ -308,7 +333,9 @@ def lakebase_cache_lookup(
             return "exact", row[0], resp, 1.0, None
 
         # --- Vector similarity ---
-        embedding = generate_embedding(question, model=embedding_model)
+        embedding = generate_embedding(
+            question, model=embedding_model, instruction=embedding_instruction,
+        )
         vs_params: list = [embedding, session_id, embedding] if session_id else [embedding, embedding]
         session_where = "WHERE session_id = %s AND embedding IS NOT NULL" if session_id else "WHERE embedding IS NOT NULL"
 
@@ -355,8 +382,11 @@ def lakebase_cache_write(
     """
     normalized = normalize_question(question)
     embedding_model = config.get("embedding_model", DEFAULT_EMBEDDING_MODEL)
+    embedding_instruction = config.get("embedding_instruction")
     if embedding is None:
-        embedding = generate_embedding(question, model=embedding_model)
+        embedding = generate_embedding(
+            question, model=embedding_model, instruction=embedding_instruction,
+        )
     response_json = json.dumps({"sql": sql, "text": response_text})
 
     conn = get_lakebase_connection(config)

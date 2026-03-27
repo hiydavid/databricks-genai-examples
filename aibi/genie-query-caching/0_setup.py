@@ -37,8 +37,8 @@ config = load_config("./configs.yaml")
 CATALOG = config["catalog"]
 SCHEMA = config["schema"]
 VS_ENDPOINT = config["vs_endpoint"]
-EMBEDDING_MODEL = config.get("embedding_model", "databricks-gte-large-en")
-EMBEDDING_DIM = config.get("embedding_dimension", 768)
+EMBEDDING_MODEL = config.get("embedding_model", "databricks-qwen3-embedding-0-6b")
+EMBEDDING_DIM = config.get("embedding_dimension", 1024)
 
 print(f"Catalog:          {CATALOG}")
 print(f"Schema:           {SCHEMA}")

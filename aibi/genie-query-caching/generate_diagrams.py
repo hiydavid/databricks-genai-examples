@@ -58,7 +58,7 @@ def diagram_1():
                fontname="Helvetica-Bold", fontsize="11")
         c.node("lakebase", "Lakebase", style="rounded,filled,bold", fillcolor="white")
         c.node("lb_schema",
-               "question_normalized TEXT\nembedding VECTOR(768)\n"
+               "question_normalized TEXT\nembedding VECTOR(1024)\n"
                "cached_sql TEXT\ncached_response JSONB", **ANNOT)
         c.node("lb_props",
                "HNSW index · ACID writes\nImmediate read-after-write\n"
@@ -251,7 +251,7 @@ def diagram_3():
                fontname="Helvetica-Bold", fontsize="11")
         c.node("lakebase", "Lakebase", style="rounded,filled,bold", fillcolor="white")
         c.node("l1_schema",
-               "question_normalized TEXT\nembedding VECTOR(768)\n"
+               "question_normalized TEXT\nembedding VECTOR(1024)\n"
                "cached_response JSONB", **ANNOT)
         c.node("l1_props",
                "HNSW index · ACID writes\nTTL: session lifetime\n"
