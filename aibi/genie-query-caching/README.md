@@ -30,9 +30,8 @@ Demonstrates three caching strategies for Databricks Genie API responses, reduci
 ## Quick Start
 
 1. Copy `configs.template.yaml` → `configs.yaml` and fill in your values
-2. Run `0_setup.py` to create all infrastructure (tables, indexes, etc.)
-3. *(Optional)* Run `seed_cache.py` to pre-populate caches with 5 Horizon Bank entries — the demo will show cache HITs immediately
-4. Run any scenario notebook:
+2. Run `0_setup.py` to create all infrastructure and seed demo data (5 Horizon Bank entries)
+3. Run any scenario notebook:
    - `1_lakebase_pgvector_cache.py` — simplest, Lakebase-only
    - `2_vector_search_cache.py` — Vector Search with confidence tiering
    - `3_hybrid_cache.py` — recommended two-tier approach
@@ -41,8 +40,7 @@ Demonstrates three caching strategies for Databricks Genie API responses, reduci
 
 | File | Purpose |
 |------|---------|
-| `0_setup.py` | Create catalog, schema, Lakebase tables with pgvector, Delta tables, VS endpoint and indexes |
-| `seed_cache.py` | Pre-populate all 3 cache stores with 5 Horizon Bank seed entries |
+| `0_setup.py` | Create catalog, schema, Lakebase tables with pgvector, Delta tables, VS endpoint/indexes, and seed demo data |
 | `1_lakebase_pgvector_cache.py` | Scenario 1: exact match + pgvector similarity (≥ 0.92) |
 | `2_vector_search_cache.py` | Scenario 2: hybrid semantic + BM25 with 3-tier confidence scoring |
 | `3_hybrid_cache.py` | Scenario 3: L1 Lakebase session cache + L2 VS knowledge base with promotion |

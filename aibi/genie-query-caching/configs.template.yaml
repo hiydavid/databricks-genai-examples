@@ -42,8 +42,8 @@ thresholds:
   vs_confirm: 0.75                # Scenario 2 - return but flag for user confirmation
 
 # Demo questions (used across all scenario notebooks)
-# These match the seed data in seed_cache.py — run that notebook first to
-# pre-populate the cache so the demo shows HITs on the first pass.
+# These match the seed data in 0_setup.py — the setup notebook pre-populates
+# the cache so the demo shows HITs on the first pass.
 demo_questions:
   - "What was total deposit volume in 2024?"
   - "Show monthly deposit trend from Jan 2023 to Dec 2025"
