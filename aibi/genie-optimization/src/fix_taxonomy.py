@@ -446,3 +446,72 @@ def compile_fix_report(scorer_results: list[dict]) -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+
+def compile_fix_report_by_section(scorer_results: list[dict]) -> dict[str, str]:
+    """Compile per-section fix reports keyed by category name.
+
+    Returns a dict with one entry per fix category that has at least one triggered
+    fix. Categories with no triggered fixes are omitted. Used by optimize_config()
+    to make targeted per-section LLM calls instead of one monolithic call.
+
+    Args:
+        scorer_results: List of dicts with keys: label, question, expected_sql, generated_sql
+
+    Returns:
+        Dict mapping category name to section fix report string.
+        Example: {"UC Metadata": "...", "SQL Examples": "...", "Instructions": "..."}
+    """
+    if not scorer_results:
+        return {}
+
+    # Group by category
+    by_category: dict[str, list[dict]] = {}
+    for result in scorer_results:
+        label = result["label"]
+        reason = ASSESSMENT_REASONS.get(label)
+        if not reason or reason["category"] == "Benchmark Quality":
+            continue
+        category = reason["category"]
+        by_category.setdefault(category, []).append({**result, **reason})
+
+    sections: dict[str, str] = {}
+    for category in FIX_ORDERING:
+        items = by_category.get(category, [])
+        if not items:
+            continue
+
+        items.sort(key=lambda x: x.get("priority", "P3"))
+
+        lines = [f"## {category}", ""]
+
+        # Deduplicate fix actions across questions
+        seen_fixes: dict[str, list[str]] = {}
+        for item in items:
+            for fix in item.get("primary_fixes", []):
+                key = f"{fix['action']} | {fix['path']}"
+                seen_fixes.setdefault(key, []).append(item.get("question", "unknown"))
+
+        for fix_key, questions in seen_fixes.items():
+            action, path = fix_key.split(" | ", 1)
+            lines.append(f"- **{action}**")
+            lines.append(f"  Config path: `{path}`")
+            lines.append(f"  Triggered by {len(questions)} question(s):")
+            for q in questions[:5]:
+                lines.append(f"    - {q[:120]}")
+            lines.append("")
+
+        # List specific failures for context
+        lines.append("### Detailed failures:")
+        for item in items:
+            lines.append(
+                f"- [{item.get('priority', '?')}] **{item.get('label', '?')}**: "
+                f"{item.get('question', '?')[:100]}"
+            )
+            lines.append(f"  Expected: `{item.get('expected_sql', '')[:200]}`")
+            lines.append(f"  Generated: `{item.get('generated_sql', '')[:200]}`")
+        lines.append("")
+
+        sections[category] = "\n".join(lines)
+
+    return sections

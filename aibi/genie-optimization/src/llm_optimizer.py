@@ -1,10 +1,18 @@
 """
 LLM-powered Genie Space config optimization.
 
-Takes the current serialized_space and a prescriptive fix report, calls an LLM
-to produce an updated configuration that incorporates the fixes.
+Takes the current serialized_space and per-section prescriptive fix reports, then
+makes up to 3 sequential LLM calls — one per config section — to produce an updated
+configuration. Splitting by section keeps each call small, reducing the risk of
+hitting token limits or timeouts.
+
+Section mapping:
+  Call 1 (UC Metadata)   → data_sources
+  Call 2 (SQL Examples)  → instructions.example_question_sqls
+  Call 3 (Instructions)  → remaining instructions + config.sample_questions
 """
 
+import copy
 import json
 
 from databricks.sdk import WorkspaceClient
@@ -12,8 +20,8 @@ from openai import OpenAI
 
 SYSTEM_PROMPT = """\
 You are a Databricks Genie Space configuration optimizer. You receive a \
-serialized_space JSON and a prescriptive fix report compiled from benchmark \
-evaluation results. Your job is to produce an updated serialized_space JSON \
+serialized_space JSON section and a prescriptive fix report compiled from benchmark \
+evaluation results. Your job is to produce an updated version of that section \
 that incorporates all applicable fixes.
 
 Rules you MUST follow:
@@ -38,41 +46,23 @@ Rules you MUST follow:
     description, question, content, sql, synonyms, comment, instruction, \
     usage_guidance. For example: "description": ["Some text"], not \
     "description": "Some text".
-13. Return ONLY the complete, valid serialized_space JSON object — no markdown, \
+13. Return ONLY the valid JSON for the section you are asked to modify — no markdown, \
     no explanation, no wrapping.
 """
 
 
-def optimize_config(
-    serialized_space: dict,
-    fix_report: str,
-    llm_endpoint: str = "databricks-claude-sonnet-4-6",
-) -> dict:
-    """Use an LLM to produce an optimized serialized_space incorporating fixes.
-
-    Args:
-        serialized_space: The current Genie Space configuration.
-        fix_report: Prescriptive fix report from compile_fix_report().
-        llm_endpoint: Databricks Foundation Model endpoint name.
-
-    Returns:
-        The updated serialized_space dict.
-    """
+def _build_client() -> OpenAI:
+    """Build an OpenAI-compatible client authenticated against the Databricks workspace."""
     ws = WorkspaceClient()
     token = ws.config.authenticate().get("Authorization", "").removeprefix("Bearer ")
-    client = OpenAI(
+    return OpenAI(
         base_url=f"{ws.config.host.rstrip('/')}/serving-endpoints",
         api_key=token,
     )
 
-    config_json = json.dumps(serialized_space, indent=2, ensure_ascii=False)
 
-    user_message = (
-        f"Current serialized_space:\n```json\n{config_json}\n```\n\n"
-        f"Prescriptive fix report:\n{fix_report}\n\n"
-        "Produce the updated serialized_space JSON incorporating all applicable fixes."
-    )
-
+def _call_llm(client: OpenAI, llm_endpoint: str, user_message: str) -> dict | list:
+    """Send a chat completion request and return the parsed JSON response."""
     response = client.chat.completions.create(
         model=llm_endpoint,
         messages=[
@@ -82,9 +72,175 @@ def optimize_config(
         temperature=0,
         max_tokens=16384,
     )
-
     content = response.choices[0].message.content.strip()
     # Strip markdown fences if the model wraps the JSON
     if content.startswith("```"):
         content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     return json.loads(content)
+
+
+def _optimize_data_sources(
+    data_sources: dict,
+    fix_report: str,
+    client: OpenAI,
+    llm_endpoint: str,
+) -> dict:
+    """Call 1: Update data_sources (tables + metric_views) per UC Metadata fixes."""
+    user_message = (
+        'You are modifying ONLY the "data_sources" section of a Genie Space config.\n\n'
+        f"Current data_sources:\n```json\n{json.dumps(data_sources, indent=2, ensure_ascii=False)}\n```\n\n"
+        f"Fix report (UC Metadata fixes only):\n{fix_report}\n\n"
+        "Return ONLY the updated data_sources JSON object "
+        "(with keys tables and/or metric_views) — no other top-level keys."
+    )
+    result = _call_llm(client, llm_endpoint, user_message)
+    # Defensive unwrap: if the LLM returned {"data_sources": {...}} instead of {...}
+    if isinstance(result, dict) and list(result.keys()) == ["data_sources"]:
+        result = result["data_sources"]
+    return result
+
+
+def _optimize_sql_examples(
+    sql_examples: list,
+    data_sources: dict,
+    fix_report: str,
+    client: OpenAI,
+    llm_endpoint: str,
+) -> list:
+    """Call 2: Update instructions.example_question_sqls per SQL Examples fixes.
+
+    Passes data_sources as read-only context so the LLM can write correct SQL
+    without modifying it.
+    """
+    user_message = (
+        'You are modifying ONLY the "instructions.example_question_sqls" list '
+        "of a Genie Space config.\n\n"
+        "Read-only context — DO NOT modify, provided for writing correct SQL only:\n"
+        f"```json\n{json.dumps({'data_sources': data_sources}, indent=2, ensure_ascii=False)}\n```\n\n"
+        f"Current example_question_sqls:\n```json\n{json.dumps(sql_examples, indent=2, ensure_ascii=False)}\n```\n\n"
+        f"Fix report (SQL Examples fixes only):\n{fix_report}\n\n"
+        "Return ONLY the updated example_question_sqls JSON array — no wrapping object."
+    )
+    result = _call_llm(client, llm_endpoint, user_message)
+    # Defensive unwrap: if the LLM returned {"example_question_sqls": [...]}
+    if isinstance(result, dict) and "example_question_sqls" in result:
+        result = result["example_question_sqls"]
+    return result
+
+
+def _optimize_instructions_rest(
+    instructions_rest: dict,
+    sample_questions: list,
+    data_sources: dict,
+    fix_report: str,
+    client: OpenAI,
+    llm_endpoint: str,
+) -> tuple[dict, list]:
+    """Call 3: Update remaining instructions + config.sample_questions per Instructions fixes.
+
+    instructions_rest contains all instructions keys except example_question_sqls
+    (text_instructions, join_specs, sql_snippets, sql_functions), which was
+    already handled in Call 2.
+
+    Passes data_sources as read-only context so the LLM can write correct SQL.
+    """
+    payload = {
+        "instructions_rest": instructions_rest,
+        "sample_questions": sample_questions,
+    }
+    user_message = (
+        "You are modifying the remaining instructions fields "
+        "(text_instructions, join_specs, sql_snippets, sql_functions) "
+        'and "config.sample_questions" of a Genie Space config. '
+        "Do NOT touch example_question_sqls — it was already updated.\n\n"
+        "Read-only context — DO NOT modify, provided for writing correct SQL only:\n"
+        f"```json\n{json.dumps({'data_sources': data_sources}, indent=2, ensure_ascii=False)}\n```\n\n"
+        f"Current sections to update:\n```json\n{json.dumps(payload, indent=2, ensure_ascii=False)}\n```\n\n"
+        f"Fix report (Instructions fixes only):\n{fix_report}\n\n"
+        'Return ONLY a JSON object with exactly two keys: "instructions_rest" and "sample_questions".'
+    )
+    result = _call_llm(client, llm_endpoint, user_message)
+    updated_rest = result.get("instructions_rest", instructions_rest)
+    updated_samples = result.get("sample_questions", sample_questions)
+    return updated_rest, updated_samples
+
+
+def optimize_config(
+    serialized_space: dict,
+    fix_reports_by_section: dict[str, str],
+    llm_endpoint: str = "databricks-claude-sonnet-4-6",
+) -> dict:
+    """Sequentially optimize each config section using targeted per-section LLM calls.
+
+    Makes up to 3 LLM calls, one per fix category. Skips any section that has no
+    triggered fixes. Preserves version and benchmarks unchanged regardless of LLM output.
+
+    Args:
+        serialized_space: The current Genie Space configuration.
+        fix_reports_by_section: Per-section fix report strings keyed by category name,
+            as returned by compile_fix_report_by_section(). Absent keys mean no fixes
+            for that section.
+        llm_endpoint: Databricks Foundation Model endpoint name.
+
+    Returns:
+        The updated serialized_space dict with version and benchmarks preserved.
+    """
+    client = _build_client()
+    result = copy.deepcopy(serialized_space)
+
+    # --- Call 1: UC Metadata → data_sources ---
+    if "UC Metadata" in fix_reports_by_section:
+        print("  [1/3] Optimizing data_sources (UC Metadata)...")
+        result["data_sources"] = _optimize_data_sources(
+            result["data_sources"],
+            fix_reports_by_section["UC Metadata"],
+            client,
+            llm_endpoint,
+        )
+        print("  [1/3] Done.")
+    else:
+        print("  [1/3] No UC Metadata fixes — data_sources unchanged.")
+
+    # --- Call 2: SQL Examples → instructions.example_question_sqls ---
+    # Always pass the (potentially just-updated) data_sources as read-only context.
+    if "SQL Examples" in fix_reports_by_section:
+        print("  [2/3] Optimizing example_question_sqls (SQL Examples)...")
+        result["instructions"]["example_question_sqls"] = _optimize_sql_examples(
+            result["instructions"].get("example_question_sqls", []),
+            result["data_sources"],
+            fix_reports_by_section["SQL Examples"],
+            client,
+            llm_endpoint,
+        )
+        print("  [2/3] Done.")
+    else:
+        print("  [2/3] No SQL Examples fixes — example_question_sqls unchanged.")
+
+    # --- Call 3: Instructions → remaining instructions + config.sample_questions ---
+    if "Instructions" in fix_reports_by_section:
+        print("  [3/3] Optimizing instructions + sample_questions (Instructions)...")
+        instructions_rest = {
+            k: v
+            for k, v in result["instructions"].items()
+            if k != "example_question_sqls"
+        }
+        sample_questions = result.get("config", {}).get("sample_questions", [])
+        updated_rest, updated_samples = _optimize_instructions_rest(
+            instructions_rest,
+            sample_questions,
+            result["data_sources"],
+            fix_reports_by_section["Instructions"],
+            client,
+            llm_endpoint,
+        )
+        result["instructions"].update(updated_rest)
+        result.setdefault("config", {})["sample_questions"] = updated_samples
+        print("  [3/3] Done.")
+    else:
+        print("  [3/3] No Instructions fixes — instructions + sample_questions unchanged.")
+
+    # Hard restore of invariants that must never be LLM-modified
+    result["version"] = serialized_space["version"]
+    result["benchmarks"] = serialized_space["benchmarks"]
+
+    return result
