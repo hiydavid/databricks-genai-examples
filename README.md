@@ -27,7 +27,7 @@ Install relevant Databricks Agent Skills from [databricks-solutions/ai-dev-kit](
 ## AI/BI
 
 * (WIP) Genie Query Caching (Lakebase + pgvector, Vector Search, Hybrid)
-* (WIP) Genie Space Optimization
+* Genie Space Optimization with Benchmark API
 * Genie for Banking Analytics (Demo)
 * Genie Space Migration with DABs
 

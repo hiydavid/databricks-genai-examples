@@ -5,11 +5,12 @@ Automated evaluation and optimization of Databricks Genie Spaces using the Bench
 ## What It Does
 
 1. **Evaluates** your Genie Space by running all benchmark questions through the Genie Benchmark Evaluation API
-2. **Tracks results** in an MLflow experiment with per-assessment-reason scorers (24 labels covering UC metadata, SQL patterns, and business logic)
+2. **Tracks results** in an MLflow experiment with deterministic scorers covering UC metadata, SQL patterns, and business logic
 3. **Generates prescriptive fixes** based on a fix taxonomy that maps each failure reason to specific config changes
 4. **Optimizes** the space configuration via an LLM call that applies the fixes
 5. **Validates** the output against serialized_space schema rules
-6. Optionally **creates a new Genie Space** with the optimized configuration
+6. **Creates an optimized Genie Space** with a date-stamped title (e.g. `[Optimized 2026-04-04] My Space`)
+7. **Re-evaluates** the optimized space and compares before/after accuracy
 
 ## Prerequisites
 
@@ -27,10 +28,11 @@ Automated evaluation and optimization of Databricks Genie Spaces using the Bench
 databricks bundle deploy --target dev
 ```
 
-2. Open `src/optimizer.py` as a notebook and set `SPACE_ID` in the **Configuration** cell:
+2. Open `src/optimizer.py` as a notebook and set `SPACE_ID` and `EXPERIMENT_ID` in the **Configuration** cell:
 
 ```python
 SPACE_ID = "your-genie-space-id-here"
+EXPERIMENT_ID = "your-mlflow-experiment-id"
 ```
 
 3. Run all cells.
@@ -43,11 +45,10 @@ All settings are inline variables at the top of `src/optimizer.py`:
 |---|---|---|
 | `SPACE_ID` | `""` (required) | Genie Space ID to optimize |
 | `EXPERIMENT_ID` | `""` (required) | MLflow Experiment ID (create in MLflow UI first) |
+| `EXISTING_EVAL_RUN_ID` | `""` | Optional: reuse a completed eval run instead of creating a new one |
 | `LLM_ENDPOINT` | `"databricks-claude-sonnet-4-6"` | Foundation model for generating optimized config |
 | `POLL_INTERVAL_SECONDS` | `30` | Seconds between eval run status polls |
 | `POLL_TIMEOUT_SECONDS` | `1800` | Max seconds to wait for eval run completion |
-| `CREATE_NEW_SPACE` | `False` | Whether to create a new space with optimized config |
-| `OPTIMIZED_TITLE_PREFIX` | `"[Optimized] "` | Prefix for new space title |
 
 ## Architecture
 
@@ -56,7 +57,7 @@ optimizer.py (notebook)
     |
     +-- genie_client.py      Genie Space API + Eval REST API
     |
-    +-- scorers.py            24 MLflow @scorer functions (deterministic)
+    +-- scorers.py            Deterministic scorer functions
     |   +-- fix_taxonomy.py   Assessment reason -> config fix mapping
     |
     +-- llm_optimizer.py      LLM call to generate optimized config
@@ -67,26 +68,30 @@ optimizer.py (notebook)
 ### Flow
 
 ```
-Step 1: Get config --> Step 2: Check benchmarks >= 10
-                              |
-Step 3: Setup MLflow <--------+
+Step 1:  Get config --> Step 2: Check benchmarks >= 10
+                               |
+Step 3:  Setup MLflow <--------+
     |
-Step 4: Create eval run --> Step 5: Poll until DONE
-                                    |
-Step 6: List results <--------------+
+Step 4-5: Create (or reuse) eval run, poll until DONE
     |
-Step 7: MLflow evaluate (24 scorers per question)
+Step 6:  List results
     |
-Step 8: Compile fix report (grouped by category + priority)
+Step 7:  Score results + log baseline to MLflow
     |
-Step 9: LLM optimization (config + fixes -> improved config)
+Step 8:  Compile fix report (grouped by category + priority)
     |
-Step 10: Validate --> Optional: Create new space
+Step 9:  LLM optimization (config + fixes -> improved config)
+    |
+Step 10: Validate optimized config
+    |
+Step 11: Create optimized space
+    |
+Step 12: Re-evaluate optimized space + compare before/after
 ```
 
 ### Assessment Reason Categories
 
-The 24 scorers map to three fix categories, applied in order:
+The scorers map to three fix categories, applied in order:
 
 | Category | Labels | What It Covers |
 |---|---|---|
@@ -96,9 +101,10 @@ The 24 scorers map to three fix categories, applied in order:
 
 ## Output
 
-- **MLflow Experiment** at `/genie-optimization/{space_id}` with per-label pass rates
+- **MLflow Experiment** with two runs ("baseline" and "optimized"), each containing pass rate metrics and a detailed results table
 - **Fix Report** printed in notebook showing prioritized prescriptive changes
-- **Validated Config** (JSON) -- optionally applied to a new Genie Space
+- **Optimized Genie Space** created with a date-stamped title prefix
+- **Before/after comparison** table showing accuracy delta per scorer
 
 ## Project Structure
 
@@ -107,9 +113,9 @@ genie-optimization/
 +-- databricks.yml        Databricks Asset Bundle
 +-- README.md             This file
 +-- src/
-    +-- optimizer.py       Main notebook (10-step flow, config at top)
+    +-- optimizer.py       Main notebook (12-step flow, config at top)
     +-- genie_client.py    Genie Space + Eval API client
-    +-- scorers.py         MLflow custom scorers
+    +-- scorers.py         Deterministic scorer functions
     +-- fix_taxonomy.py    Assessment reason -> fix mapping
     +-- llm_optimizer.py   LLM config optimization
     +-- validation.py      Config validation + normalization
