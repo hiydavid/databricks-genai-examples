@@ -3,547 +3,503 @@
 # MAGIC %md
 # MAGIC # Genie Space Optimizer
 # MAGIC
-# MAGIC End-to-end workflow for improving Databricks Genie Spaces:
-# MAGIC 1. Import and inspect serialized space configuration
-# MAGIC 2. Analyze checklist quality (data sources, instructions, benchmarks, config)
-# MAGIC 3. Run benchmark evaluation with hybrid SQL judging
-# MAGIC 4. Generate and optionally apply optimization changes
-# MAGIC 5. Validate and optionally create an optimized copy of the space
+# MAGIC Evaluates a Genie Space using the Benchmark Evaluation API, tracks results
+# MAGIC in MLflow, and produces an optimized configuration using prescriptive fixes.
+# MAGIC
+# MAGIC **Flow:**
+# MAGIC 1. Get serialized Genie config
+# MAGIC 2. Check benchmark questions (minimum 10)
+# MAGIC 3. Set up MLflow experiment
+# MAGIC 4–5. Create (or reuse) Genie benchmark eval run
+# MAGIC 6. List eval results
+# MAGIC 7. Score results and log to MLflow
+# MAGIC 8. Compile prescriptive fixes from failures
+# MAGIC 9. LLM optimization call
+# MAGIC 10. Validate optimized config
+# MAGIC 11. Create optimized space
+# MAGIC 12. Re-evaluate optimized space and compare
 
 # COMMAND ----------
-# MAGIC %pip install "databricks-sdk>=0.85" openai sqlglot pyyaml --quiet
+
+# MAGIC %pip install databricks-sdk==0.102.0 mlflow[databricks]==3.10.1 openai==2.30.0 -q
 # MAGIC dbutils.library.restartPython()
-
-# COMMAND ----------
-
-import sys
-
-# Add the current notebook directory to Python path for imports
-notebook_path = (
-    dbutils.notebook.entry_point.getDbutils()
-    .notebook()
-    .getContext()
-    .notebookPath()
-    .get()
-)
-notebook_dir = "/Workspace" + "/".join(notebook_path.split("/")[:-1])
-if notebook_dir not in sys.path:
-    sys.path.insert(0, notebook_dir)
-
-from utils import (
-    BenchmarkRunner,
-    GenieSpaceClient,
-    HTMLRenderer,
-    LLMAnalyzer,
-    apply_optimization_changes,
-    as_bool,
-    build_benchmark_report,
-    build_config_report,
-    build_optimization_report,
-    generate_optimization_changes,
-    join_text,
-    load_config,
-    validate_serialized_space,
-)
-
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## Configuration
-# MAGIC Load runtime settings from `config.yaml`.
+# MAGIC Edit the values below before running.
 
 # COMMAND ----------
 
-config = load_config()
-
-space_id = config["space_id"]
-warehouse_id = config.get("warehouse_id") or None
-llm_endpoint = config.get("llm_endpoint", "databricks-claude-sonnet-4-5")
-
-workflow_mode = str(config.get("workflow_mode", "all")).strip().lower()
-if workflow_mode not in {"all", "analyze", "benchmark", "optimize"}:
-    workflow_mode = "all"
-
-benchmark_judge_mode = str(config.get("benchmark_judge_mode", "hybrid")).strip().lower()
-if benchmark_judge_mode not in {"hybrid", "llm", "execution"}:
-    benchmark_judge_mode = "hybrid"
-
-benchmark_timeout_minutes = int(config.get("benchmark_timeout_minutes", 5) or 5)
-create_new_space = as_bool(config.get("create_new_space", False))
-optimized_title_prefix = str(config.get("optimized_title_prefix", "[Optimized] "))
-enable_execution_diagnostics = as_bool(config.get("enable_execution_diagnostics", False))
-
-approved_for_apply = False
-
-if not space_id:
-    raise ValueError("space_id is required in config.yaml")
-
-print(f"Space ID: {space_id}")
-print(f"Configured Warehouse ID: {warehouse_id or '(none)'}")
-print(f"LLM Endpoint: {llm_endpoint}")
-print(f"Workflow mode: {workflow_mode}")
-print(f"Benchmark judge mode: {benchmark_judge_mode}")
-print(f"Benchmark timeout (minutes): {benchmark_timeout_minutes}")
-print(f"Create new space: {create_new_space}")
-
-config_analysis_report = ""
-benchmark_analysis_report = ""
-optimization_report = ""
+SPACE_ID = ""  # Required: Genie Space ID to optimize
+EXPERIMENT_ID = ""  # Required: MLflow Experiment ID (create one in the MLflow UI first)
+EXISTING_EVAL_RUN_ID = ""  # Optional: reuse a completed eval run instead of creating a new one
+LLM_ENDPOINT = (
+    "databricks-claude-sonnet-4-6"  # Foundation model for generating optimized config
+)
+POLL_INTERVAL_SECONDS = 30  # Seconds between eval run status polls
+POLL_TIMEOUT_SECONDS = 1800  # Max seconds to wait for eval run completion
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Section 1: Import Space Configuration
-# MAGIC Fetches and displays serialized Genie Space configuration by section.
+# MAGIC ## Step 1: Get Serialized Genie Config
 
 # COMMAND ----------
 
-genie_client = GenieSpaceClient()
-space_data = genie_client.get_serialized_space(space_id)
+import json
 
-print(f"\nSpace Title: {space_data['title']}")
-print(f"Description: {space_data['description'] or '(none)'}")
+from genie_client import GenieClient
+from validation import _text_from_value
 
-serialized = space_data["serialized_space"]
-space_default_warehouse_id = space_data.get("warehouse_id") or None
-effective_warehouse_id = warehouse_id or space_default_warehouse_id or None
+if not SPACE_ID:
+    raise ValueError("SPACE_ID is required — set it in the Configuration cell above")
 
-print(f"Space default warehouse_id: {space_default_warehouse_id or '(none)'}")
-print(f"Effective warehouse_id for benchmarks: {effective_warehouse_id or '(none)'}")
+genie = GenieClient()
+space_info = genie.get_space_config(SPACE_ID)
+serialized_space = space_info["serialized_space"]
 
-sections = [
-    ("config", serialized.get("config")),
-    ("data_sources", serialized.get("data_sources")),
-    ("instructions", serialized.get("instructions")),
-    ("benchmarks", serialized.get("benchmarks")),
-]
+tables = serialized_space.get("data_sources", {}).get("tables", [])
+benchmarks_section = serialized_space.get("benchmarks", {})
+benchmark_questions = benchmarks_section.get("questions", [])
+instructions = serialized_space.get("instructions", {})
 
-html_output = """
-<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-    <h2 style="color: #1e3a5f; border-bottom: 2px solid #667eea; padding-bottom: 8px;">
-        Serialized Space Configuration
-    </h2>
-"""
+print(f"Space: {space_info['title']}")
+print(f"Space ID: {SPACE_ID}")
+print(f"Tables: {len(tables)}")
+print(f"Benchmark questions: {len(benchmark_questions)}")
+print(f"Text instructions: {len(instructions.get('text_instructions', []))}")
+print(f"Example SQLs: {len(instructions.get('example_question_sqls', []))}")
+print(f"Join specs: {len(instructions.get('join_specs', []))}")
 
-for section_name, section_data in sections:
-    html_output += HTMLRenderer.render_json_section(
-        title=section_name,
-        data=section_data,
-        collapsed=True,
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Step 2: Check Benchmark Questions (Minimum 10)
+
+# COMMAND ----------
+
+MIN_BENCHMARKS = 10
+
+if len(benchmark_questions) < MIN_BENCHMARKS:
+    msg = (
+        f"Need at least {MIN_BENCHMARKS} benchmark questions, "
+        f"found {len(benchmark_questions)}. "
+        "Add more benchmark Q&A pairs to the Genie Space before running optimization."
+    )
+    raise ValueError(msg)
+
+print(
+    f"✓ {len(benchmark_questions)} benchmark questions available (minimum: {MIN_BENCHMARKS})"
+)
+
+# Display benchmark questions
+for i, q in enumerate(benchmark_questions, 1):
+    print(f"  {i}. {_text_from_value(q.get('question'))[:120]}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Step 3: Set Up MLflow Experiment
+
+# COMMAND ----------
+
+import mlflow
+from scorers import score_llm_judge, score_overall_assessment, score_result_comparison
+
+if not EXPERIMENT_ID:
+    raise ValueError(
+        "EXPERIMENT_ID is required — create an MLflow Experiment in the UI first, "
+        "then set EXPERIMENT_ID in the Configuration cell above."
     )
 
-html_output += "</div>"
-displayHTML(html_output)
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Section 2: Checklist Analysis (Option A)
-# MAGIC Runs for workflow modes: `all`, `analyze`, `optimize`.
-
-# COMMAND ----------
-
-analyzer = None
-checklist_analyses = {}
-
-if workflow_mode in {"all", "analyze", "optimize"}:
-    analyzer = LLMAnalyzer(dbutils, config)
-
-    print("Analyzing data_sources section...")
-    data_sources_analysis = analyzer.analyze_data_sources(serialized.get("data_sources"))
-    print("Analyzing instructions section...")
-    instructions_analysis = analyzer.analyze_instructions(serialized.get("instructions"))
-    print("Analyzing benchmarks section...")
-    benchmarks_analysis = analyzer.analyze_benchmarks(serialized.get("benchmarks"))
-    print("Analyzing config section...")
-    config_section_analysis = analyzer.analyze_config(serialized.get("config"))
-
-    checklist_analyses = {
-        "data_sources": data_sources_analysis,
-        "instructions": instructions_analysis,
-        "benchmarks": benchmarks_analysis,
-        "config": config_section_analysis,
-    }
-
-    html_output = """
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-        <h2 style="color: #1e3a5f; border-bottom: 2px solid #667eea; padding-bottom: 8px;">
-            Checklist Analysis
-        </h2>
-    """
-
-    html_output += HTMLRenderer.render_checklist_analysis("Data Sources", data_sources_analysis)
-    html_output += HTMLRenderer.render_checklist_analysis("Instructions", instructions_analysis)
-    html_output += HTMLRenderer.render_checklist_analysis("Benchmarks", benchmarks_analysis)
-    html_output += HTMLRenderer.render_checklist_analysis("Config", config_section_analysis)
-
-    all_items = []
-    for analysis in checklist_analyses.values():
-        all_items.extend(analysis.get("items", []))
-
-    pass_count = sum(1 for item in all_items if item.get("status") == "pass")
-    fail_count = sum(1 for item in all_items if item.get("status") == "fail")
-    warning_count = sum(1 for item in all_items if item.get("status") == "warning")
-    na_count = sum(1 for item in all_items if item.get("status") == "na")
-
-    html_output += f"""
-    <div style="margin: 18px 0; background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%); color: white; padding: 20px; border-radius: 8px;">
-        <h3 style="margin: 0 0 14px 0;">Overall Checklist Summary</h3>
-        <div style="display: flex; gap: 14px; flex-wrap: wrap;">
-            <span style="background: rgba(255,255,255,0.14); padding: 8px 12px; border-radius: 6px;">Passed: <strong>{pass_count}</strong></span>
-            <span style="background: rgba(255,255,255,0.14); padding: 8px 12px; border-radius: 6px;">Failed: <strong>{fail_count}</strong></span>
-            <span style="background: rgba(255,255,255,0.14); padding: 8px 12px; border-radius: 6px;">Warnings: <strong>{warning_count}</strong></span>
-            <span style="background: rgba(255,255,255,0.14); padding: 8px 12px; border-radius: 6px;">N/A: <strong>{na_count}</strong></span>
-        </div>
-    </div>
-    """
-
-    html_output += HTMLRenderer.render_priority_recommendations(all_items)
-    html_output += "</div>"
-
-    displayHTML(html_output)
-
-    config_analysis_report = build_config_report(space_id, checklist_analyses)
-else:
-    print("Checklist analysis skipped for workflow_mode='benchmark'.")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Section 3: Benchmark Selection (Option B)
-# MAGIC Runs for workflow modes: `all`, `benchmark`, `optimize`.
-
-# COMMAND ----------
-
-benchmarks_data = serialized.get("benchmarks", {})
-all_questions = []
-
-if workflow_mode in {"all", "benchmark", "optimize"}:
-    all_questions = benchmarks_data.get("questions", [])
-
-    if not all_questions:
-        displayHTML(
-            """
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; margin: 20px 0;">
-            <strong style="color: #92400e;">No Benchmarks Configured</strong>
-            <p style="color: #78350f; margin: 8px 0 0 0;">
-                This Genie Space has no benchmark questions defined.
-            </p>
-        </div>
-        """
-        )
-    else:
-        import ipywidgets as widgets
-        from IPython.display import display
-
-        checkboxes = []
-        for _ in all_questions:
-            cb = widgets.Checkbox(
-                value=False,
-                description="",
-                indent=False,
-                layout=widgets.Layout(width="30px"),
-            )
-            checkboxes.append(cb)
-
-        question_widgets = []
-        for i, (cb, q) in enumerate(zip(checkboxes, all_questions)):
-            question_text = join_text(q.get("question"))
-            label = widgets.HTML(
-                value=f"<span style='font-family: -apple-system, sans-serif;'><strong>Q{i}</strong>: {question_text}</span>"
-            )
-            row = widgets.HBox([cb, label], layout=widgets.Layout(margin="4px 0"))
-            question_widgets.append(row)
-
-        def select_all(_):
-            for cb in checkboxes:
-                cb.value = True
-
-        def deselect_all(_):
-            for cb in checkboxes:
-                cb.value = False
-
-        select_all_btn = widgets.Button(
-            description="Select All",
-            button_style="info",
-            layout=widgets.Layout(width="100px"),
-        )
-        deselect_all_btn = widgets.Button(
-            description="Clear All",
-            button_style="warning",
-            layout=widgets.Layout(width="100px"),
-        )
-        select_all_btn.on_click(select_all)
-        deselect_all_btn.on_click(deselect_all)
-
-        header = widgets.HTML(
-            value=f"""<div style="font-family: -apple-system, sans-serif; margin-bottom: 10px;">
-                <h3 style="color: #1e3a5f; margin: 0;">Select Benchmark Questions ({len(all_questions)} available)</h3>
-                <p style="color: #666; margin: 4px 0 0 0;">Check the questions you want to run, then execute the next cell.</p>
-            </div>"""
-        )
-
-        button_row = widgets.HBox(
-            [select_all_btn, deselect_all_btn],
-            layout=widgets.Layout(margin="0 0 10px 0"),
-        )
-        question_box = widgets.VBox(
-            question_widgets,
-            layout=widgets.Layout(
-                max_height="420px",
-                overflow_y="auto",
-                padding="10px",
-                border="1px solid #ddd",
-                border_radius="4px",
-            ),
-        )
-
-        display(widgets.VBox([header, button_row, question_box]))
-        _benchmark_checkboxes = checkboxes
-else:
-    print("Benchmark selection skipped for workflow_mode='analyze'.")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Section 4: Benchmark Execution + Hybrid Judge (Option B)
-
-# COMMAND ----------
-
-benchmark_results = []
-benchmark_analysis = {
-    "benchmark_analyses": [],
-    "overall_recommendations": [],
-    "summary": "",
-}
-
-if workflow_mode in {"all", "benchmark", "optimize"}:
-    if not all_questions:
-        print("No benchmark questions available.")
-    else:
-        if "_benchmark_checkboxes" in dir():
-            selected_indices = [i for i, cb in enumerate(_benchmark_checkboxes) if cb.value]
-        elif workflow_mode == "optimize":
-            selected_indices = list(range(len(all_questions)))
-            print("No interactive selector found; optimize mode defaults to all benchmarks.")
-        else:
-            selected_indices = []
-            print("Please run the benchmark selection cell first.")
-
-        if not selected_indices:
-            print("No benchmark questions selected.")
-        else:
-            questions_to_run = [all_questions[i] for i in selected_indices]
-            print(
-                f"Running {len(questions_to_run)} selected benchmark(s): "
-                + ", ".join(f"Q{i}" for i in selected_indices)
-            )
-
-            if analyzer is None:
-                analyzer = LLMAnalyzer(dbutils, config)
-
-            benchmark_runner = BenchmarkRunner(
-                genie_client=genie_client,
-                warehouse_id=effective_warehouse_id,
-                llm_analyzer=analyzer,
-                judge_mode=benchmark_judge_mode,
-                timeout_minutes=benchmark_timeout_minutes,
-                enable_execution_diagnostics=enable_execution_diagnostics,
-            )
-
-            benchmark_results = benchmark_runner.run_all_benchmarks(space_id, questions_to_run)
-
-            html_output = """
-            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-                <h2 style="color: #1e3a5f; border-bottom: 2px solid #667eea; padding-bottom: 8px;">
-                    Benchmark Test Results
-                </h2>
-            """
-
-            for result in benchmark_results:
-                details = {}
-                if result.expected_row_count is not None:
-                    details["Expected rows"] = result.expected_row_count
-                if result.generated_row_count is not None:
-                    details["Generated rows"] = result.generated_row_count
-                details["Deterministic score"] = f"{result.deterministic_score:.2f}"
-                if result.error:
-                    details["Error"] = result.error
-
-                html_output += HTMLRenderer.render_benchmark_result(
-                    question=result.question,
-                    expected_sql=result.expected_sql,
-                    generated_sql=result.generated_sql,
-                    verdict=result.verdict,
-                    score=result.score,
-                    summary=result.summary,
-                    dimension_results=result.dimension_results,
-                    details=details,
-                )
-
-            html_output += "</div>"
-            displayHTML(html_output)
-
-            summary_data = [
-                {
-                    "question": r.question,
-                    "verdict": r.verdict,
-                    "score": r.score,
-                    "summary": r.summary,
-                }
-                for r in benchmark_results
-            ]
-
-            displayHTML(
-                "<div style='font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif;'>"
-                + HTMLRenderer.render_summary_table(summary_data)
-                + "</div>"
-            )
-
-            weighted_score = sum(r.score for r in benchmark_results)
-            weighted_percent = (
-                weighted_score / len(benchmark_results) * 100 if benchmark_results else 0
-            )
-            print(
-                f"Weighted benchmark score: {weighted_score:.1f}/{len(benchmark_results)} ({weighted_percent:.0f}%)"
-            )
-
-            benchmark_analysis_report = build_benchmark_report(space_id, benchmark_results)
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Section 5: Benchmark Diagnosis & Recommendations
-# MAGIC LLM-generated diagnosis and configuration recommendations.
-
-# COMMAND ----------
-
-if benchmark_results and workflow_mode in {"all", "benchmark", "optimize"}:
-    if analyzer is None:
-        analyzer = LLMAnalyzer(dbutils, config)
-
-    print("Analyzing benchmark results with LLM...")
-    benchmark_analysis = analyzer.analyze_benchmark_results(
-        benchmark_results=benchmark_results,
-        serialized_space=serialized,
+experiment = mlflow.get_experiment(EXPERIMENT_ID)
+if experiment is None or experiment.lifecycle_stage == "deleted":
+    raise ValueError(
+        f"MLflow Experiment '{EXPERIMENT_ID}' does not exist or has been deleted. "
+        "Create one in the MLflow UI first."
     )
-    displayHTML(HTMLRenderer.render_benchmark_analysis(benchmark_analysis))
-    benchmark_analysis_report = build_benchmark_report(
-        space_id,
-        benchmark_results,
-        recommendations=benchmark_analysis.get("overall_recommendations") or None,
-    )
-elif workflow_mode in {"all", "benchmark", "optimize"}:
-    print("No benchmark results to analyze.")
+
+mlflow.set_experiment(experiment_id=EXPERIMENT_ID)
+
+print(f"MLflow experiment: {experiment.name} (ID: {EXPERIMENT_ID})")
+print(
+    "Scorers: overall_assessment, result_comparison (deterministic), llm_judge (semantic)"
+)
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Section 6: Proposed Optimization Plan (Option C)
-# MAGIC Runs for workflow modes: `all`, `optimize`.
+# MAGIC ## Steps 4–5: Create (or Reuse) Genie Benchmark Eval Run
 
 # COMMAND ----------
 
-optimization_changes = []
-optimized_serialized_space = None
-validation_result = None
-created_space_result = None
-
-if workflow_mode in {"all", "optimize"}:
-    if not checklist_analyses:
-        print("Optimization planning requires checklist analyses (Option A).")
-    else:
-        optimization_changes = generate_optimization_changes(
-            serialized_space=serialized,
-            checklist_analyses=checklist_analyses,
-            benchmark_results=benchmark_results,
-            benchmark_analysis=benchmark_analysis,
+if EXISTING_EVAL_RUN_ID:
+    eval_run_id = EXISTING_EVAL_RUN_ID
+    print(f"Reusing existing eval run: {eval_run_id}")
+    completed_run = genie.get_eval_run(SPACE_ID, eval_run_id)
+    status = completed_run.get("eval_run_status", "")
+    if status != "DONE":
+        raise ValueError(
+            f"Existing eval run {eval_run_id} has status '{status}', expected 'DONE'"
         )
-
-        displayHTML(HTMLRenderer.render_optimization_plan(optimization_changes))
-
-        approved_for_apply = False
-        print("Approval gate reset. Set approved_for_apply = True and run the next cell to apply changes.")
-        optimization_report = build_optimization_report(
-            space_title=space_data["title"],
-            original_space_id=space_id,
-            changes=optimization_changes,
-        )
+    print(f"✓ Eval run status: {status}")
 else:
-    print("Optimization planning skipped for workflow_mode='analyze' or 'benchmark'.")
+    eval_run = genie.create_eval_run(SPACE_ID)
+    eval_run_id = eval_run.get("eval_run_id")
+    if not eval_run_id:
+        raise ValueError(f"Could not extract eval_run_id from response: {eval_run}")
+    print(f"Eval run created: {eval_run_id}")
+    print(f"Status: {eval_run.get('eval_run_status', 'unknown')}")
+
+    print(
+        f"Polling eval run (interval={POLL_INTERVAL_SECONDS}s, timeout={POLL_TIMEOUT_SECONDS}s)..."
+    )
+    completed_run = genie.poll_eval_run(
+        SPACE_ID,
+        eval_run_id,
+        poll_interval=POLL_INTERVAL_SECONDS,
+        timeout=POLL_TIMEOUT_SECONDS,
+    )
+    print(f"✓ Eval run completed: {completed_run.get('eval_run_status', 'DONE')}")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Section 7: Apply + Validate + Optional Create (Option C)
-# MAGIC Set `approved_for_apply = True` before running this cell.
+# MAGIC ## Step 6: List Eval Results
 
 # COMMAND ----------
 
-if workflow_mode in {"all", "optimize"}:
-    if not optimization_changes:
-        print("No optimization changes to apply.")
-    elif not approved_for_apply:
-        print("Approval gate not satisfied. Set approved_for_apply = True and rerun this cell.")
-    else:
-        optimized_serialized_space = apply_optimization_changes(serialized, optimization_changes)
-        validation_result = validate_serialized_space(optimized_serialized_space)
-
-        displayHTML(HTMLRenderer.render_validation_report(validation_result))
-
-        if validation_result.get("valid"):
-            displayHTML(
-                "<div style='font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif;'>"
-                + HTMLRenderer.render_json_section(
-                    title="optimized_serialized_space",
-                    data=optimized_serialized_space,
-                    collapsed=True,
-                )
-                + "</div>"
-            )
-
-            if create_new_space:
-                created_space_result = genie_client.create_optimized_space(
-                    original_space_id=space_id,
-                    updated_config=optimized_serialized_space,
-                    title_prefix=optimized_title_prefix,
-                )
-                displayHTML(
-                    "<div style='font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif;'>"
-                    + HTMLRenderer.render_json_section(
-                        title="created_optimized_space",
-                        data=created_space_result,
-                        collapsed=False,
-                    )
-                    + "</div>"
-                )
-                print(
-                    f"Created optimized space: {created_space_result['new_space_id']}\n"
-                    f"URL: {created_space_result['new_space_url']}"
-                )
-                optimization_report = build_optimization_report(
-                    space_title=space_data["title"],
-                    original_space_id=space_id,
-                    changes=optimization_changes,
-                    creation_result=created_space_result,
-                )
-            else:
-                print("create_new_space is false. Stopping at validated optimized configuration preview.")
-        else:
-            print("Validation failed. Resolve errors before creating an optimized space.")
+eval_results_list = genie.list_eval_results(SPACE_ID, eval_run_id)
+print(f"✓ {len(eval_results_list)} eval results ready")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Generated Reports
-# MAGIC Report strings are available in these variables for downstream notebook cells:
-# MAGIC - `config_analysis_report`
-# MAGIC - `benchmark_analysis_report`
-# MAGIC - `optimization_report`
+# MAGIC ## Step 7: Score Results and Log to MLflow
+# MAGIC
+# MAGIC For each result, fetch details from the Genie API and score with
+# MAGIC deterministic scorers. Results are logged to MLflow as metrics and a
+# MAGIC results table for experiment tracking.
 
 # COMMAND ----------
 
-print("config_analysis_report length:", len(config_analysis_report or ""))
-print("benchmark_analysis_report length:", len(benchmark_analysis_report or ""))
-print("optimization_report length:", len(optimization_report or ""))
+from concurrent.futures import ThreadPoolExecutor
+
+import pandas as pd
+
+# Build lookup: benchmark_question_id → question text
+benchmark_question_lookup = {}
+for q in benchmark_questions:
+    qid = q.get("id", "")
+    text = _text_from_value(q.get("question"))
+    benchmark_question_lookup[qid] = text
+
+
+# Fetch detailed results for each benchmark question (parallelized)
+def _fetch_detail(result):
+    result_id = result.get("result_id")
+    if not result_id:
+        return None
+    return genie.get_eval_result_details(SPACE_ID, eval_run_id, result_id)
+
+
+with ThreadPoolExecutor(max_workers=10) as executor:
+    all_details = [
+        d for d in executor.map(_fetch_detail, eval_results_list) if d is not None
+    ]
+
+print(f"Fetched {len(all_details)} detailed results")
+
+
+# Helper: extract SQL from actual_response / expected_response
+def _extract_sql(response_list):
+    """Extract SQL string from the API's response array."""
+    if not response_list:
+        return ""
+    for entry in response_list:
+        if entry.get("response_type") == "SQL" and entry.get("response"):
+            return entry["response"]
+        if entry.get("response"):
+            return entry["response"]
+    return ""
+
+
+def _score_eval_details(details, question_lookup, run_name=None):
+    """Score eval details and log to MLflow. Returns (results_df, metrics, run_id)."""
+    scorer_names = ["overall_assessment", "result_comparison", "llm_judge"]
+    eval_rows = []
+    for d in details:
+        question_id = d.get("benchmark_question_id", "")
+        question = question_lookup.get(question_id, question_id)
+        generated_sql = _extract_sql(d.get("actual_response"))
+        expected_sql = _extract_sql(d.get("expected_response"))
+        assessment = d.get("assessment", "")
+        reasons = d.get("assessment_reasons", [])
+
+        row = {
+            "question": question,
+            "generated_sql": generated_sql,
+            "expected_sql": expected_sql,
+            "assessment": assessment,
+            "assessment_reasons": ", ".join(reasons),
+        }
+        for scorer_fn in [score_overall_assessment, score_result_comparison, score_llm_judge]:
+            result = scorer_fn(question, generated_sql, expected_sql, assessment, reasons)
+            row[result["name"]] = result["value"]
+            row[f"{result['name']}/rationale"] = result["rationale"]
+
+        eval_rows.append(row)
+
+    results_df = pd.DataFrame(eval_rows)
+    metrics = {}
+    for name in scorer_names:
+        pass_count = (results_df[name] == "yes").sum()
+        metrics[f"{name}/pass_rate"] = pass_count / len(results_df)
+
+    with mlflow.start_run(run_name=run_name) as run:
+        mlflow.log_metrics(metrics)
+        mlflow.log_table(results_df, artifact_file="eval_results.json")
+        run_id = run.info.run_id
+
+    return results_df, metrics, run_id
+
+
+# Score baseline results
+results_df, baseline_metrics, mlflow_run_id = _score_eval_details(
+    all_details, benchmark_question_lookup, run_name="baseline",
+)
+
+print(f"\n✓ MLflow Run ID: {mlflow_run_id}")
+print(f"  View in MLflow experiment: {experiment.name}")
+for name, value in sorted(baseline_metrics.items()):
+    print(f"  {name}: {value:.2%}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Step 8: Compile Prescriptive Fixes from Failures
+
+# COMMAND ----------
+
+from fix_taxonomy import compile_fix_report
+
+# Collect all triggered assessment reasons from failed benchmarks
+failed_details = [d for d in all_details if d.get("assessment") != "GOOD"]
+
+scorer_results = []
+for d in failed_details:
+    question_id = d.get("benchmark_question_id", "")
+    question = benchmark_question_lookup.get(question_id, question_id)
+    for reason in d.get("assessment_reasons", []):
+        scorer_results.append(
+            {
+                "label": reason,
+                "question": question,
+                "expected_sql": _extract_sql(d.get("expected_response")),
+                "generated_sql": _extract_sql(d.get("actual_response")),
+            }
+        )
+
+fix_report = compile_fix_report(scorer_results)
+
+correct_count = len(all_details) - len(failed_details)
+print(
+    f"Results: {correct_count}/{len(all_details)} correct, {len(failed_details)} failures"
+)
+print(f"Total assessment reasons triggered: {len(scorer_results)}")
+print()
+print(fix_report)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Step 9: LLM Optimization Call
+
+# COMMAND ----------
+
+if not failed_details:
+    print("✓ All benchmarks passed — no optimization needed.")
+    optimized_space = serialized_space
+else:
+    from llm_optimizer import optimize_config
+
+    print(f"Calling {LLM_ENDPOINT} to generate optimized config...")
+
+    optimized_space = optimize_config(
+        serialized_space=serialized_space,
+        fix_report=fix_report,
+        llm_endpoint=LLM_ENDPOINT,
+    )
+    print("✓ Optimized config generated")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Step 10: Validate Optimized Config
+
+# COMMAND ----------
+
+from validation import normalize_serialized_space, validate_serialized_space
+
+# Normalize ordering
+optimized_space = normalize_serialized_space(optimized_space)
+
+# Validate
+validation = validate_serialized_space(optimized_space)
+
+if validation["valid"]:
+    print("✓ Optimized config is valid")
+else:
+    print(f"✗ Validation errors ({len(validation['errors'])}):")
+    for err in validation["errors"]:
+        print(f"  - {err}")
+
+if validation["warnings"]:
+    print(f"\nWarnings ({len(validation['warnings'])}):")
+    for warn in validation["warnings"]:
+        print(f"  - {warn}")
+
+# Show diff summary
+orig_tables = len(serialized_space.get("data_sources", {}).get("tables", []))
+opt_tables = len(optimized_space.get("data_sources", {}).get("tables", []))
+orig_instr = len(
+    serialized_space.get("instructions", {}).get("example_question_sqls", [])
+)
+opt_instr = len(
+    optimized_space.get("instructions", {}).get("example_question_sqls", [])
+)
+orig_joins = len(serialized_space.get("instructions", {}).get("join_specs", []))
+opt_joins = len(optimized_space.get("instructions", {}).get("join_specs", []))
+
+print(f"\nConfig changes:")
+print(f"  Tables: {orig_tables} → {opt_tables}")
+print(f"  Example SQLs: {orig_instr} → {opt_instr}")
+print(f"  Join specs: {orig_joins} → {opt_joins}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Step 11: Create Optimized Space
+
+# COMMAND ----------
+
+from datetime import datetime
+
+optimized_space_id = None
+
+if not validation["valid"]:
+    print("✗ Cannot create optimized space — config has validation errors.")
+    print("  Fix validation errors and re-run.")
+elif not failed_details:
+    print("✓ All benchmarks passed — no optimized space needed.")
+else:
+    title_prefix = f"[Optimized {datetime.now().strftime('%Y-%m-%d')}] "
+    create_result = genie.create_optimized_space(
+        original_space_id=SPACE_ID,
+        updated_config=optimized_space,
+        title_prefix=title_prefix,
+        space_info=space_info,
+    )
+    optimized_space_id = create_result["new_space_id"]
+    print(f"✓ Optimized space created:")
+    print(f"  Title: {create_result['new_space_title']}")
+    print(f"  Space ID: {optimized_space_id}")
+    print(f"  URL: {create_result['new_space_url']}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Step 12: Re-Evaluate Optimized Space and Compare
+# MAGIC
+# MAGIC Run the same benchmark eval against the optimized space and compare
+# MAGIC before/after accuracy.
+
+# COMMAND ----------
+
+optimized_metrics = None
+
+if not optimized_space_id:
+    print("Skipping re-evaluation — no optimized space was created.")
+else:
+    print(f"Running benchmark eval on optimized space {optimized_space_id}...")
+
+    opt_eval_run = genie.create_eval_run(optimized_space_id)
+    opt_eval_run_id = opt_eval_run.get("eval_run_id")
+    if not opt_eval_run_id:
+        raise ValueError(f"Could not extract eval_run_id from response: {opt_eval_run}")
+
+    print(f"Eval run created: {opt_eval_run_id}")
+    print(
+        f"Polling (interval={POLL_INTERVAL_SECONDS}s, timeout={POLL_TIMEOUT_SECONDS}s)..."
+    )
+    genie.poll_eval_run(
+        optimized_space_id,
+        opt_eval_run_id,
+        poll_interval=POLL_INTERVAL_SECONDS,
+        timeout=POLL_TIMEOUT_SECONDS,
+    )
+    print("✓ Optimized eval run completed")
+
+    # Fetch detailed results
+    opt_results_list = genie.list_eval_results(optimized_space_id, opt_eval_run_id)
+
+    def _fetch_opt_detail(r):
+        rid = r.get("result_id")
+        if not rid:
+            return None
+        return genie.get_eval_result_details(optimized_space_id, opt_eval_run_id, rid)
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        opt_details = [
+            d for d in executor.map(_fetch_opt_detail, opt_results_list) if d is not None
+        ]
+
+    print(f"Fetched {len(opt_details)} detailed results")
+
+    # Score and log to MLflow
+    opt_results_df, optimized_metrics, opt_run_id = _score_eval_details(
+        opt_details, benchmark_question_lookup, run_name="optimized",
+    )
+    print(f"✓ Optimized MLflow Run ID: {opt_run_id}")
+
+    # Compare before vs after
+    print(f"\n{'Scorer':<25} {'Before':>10} {'After':>10} {'Delta':>10}")
+    print("-" * 57)
+    for name in sorted(baseline_metrics):
+        before = baseline_metrics[name]
+        after = optimized_metrics[name]
+        delta = after - before
+        sign = "+" if delta > 0 else ""
+        print(f"  {name:<23} {before:>9.1%} {after:>9.1%} {sign}{delta:>8.1%}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Summary
+
+# COMMAND ----------
+
+print("=" * 60)
+print("Genie Space Optimization Summary")
+print("=" * 60)
+print(f"Space: {space_info['title']} ({SPACE_ID})")
+print(f"Benchmark questions evaluated: {len(all_details)}")
+print(f"Correct: {correct_count}/{len(all_details)}")
+print(f"Failures: {len(failed_details)}/{len(all_details)}")
+print(f"Assessment reasons triggered: {len(scorer_results)}")
+print(f"MLflow experiment: {experiment.name}")
+print(f"Baseline MLflow run ID: {mlflow_run_id}")
+print(f"Config valid: {validation['valid']}")
+if optimized_space_id:
+    print(f"Optimized space: {optimized_space_id}")
+if optimized_metrics:
+    print(f"\nAccuracy comparison:")
+    for name in sorted(baseline_metrics):
+        before = baseline_metrics[name]
+        after = optimized_metrics[name]
+        delta = after - before
+        sign = "+" if delta > 0 else ""
+        print(f"  {name}: {before:.1%} → {after:.1%} ({sign}{delta:.1%})")
+print("=" * 60)

@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "skills": {
+    "agent-evaluation": {
+      "source": "mlflow/skills",
+      "sourceType": "github",
+      "computedHash": "b0184a70a7c82fc391cb25b26a9b0eced04fa4e9f75e8be5a0dafd8eb7efed12"
+    },
+    "analyzing-mlflow-session": {
+      "source": "mlflow/skills",
+      "sourceType": "github",
+      "computedHash": "6e53821cfce72e74d68615012e2088b29f3d415b5ba36de6e4299e598f85a220"
+    },
+    "analyzing-mlflow-trace": {
+      "source": "mlflow/skills",
+      "sourceType": "github",
+      "computedHash": "a814876da3e16e91aac7c593ff4f15336d24df324632195476f209e0131a9cf9"
+    },
+    "instrumenting-with-mlflow-tracing": {
+      "source": "mlflow/skills",
+      "sourceType": "github",
+      "computedHash": "d2867c559557d90ff9f2533ab2a7f927cd23074108e75ca7d625ef686ec0a7fc"
+    },
+    "mlflow-agent": {
+      "source": "mlflow/skills",
+      "sourceType": "github",
+      "computedHash": "e1bc8147d7b557beb4a24699cd7d51b60f3cf9a8667b0f8fb3f8dfe221355e9e"
+    },
+    "mlflow-onboarding": {
+      "source": "mlflow/skills",
+      "sourceType": "github",
+      "computedHash": "8cb6dd03b2c9af91d5b173ac52285c19286a4a4fce3b143413a185be3a799fd5"
+    },
+    "querying-mlflow-metrics": {
+      "source": "mlflow/skills",
+      "sourceType": "github",
+      "computedHash": "851006ac9d4e3d5b40dea8f304c1f66c2badf544d3b3e40b62bf0b2aa7775041"
+    },
+    "retrieving-mlflow-traces": {
+      "source": "mlflow/skills",
+      "sourceType": "github",
+      "computedHash": "ec202398a25511ddac389ab111a536d3d3a7858350b25ca00f7198c01224e033"
+    },
+    "searching-mlflow-docs": {
+      "source": "mlflow/skills",
+      "sourceType": "github",
+      "computedHash": "b493bd3becb75a2bed6a6cb385700b25fe5ca0656a0c505756af4873d4c237dd"
+    }
+  }
+}
