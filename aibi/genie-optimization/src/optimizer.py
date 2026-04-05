@@ -302,7 +302,7 @@ for d in failed_details:
             }
         )
 
-fix_report = compile_fix_report(scorer_results)
+fix_report = compile_fix_report(scorer_results)  # For display below
 fix_reports_by_section = compile_fix_report_by_section(scorer_results)
 
 correct_count = len(all_details) - len(failed_details)

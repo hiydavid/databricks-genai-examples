@@ -28,8 +28,7 @@ Rules you MUST follow:
 1. Preserve ALL existing IDs — never change or remove them.
 2. New items (instructions, snippets, sample questions) need 32-character \
    lowercase hexadecimal IDs (UUID format without hyphens).
-3. Apply fixes in priority order: UC Metadata fixes first, then SQL Examples, \
-   then Instructions.
+3. Apply all fixes in priority order.
 4. Only modify what the fixes prescribe. Do not remove, rename, or restructure \
    unrelated parts of the config.
 5. Maintain "version": 2.
@@ -76,7 +75,10 @@ def _call_llm(client: OpenAI, llm_endpoint: str, user_message: str) -> dict | li
     # Strip markdown fences if the model wraps the JSON
     if content.startswith("```"):
         content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-    return json.loads(content)
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"LLM returned invalid JSON: {content[:500]}") from e
 
 
 def _optimize_data_sources(
@@ -233,7 +235,12 @@ def optimize_config(
             client,
             llm_endpoint,
         )
-        result["instructions"].update(updated_rest)
+        # Only merge back expected keys — prevent the LLM from injecting
+        # example_question_sqls or other unexpected keys via .update().
+        _EXPECTED_REST_KEYS = {"text_instructions", "join_specs", "sql_snippets", "sql_functions"}
+        result["instructions"].update(
+            {k: v for k, v in updated_rest.items() if k in _EXPECTED_REST_KEYS}
+        )
         result.setdefault("config", {})["sample_questions"] = updated_samples
         print("  [3/3] Done.")
     else:
