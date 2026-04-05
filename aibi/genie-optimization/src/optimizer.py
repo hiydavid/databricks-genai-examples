@@ -325,7 +325,7 @@ if not failed_details:
 else:
     from llm_optimizer import optimize_config
 
-    print(f"Calling {LLM_ENDPOINT} to generate optimized config (3 sequential section calls with full context)...")
+    print(f"Calling {LLM_ENDPOINT} to generate optimized config...")
 
     optimized_space = optimize_config(
         serialized_space=serialized_space,
