@@ -283,7 +283,7 @@ for name, value in sorted(baseline_metrics.items()):
 
 # COMMAND ----------
 
-from fix_taxonomy import compile_fix_report, compile_fix_report_by_section
+from fix_taxonomy import compile_fix_report
 
 # Collect all triggered assessment reasons from failed benchmarks
 failed_details = [d for d in all_details if d.get("assessment") != "GOOD"]
@@ -302,8 +302,7 @@ for d in failed_details:
             }
         )
 
-fix_report = compile_fix_report(scorer_results)  # For display below
-fix_reports_by_section = compile_fix_report_by_section(scorer_results)
+fix_report = compile_fix_report(scorer_results)
 
 correct_count = len(all_details) - len(failed_details)
 print(
@@ -326,11 +325,11 @@ if not failed_details:
 else:
     from llm_optimizer import optimize_config
 
-    print(f"Calling {LLM_ENDPOINT} to generate optimized config (sequential section calls)...")
+    print(f"Calling {LLM_ENDPOINT} to generate optimized config (3 sequential section calls with full context)...")
 
     optimized_space = optimize_config(
         serialized_space=serialized_space,
-        fix_reports_by_section=fix_reports_by_section,
+        fix_report=fix_report,
         llm_endpoint=LLM_ENDPOINT,
     )
     print("✓ Optimized config generated")
