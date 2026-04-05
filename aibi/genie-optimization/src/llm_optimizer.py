@@ -7,8 +7,12 @@ to produce an updated configuration that incorporates the fixes.
 
 import json
 
+import mlflow
 from databricks.sdk import WorkspaceClient
+from mlflow.entities import SpanType
 from openai import OpenAI
+
+mlflow.openai.autolog()
 
 SYSTEM_PROMPT = """\
 You are a Databricks Genie Space configuration optimizer. You receive a \
@@ -32,7 +36,10 @@ Rules you MUST follow:
 9. Maximum 1 text_instruction entry — if one already exists, append new guidance \
    to its "content" array rather than creating a second entry.
 10. join_specs "sql" field must have exactly 2 elements: \
-    [join_condition_string, relationship_type_annotation].
+    [join_condition_string, relationship_type_annotation]. \
+    The join_condition_string must be a SINGLE equality expression \
+    (e.g. "t1.col = t2.col") — no AND, OR, or multiple conditions. \
+    If a join needs multiple conditions, create separate join_spec entries.
 11. Do not modify the "benchmarks" section.
 12. These fields MUST always be arrays of strings, never bare strings: \
     description, question, content, sql, synonyms, comment, instruction, \
@@ -43,6 +50,38 @@ Rules you MUST follow:
 """
 
 
+def _build_client() -> OpenAI:
+    """Build an OpenAI-compatible client authenticated against the Databricks workspace."""
+    ws = WorkspaceClient()
+    token = ws.config.authenticate().get("Authorization", "").removeprefix("Bearer ")
+    return OpenAI(
+        base_url=f"{ws.config.host.rstrip('/')}/serving-endpoints",
+        api_key=token,
+    )
+
+
+def _call_llm(client: OpenAI, llm_endpoint: str, user_message: str) -> dict | list:
+    """Send a chat completion request and return the parsed JSON response."""
+    response = client.chat.completions.create(
+        model=llm_endpoint,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_message},
+        ],
+        temperature=0,
+        max_tokens=20000,
+    )
+    content = response.choices[0].message.content.strip()
+    # Strip markdown fences if the model wraps the JSON
+    if content.startswith("```"):
+        content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"LLM returned invalid JSON: {content[:500]}") from e
+
+
+@mlflow.trace(name="optimize_config", span_type=SpanType.CHAIN)
 def optimize_config(
     serialized_space: dict,
     fix_report: str,
@@ -56,14 +95,9 @@ def optimize_config(
         llm_endpoint: Databricks Foundation Model endpoint name.
 
     Returns:
-        The updated serialized_space dict.
+        The updated serialized_space dict with version and benchmarks preserved.
     """
-    ws = WorkspaceClient()
-    token = ws.config.authenticate().get("Authorization", "").removeprefix("Bearer ")
-    client = OpenAI(
-        base_url=f"{ws.config.host.rstrip('/')}/serving-endpoints",
-        api_key=token,
-    )
+    client = _build_client()
 
     config_json = json.dumps(serialized_space, indent=2, ensure_ascii=False)
 
@@ -73,18 +107,10 @@ def optimize_config(
         "Produce the updated serialized_space JSON incorporating all applicable fixes."
     )
 
-    response = client.chat.completions.create(
-        model=llm_endpoint,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_message},
-        ],
-        temperature=0,
-        max_tokens=16384,
-    )
+    result = _call_llm(client, llm_endpoint, user_message)
 
-    content = response.choices[0].message.content.strip()
-    # Strip markdown fences if the model wraps the JSON
-    if content.startswith("```"):
-        content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-    return json.loads(content)
+    # Hard restore of invariants that must never be LLM-modified
+    result["version"] = serialized_space["version"]
+    result["benchmarks"] = serialized_space["benchmarks"]
+
+    return result
