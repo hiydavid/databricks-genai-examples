@@ -362,21 +362,37 @@ if validation["warnings"]:
         print(f"  - {warn}")
 
 # Show diff summary
-orig_tables = len(serialized_space.get("data_sources", {}).get("tables", []))
-opt_tables = len(optimized_space.get("data_sources", {}).get("tables", []))
-orig_instr = len(
-    serialized_space.get("instructions", {}).get("example_question_sqls", [])
-)
-opt_instr = len(
-    optimized_space.get("instructions", {}).get("example_question_sqls", [])
-)
-orig_joins = len(serialized_space.get("instructions", {}).get("join_specs", []))
-opt_joins = len(optimized_space.get("instructions", {}).get("join_specs", []))
+def _count(space, *keys):
+    val = space
+    for k in keys:
+        val = val.get(k, {}) if isinstance(val, dict) else {}
+    return len(val) if isinstance(val, list) else 0
+
+def _count_columns_with(space, field):
+    total = 0
+    for table in space.get("data_sources", {}).get("tables", []):
+        for col in table.get("column_configs", []):
+            if col.get(field):
+                total += 1
+    return total
+
+diff_items = [
+    ("Tables", _count(serialized_space, "data_sources", "tables"), _count(optimized_space, "data_sources", "tables")),
+    ("Example SQLs", _count(serialized_space, "instructions", "example_question_sqls"), _count(optimized_space, "instructions", "example_question_sqls")),
+    ("Join specs", _count(serialized_space, "instructions", "join_specs"), _count(optimized_space, "instructions", "join_specs")),
+    ("Text instructions", _count(serialized_space, "instructions", "text_instructions"), _count(optimized_space, "instructions", "text_instructions")),
+    ("SQL functions", _count(serialized_space, "instructions", "sql_functions"), _count(optimized_space, "instructions", "sql_functions")),
+    ("Filter snippets", _count(serialized_space, "instructions", "sql_snippets", "filters"), _count(optimized_space, "instructions", "sql_snippets", "filters")),
+    ("Expression snippets", _count(serialized_space, "instructions", "sql_snippets", "expressions"), _count(optimized_space, "instructions", "sql_snippets", "expressions")),
+    ("Measure snippets", _count(serialized_space, "instructions", "sql_snippets", "measures"), _count(optimized_space, "instructions", "sql_snippets", "measures")),
+    ("Columns with descriptions", _count_columns_with(serialized_space, "description"), _count_columns_with(optimized_space, "description")),
+    ("Columns with synonyms", _count_columns_with(serialized_space, "synonyms"), _count_columns_with(optimized_space, "synonyms")),
+]
 
 print(f"\nConfig changes:")
-print(f"  Tables: {orig_tables} → {opt_tables}")
-print(f"  Example SQLs: {orig_instr} → {opt_instr}")
-print(f"  Join specs: {orig_joins} → {opt_joins}")
+for label, orig, opt in diff_items:
+    marker = " *" if orig != opt else ""
+    print(f"  {label}: {orig} → {opt}{marker}")
 
 # COMMAND ----------
 

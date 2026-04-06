@@ -47,6 +47,39 @@ Rules you MUST follow:
     "description": "Some text".
 13. Return ONLY the complete, valid serialized_space JSON object — no markdown, \
     no explanation, no wrapping.
+14. example_question_sqls MUST teach generalizable SQL patterns, not answer \
+    specific questions. Each example should demonstrate a reusable technique \
+    (e.g., window functions for ranking, CASE expressions for categorization, \
+    date arithmetic for period comparisons). The "question" field should be a \
+    generic template (e.g., "What is the top N [metric] by [dimension]?") not \
+    a specific business question.
+15. NEVER create an example_question_sql whose "question" field closely \
+    matches any specific benchmark question or real user question from the \
+    fix report. Generalize: if a benchmark fails on "What were Q1 2024 sales \
+    by region?", create an example like "What is [metric] by [dimension] for \
+    a given time period?" with SQL showing the DATE_TRUNC + GROUP BY pattern.
+16. Prefer sql_snippets (measures, filters, expressions) and text_instructions \
+    over example_question_sqls when the fix only requires teaching a specific \
+    calculation, filter pattern, or business rule. Use example_question_sqls \
+    only when the fix requires demonstrating a multi-step SQL pattern that \
+    cannot be captured in a snippet.
+Valid serialized_space schema (use ONLY these field names):
+
+  data_sources.tables[]: {identifier, description, column_configs}
+  column_configs[]: {column_name, description, synonyms, \
+    enable_entity_matching, enable_format_assistance, exclude}
+  instructions.text_instructions[]: {id, content}
+  instructions.example_question_sqls[]: {id, question, sql, \
+    parameters[{name, type_hint}], usage_guidance}
+  instructions.join_specs[]: {id, left{identifier,alias}, \
+    right{identifier,alias}, sql, comment, instruction}
+  instructions.sql_functions[]: {id, identifier}
+  instructions.sql_snippets.filters[]: {id, sql, display_name, \
+    synonyms, comment, instruction}
+  instructions.sql_snippets.expressions[]: {id, alias, sql, \
+    display_name, synonyms, comment, instruction}
+  instructions.sql_snippets.measures[]: {id, alias, sql, \
+    display_name, synonyms, comment, instruction}
 """
 
 
@@ -99,7 +132,9 @@ def optimize_config(
     """
     client = _build_client()
 
-    config_json = json.dumps(serialized_space, indent=2, ensure_ascii=False)
+    # Strip benchmarks from what the LLM sees to prevent overfitting
+    config_for_llm = {k: v for k, v in serialized_space.items() if k != "benchmarks"}
+    config_json = json.dumps(config_for_llm, indent=2, ensure_ascii=False)
 
     user_message = (
         f"Current serialized_space:\n```json\n{config_json}\n```\n\n"

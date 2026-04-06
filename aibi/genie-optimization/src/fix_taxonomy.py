@@ -370,6 +370,48 @@ def generate_prescriptive_fix(
     return "\n".join(lines)
 
 
+def _summarize_sql_difference(expected_sql: str, generated_sql: str) -> str:
+    """Extract structural SQL differences without exposing verbatim queries."""
+    import re
+
+    def _has_keyword(sql: str, keyword: str) -> bool:
+        return bool(re.search(rf"\b{keyword}\b", sql))
+
+    hints = []
+    exp = expected_sql.upper()
+    gen = generated_sql.upper()
+
+    exp_joins = len(re.findall(r"\bJOIN\b", exp))
+    gen_joins = len(re.findall(r"\bJOIN\b", gen))
+    if exp_joins != gen_joins:
+        hints.append(f"expected {exp_joins} JOIN(s), generated {gen_joins}")
+
+    if _has_keyword(exp, "GROUP BY") and not _has_keyword(gen, "GROUP BY"):
+        hints.append("missing GROUP BY clause")
+    elif not _has_keyword(exp, "GROUP BY") and _has_keyword(gen, "GROUP BY"):
+        hints.append("unexpected GROUP BY clause")
+
+    if _has_keyword(exp, "WHERE") and not _has_keyword(gen, "WHERE"):
+        hints.append("missing WHERE clause")
+
+    for func in ("SUM", "COUNT", "AVG", "MIN", "MAX"):
+        if _has_keyword(exp, func) and not _has_keyword(gen, func):
+            hints.append(f"missing {func}() aggregation")
+
+    if _has_keyword(exp, "OVER") and not _has_keyword(gen, "OVER"):
+        hints.append("missing window function (OVER clause)")
+    if _has_keyword(exp, "DISTINCT") and not _has_keyword(gen, "DISTINCT"):
+        hints.append("missing DISTINCT")
+    if _has_keyword(exp, "WITH") and not _has_keyword(gen, "WITH"):
+        hints.append("missing CTE (WITH clause)")
+    if _has_keyword(exp, "UNION") and not _has_keyword(gen, "UNION"):
+        hints.append("missing UNION")
+    if _has_keyword(exp, "ORDER BY") and not _has_keyword(gen, "ORDER BY"):
+        hints.append("missing ORDER BY")
+
+    return "; ".join(hints) if hints else ""
+
+
 def compile_fix_report(scorer_results: list[dict]) -> str:
     """Compile all triggered fixes into a prioritized report grouped by category.
 
