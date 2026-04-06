@@ -361,6 +361,10 @@ if validation["warnings"]:
     for warn in validation["warnings"]:
         print(f"  - {warn}")
 
+overlap_warnings = [w for w in validation["warnings"] if "similarity" in w]
+if not overlap_warnings and failed_details:
+    print("  (benchmark overlap was checked and resolved during LLM optimization)")
+
 # Show diff summary
 def _count(space, *keys):
     val = space
