@@ -364,8 +364,8 @@ def generate_prescriptive_fix(
     lines.append(f"Diagnostic: {reason['diagnostic_signal']}")
     lines.append("")
     lines.append(f"Question: {question}")
-    lines.append(f"Expected SQL: {expected_sql[:500]}")
-    lines.append(f"Generated SQL: {generated_sql[:500]}")
+    lines.append(f"Expected SQL: {expected_sql}")
+    lines.append(f"Generated SQL: {generated_sql}")
 
     return "\n".join(lines)
 
@@ -462,7 +462,7 @@ def compile_fix_report(scorer_results: list[dict]) -> str:
             lines.append(f"  Config path: `{path}`")
             lines.append(f"  Triggered by {len(questions)} question(s):")
             for q in questions[:5]:
-                lines.append(f"    - {q[:120]}")
+                lines.append(f"    - {q}")
             lines.append("")
 
         # List specific failures for context
@@ -470,10 +470,10 @@ def compile_fix_report(scorer_results: list[dict]) -> str:
         for item in items:
             lines.append(
                 f"- [{item.get('priority', '?')}] **{item.get('label', '?')}**: "
-                f"{item.get('question', '?')[:100]}"
+                f"{item.get('question', '?')}"
             )
-            lines.append(f"  Expected: `{item.get('expected_sql', '')[:200]}`")
-            lines.append(f"  Generated: `{item.get('generated_sql', '')[:200]}`")
+            lines.append(f"  Expected: `{item.get('expected_sql', '')}`")
+            lines.append(f"  Generated: `{item.get('generated_sql', '')}`")
         lines.append("")
 
     # Flag any benchmark quality issues
