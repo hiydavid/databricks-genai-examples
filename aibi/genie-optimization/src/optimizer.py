@@ -9,15 +9,15 @@
 # MAGIC **Flow:**
 # MAGIC 1. Get serialized Genie config
 # MAGIC 2. Check benchmark questions (minimum 10)
-# MAGIC 3. Set up MLflow experiment
-# MAGIC 4–5. Create (or reuse) Genie benchmark eval run
-# MAGIC 6. List eval results
-# MAGIC 7. Score results and log to MLflow
-# MAGIC 8. Compile prescriptive fixes from failures
-# MAGIC 9. LLM optimization call
-# MAGIC 10. Validate optimized config
-# MAGIC 11. Create optimized space
-# MAGIC 12. Re-evaluate optimized space and compare
+# MAGIC 3. Validate benchmark Q&A pairs (LLM review)
+# MAGIC 4. Create (or reuse) Genie benchmark eval run
+# MAGIC 5. List eval results
+# MAGIC 6. Score results and log to MLflow
+# MAGIC 7. Compile prescriptive fixes from failures
+# MAGIC 8. LLM optimization call
+# MAGIC 9. Validate optimized config
+# MAGIC 10. Create optimized space
+# MAGIC 11. Re-evaluate optimized space and compare
 
 # COMMAND ----------
 
@@ -40,6 +40,31 @@ LLM_ENDPOINT = (
 )
 POLL_INTERVAL_SECONDS = 30  # Seconds between eval run status polls
 POLL_TIMEOUT_SECONDS = 1800  # Max seconds to wait for eval run completion
+
+# COMMAND ----------
+
+import mlflow
+from scorers import score_llm_judge, score_overall_assessment, score_result_comparison
+
+if not EXPERIMENT_ID:
+    raise ValueError(
+        "EXPERIMENT_ID is required — create an MLflow Experiment in the UI first, "
+        "then set EXPERIMENT_ID in the Configuration cell above."
+    )
+
+experiment = mlflow.get_experiment(EXPERIMENT_ID)
+if experiment is None or experiment.lifecycle_stage == "deleted":
+    raise ValueError(
+        f"MLflow Experiment '{EXPERIMENT_ID}' does not exist or has been deleted. "
+        "Create one in the MLflow UI first."
+    )
+
+mlflow.set_experiment(experiment_id=EXPERIMENT_ID)
+
+print(f"MLflow experiment: {experiment.name} (ID: {EXPERIMENT_ID})")
+print(
+    "Scorers: overall_assessment, result_comparison (deterministic), llm_judge (semantic)"
+)
 
 # COMMAND ----------
 
@@ -101,37 +126,53 @@ for i, q in enumerate(benchmark_questions, 1):
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Step 3: Set Up MLflow Experiment
+# MAGIC ## Step 3: Validate Benchmark Q&A Pairs
+# MAGIC
+# MAGIC Uses an LLM to review each benchmark question-answer pair and determine
+# MAGIC whether the ground truth SQL actually answers what the question asks.
+# MAGIC This catches issues like extra/missing columns, wrong aggregations, or
+# MAGIC SQL that answers a different question entirely.
 
 # COMMAND ----------
 
-import mlflow
-from scorers import score_llm_judge, score_overall_assessment, score_result_comparison
+from benchmark_validator import validate_benchmarks
 
-if not EXPERIMENT_ID:
-    raise ValueError(
-        "EXPERIMENT_ID is required — create an MLflow Experiment in the UI first, "
-        "then set EXPERIMENT_ID in the Configuration cell above."
-    )
-
-experiment = mlflow.get_experiment(EXPERIMENT_ID)
-if experiment is None or experiment.lifecycle_stage == "deleted":
-    raise ValueError(
-        f"MLflow Experiment '{EXPERIMENT_ID}' does not exist or has been deleted. "
-        "Create one in the MLflow UI first."
-    )
-
-mlflow.set_experiment(experiment_id=EXPERIMENT_ID)
-
-print(f"MLflow experiment: {experiment.name} (ID: {EXPERIMENT_ID})")
-print(
-    "Scorers: overall_assessment, result_comparison (deterministic), llm_judge (semantic)"
+print("Validating benchmark Q&A pairs...")
+qa_validation = validate_benchmarks(
+    benchmark_questions=benchmark_questions,
+    llm_endpoint=LLM_ENDPOINT,
 )
+
+summary = qa_validation["summary"]
+print(f"\n✓ Benchmark Q&A validation complete:")
+print(f"  PASS: {summary['pass']}/{summary['total']}")
+print(f"  WARN: {summary['warn']}/{summary['total']}")
+print(f"  FAIL: {summary['fail']}/{summary['total']}")
+if summary["error"] > 0:
+    print(f"  ERROR: {summary['error']}/{summary['total']}")
+
+if summary["fail"] > 0 or summary["warn"] > 0:
+    print()
+    print(qa_validation["report"])
+    print()
+    print(
+        "⚠ Some benchmark Q&A pairs may have issues. Review the report above."
+    )
+    print(
+        "  The pipeline will continue, but eval results for flagged benchmarks "
+        "may not be meaningful."
+    )
+    print(
+        "  To fix: edit the benchmark questions/SQL in the Genie Space UI, "
+        "then re-run."
+    )
+else:
+    print("  All benchmark Q&A pairs look correct.")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Steps 4–5: Create (or Reuse) Genie Benchmark Eval Run
+# MAGIC ## Step 4: Create (or Reuse) Genie Benchmark Eval Run
 
 # COMMAND ----------
 
@@ -167,7 +208,7 @@ else:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Step 6: List Eval Results
+# MAGIC ## Step 5: List Eval Results
 
 # COMMAND ----------
 
@@ -177,7 +218,7 @@ print(f"✓ {len(eval_results_list)} eval results ready")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Step 7: Score Results and Log to MLflow
+# MAGIC ## Step 6: Score Results and Log to MLflow
 # MAGIC
 # MAGIC For each result, fetch details from the Genie API and score with
 # MAGIC deterministic scorers. Results are logged to MLflow as metrics and a
@@ -279,7 +320,7 @@ for name, value in sorted(baseline_metrics.items()):
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Step 8: Compile Prescriptive Fixes from Failures
+# MAGIC ## Step 7: Compile Prescriptive Fixes from Failures
 
 # COMMAND ----------
 
@@ -315,7 +356,7 @@ print(fix_report)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Step 9: LLM Optimization Call
+# MAGIC ## Step 8: LLM Optimization Call
 
 # COMMAND ----------
 
@@ -337,7 +378,7 @@ else:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Step 10: Validate Optimized Config
+# MAGIC ## Step 9: Validate Optimized Config
 
 # COMMAND ----------
 
@@ -401,7 +442,7 @@ for label, orig, opt in diff_items:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Step 11: Create Optimized Space
+# MAGIC ## Step 10: Create Optimized Space
 
 # COMMAND ----------
 
@@ -431,7 +472,7 @@ else:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Step 12: Re-Evaluate Optimized Space and Compare
+# MAGIC ## Step 11: Re-Evaluate Optimized Space and Compare
 # MAGIC
 # MAGIC Run the same benchmark eval against the optimized space and compare
 # MAGIC before/after accuracy.
@@ -522,4 +563,14 @@ if optimized_metrics:
         delta = after - before
         sign = "+" if delta > 0 else ""
         print(f"  {name}: {before:.1%} → {after:.1%} ({sign}{delta:.1%})")
+if qa_validation["summary"]["fail"] > 0 or qa_validation["summary"]["warn"] > 0:
+    print(
+        f"\n⚠ Benchmark quality concerns: "
+        f"{qa_validation['summary']['fail']} FAIL, "
+        f"{qa_validation['summary']['warn']} WARN"
+    )
+    print(
+        "  Review Step 3 output — eval results for flagged benchmarks "
+        "may not be reliable."
+    )
 print("=" * 60)

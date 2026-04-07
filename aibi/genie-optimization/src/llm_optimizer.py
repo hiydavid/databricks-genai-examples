@@ -29,8 +29,7 @@ Rules you MUST follow:
 1. Preserve ALL existing IDs — never change or remove them.
 2. New items (instructions, snippets, sample questions) need 32-character \
    lowercase hexadecimal IDs (UUID format without hyphens).
-3. Apply fixes in priority order: UC Metadata fixes first, then SQL Examples, \
-   then Instructions.
+3. Apply fixes in the order listed in the fix report.
 4. Only modify what the fixes prescribe. Do not remove, rename, or restructure \
    unrelated parts of the config.
 5. Maintain "version": 2.
