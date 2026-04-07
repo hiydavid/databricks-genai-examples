@@ -75,7 +75,7 @@ Step 6:  List results
     |
 Step 7:  Score results + log baseline to MLflow
     |
-Step 8:  Compile fix report (grouped by category + priority)
+Step 8:  Compile fix report (sorted by priority)
     |
 Step 9:  LLM optimization (config + fixes -> improved config)
     |        +-- Self-fix loop: detect benchmark overlap, retry up to 2x
@@ -103,15 +103,9 @@ The optimizer prevents the LLM from "teaching to the test" by copying benchmark 
 - OpenAI calls are auto-logged via `mlflow.openai.autolog()`
 - All traces appear in the same MLflow experiment alongside eval metrics
 
-### Assessment Reason Categories
+### Assessment Reasons
 
-The scorers map to three fix categories, applied in order:
-
-| Category | Labels | What It Covers |
-|---|---|---|
-| **UC Metadata** | 7 labels | Wrong tables/columns, missing joins, column types |
-| **SQL Examples** | 9 labels | Wrong aggregations, syntax errors, missing rows |
-| **Instructions** | 8 labels | Wrong filters, business logic, metric calculations |
+The fix taxonomy maps 19 assessment labels to specific config fixes (sql_snippets, example_question_sqls, join_specs, text_instructions, column_configs). Each label includes an ordered list of recommended fixes and a diagnostic signal. See `src/fix_taxonomy.py` for the full mapping.
 
 ## Output
 
