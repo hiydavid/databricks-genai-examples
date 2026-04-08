@@ -296,23 +296,27 @@ def compile_fix_report(scorer_results: list[dict]) -> str:
         # Sort by priority
         items.sort(key=lambda x: x.get("priority", "P3"))
 
-        # Collect unique fix actions with their triggering questions
-        seen_fixes: dict[str, list[str]] = {}
+        # Collect unique fix actions with their triggering questions and reasons
+        seen_fixes: dict[str, list[dict]] = {}
         for item in items:
             for fix in item.get("fixes", []):
                 key = f"{fix['action']} | {fix['path']}"
-                question = item.get("question", "unknown")
-                seen_fixes.setdefault(key, []).append(question)
+                seen_fixes.setdefault(key, []).append({
+                    "question": item.get("question", "unknown"),
+                    "label": item.get("label", "unknown"),
+                })
 
         lines.append("## Recommended Fixes")
         lines.append("")
-        for fix_key, questions in seen_fixes.items():
+        for fix_key, entries in seen_fixes.items():
             action, path = fix_key.split(" | ", 1)
+            reason_labels = sorted(set(e["label"] for e in entries))
             lines.append(f"- **{action}**")
             lines.append(f"  Config path: `{path}`")
-            lines.append(f"  Triggered by {len(questions)} question(s):")
-            for q in questions[:5]:
-                lines.append(f"    - {q}")
+            lines.append(f"  Assessment reasons: {', '.join(reason_labels)}")
+            lines.append(f"  Triggered by {len(entries)} question(s):")
+            for e in entries[:5]:
+                lines.append(f"    - {e['question']}")
             lines.append("")
 
         # List specific failures for context
