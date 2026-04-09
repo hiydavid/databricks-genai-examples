@@ -4,21 +4,9 @@
 # MAGIC
 # MAGIC Trace every step of a Genie query — from metadata fetching through SQL generation to result delivery — using the REST API and MLflow Tracing.
 # MAGIC
-# MAGIC ## Why REST API instead of the SDK?
-# MAGIC
-# MAGIC The `databricks_ai_bridge` SDK creates trace spans (`asking_ai`, `fetching_metadata`, etc.) but **hides the contents**.
-# MAGIC
-# MAGIC | Visibility | SDK | REST API |
-# MAGIC |------------|-----|----------|
-# MAGIC | State names | Yes | Yes |
-# MAGIC | Full API response | No | Yes |
-# MAGIC | Generated SQL per step | No | Yes |
-# MAGIC | What changed between steps | No | Yes |
-# MAGIC | Error details | Minimal | Full |
-# MAGIC
 # MAGIC ## Note on timing
 # MAGIC
-# MAGIC Step durations (`+Xs`) are computed from server-side `last_updated_timestamp` values, so they reflect actual Genie processing time. The elapsed time (`t=`) is measured client-side and depends on the 1.5s polling interval, so state changes may appear up to 1.5s after they actually occurred.
+# MAGIC Step durations (`+Xs`) are computed from server-side `last_updated_timestamp` values, so they reflect actual Genie processing time. The elapsed time (`t=`) is measured client-side and depends on the 0.5s polling interval, so state changes may appear up to 0.5s after they actually occurred. (GET polls do not count toward QPM limits.)
 # MAGIC
 # MAGIC ## Prerequisites
 # MAGIC
@@ -33,9 +21,13 @@
 
 # COMMAND ----------
 
-import os, time, json, requests, mlflow
+import json
+import os
+import time
 
-# === CONFIGURATION ===
+import mlflow
+import requests
+
 GENIE_SPACE_ID = ""  # Replace with your Genie Space ID
 QUESTION = "What were the top 10 offers by redemption rate last month?"
 EXPERIMENT = "/Shared/genie-visibility-demo"
@@ -43,7 +35,13 @@ EXPERIMENT = "/Shared/genie-visibility-demo"
 # Auto-detect Databricks environment
 try:
     HOST = spark.conf.get("spark.databricks.workspaceUrl")
-    TOKEN = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()
+    TOKEN = (
+        dbutils.notebook.entry_point.getDbutils()
+        .notebook()
+        .getContext()
+        .apiToken()
+        .get()
+    )
 except Exception:
     HOST = os.getenv("DATABRICKS_HOST", "")
     TOKEN = os.getenv("DATABRICKS_TOKEN", "")
@@ -53,12 +51,22 @@ print(f"Space: {GENIE_SPACE_ID} | Host: {HOST}")
 
 # COMMAND ----------
 
+
+def _extract_query_attachment(message: dict):
+    """Return (sql, description, att_id) from the first query attachment, or (None, None, None)."""
+    for att in message.get("attachments") or []:
+        if att.get("query"):
+            return att["query"].get("query"), att["query"].get("description"), att.get("id")
+    return None, None, None
+
+
 def ask_genie_with_full_trace(question: str, space_id: str, host: str, token: str):
     """
     Ask Genie using REST API with full MLflow tracing.
     Every state change logs the complete API response.
     """
-    base_url = f"https://{host.replace('https://', '')}/api/2.0/genie/spaces/{space_id}"
+    host_clean = host.rstrip("/").removeprefix("https://").removeprefix("http://")
+    base_url = f"https://{host_clean}/api/2.0/genie/spaces/{space_id}"
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     start = time.time()
@@ -67,11 +75,14 @@ def ask_genie_with_full_trace(question: str, space_id: str, host: str, token: st
     with mlflow.start_span(name="genie_query") as root:
         root.set_inputs({"question": question, "space_id": space_id})
 
-        # === 1. START CONVERSATION ===
         with mlflow.start_span(name="1_start_conversation") as span:
             span.set_inputs({"question": question})
 
-            resp = requests.post(f"{base_url}/start-conversation", headers=headers, json={"content": question})
+            resp = requests.post(
+                f"{base_url}/start-conversation",
+                headers=headers,
+                json={"content": question},
+            )
 
             if resp.status_code != 200:
                 span.set_attributes({"error": resp.text[:500]})
@@ -79,7 +90,9 @@ def ask_genie_with_full_trace(question: str, space_id: str, host: str, token: st
                 return result
 
             data = resp.json()
-            conv_id = data.get("conversation_id") or data.get("conversation", {}).get("id")
+            conv_id = data.get("conversation_id") or data.get("conversation", {}).get(
+                "id"
+            )
             msg_id = data.get("message_id") or data.get("message", {}).get("id")
 
             if not conv_id or not msg_id:
@@ -87,129 +100,163 @@ def ask_genie_with_full_trace(question: str, space_id: str, host: str, token: st
                 result["error"] = "Could not extract conversation/message IDs"
                 return result
 
-            span.set_outputs({"conversation_id": conv_id, "message_id": msg_id, "response": data})
+            span.set_outputs(
+                {"conversation_id": conv_id, "message_id": msg_id, "response": data}
+            )
 
-        # === 2. POLL UNTIL COMPLETE ===
         with mlflow.start_span(name="2_poll_states") as poll_span:
             last_status = None
             status = None
             message = None
             last_server_ts = None
-            pending_state = None  # (status, elapsed) deferred until we know its duration
+            pending_state = None
             poll_start = time.time()
 
             while (time.time() - poll_start) < 300:  # 5 min timeout
-                resp = requests.get(f"{base_url}/conversations/{conv_id}/messages/{msg_id}", headers=headers)
+                iter_start = time.time()
+                resp = requests.get(
+                    f"{base_url}/conversations/{conv_id}/messages/{msg_id}",
+                    headers=headers,
+                )
                 if resp.status_code != 200:
-                    time.sleep(1.5)
+                    time.sleep(max(0, 0.5 - (time.time() - iter_start)))
                     continue
                 message = resp.json()
                 status = message.get("status", "UNKNOWN")
 
-                # Log each state change with FULL details
                 if status != last_status:
                     with mlflow.start_span(name=f"state_{status}") as state_span:
                         server_ts = message.get("last_updated_timestamp")
                         elapsed = round(time.time() - start, 2)
-                        prev_duration = round((server_ts - last_server_ts) / 1000, 2) if (server_ts and last_server_ts) else None
+                        prev_duration = (
+                            round((server_ts - last_server_ts) / 1000, 2)
+                            if (server_ts and last_server_ts)
+                            else None
+                        )
 
-                        # Print the PREVIOUS state now that we know its duration
                         if pending_state:
                             prev_status, prev_elapsed = pending_state
-                            dur_str = f"+{prev_duration:.1f}s" if prev_duration is not None else ""
-                            print(f"  [t={prev_elapsed:5.1f}s {dur_str:>7s}] {prev_status}")
+                            dur_str = (
+                                f"+{prev_duration:.1f}s"
+                                if prev_duration is not None
+                                else ""
+                            )
+                            print(
+                                f"  [t={prev_elapsed:5.1f}s {dur_str:>7s}] {prev_status}"
+                            )
 
                         last_server_ts = server_ts
+                        sql, _, _ = _extract_query_attachment(message)
 
-                        # Extract SQL if present
-                        sql = None
-                        for att in (message.get("attachments") or []):
-                            if att.get("query"):
-                                sql = att["query"].get("query")
-
-                        # === KEY: Log everything ===
-                        state_span.set_inputs({
-                            "elapsed_sec": elapsed,
-                            "server_timestamp": server_ts,
-                        })
-                        state_span.set_attributes({
+                        state_span.set_inputs(
+                            {
+                                "elapsed_sec": elapsed,
+                                "server_timestamp": server_ts,
+                            }
+                        )
+                        attrs = {
                             "status": status,
                             "has_sql": sql is not None,
-                            "attachment_count": len(message.get("attachments") or []),
-                        })
+                            "attachment_count": len(
+                                message.get("attachments") or []
+                            ),
+                        }
+                        if prev_duration is not None:
+                            attrs["prev_state_duration_sec"] = prev_duration
+                        state_span.set_attributes(attrs)
                         if sql:
                             state_span.set_attributes({"generated_sql": sql})
                         if message.get("error"):
-                            state_span.set_attributes({"error": json.dumps(message["error"])})
+                            state_span.set_attributes(
+                                {"error": json.dumps(message["error"])}
+                            )
 
-                        # Full response in outputs
-                        state_span.set_outputs({
-                            "status": status,
-                            "generated_sql": sql,
-                            "full_response": message,  # <-- THE FULL API RESPONSE
-                        })
+                        state_span.set_outputs(
+                            {
+                                "status": status,
+                                "generated_sql": sql,
+                                "full_response": message,
+                            }
+                        )
 
                     pending_state = (status, elapsed)
                     last_status = status
 
-                if status in ["COMPLETED", "FAILED", "CANCELLED", "QUERY_RESULT_EXPIRED"]:
-                    # Print the terminal state (no duration — nothing follows it)
+                if status in [
+                    "COMPLETED",
+                    "FAILED",
+                    "CANCELLED",
+                    "QUERY_RESULT_EXPIRED",
+                ]:
                     if pending_state:
-                        print(f"  [t={pending_state[1]:5.1f}s        ] {pending_state[0]}")
+                        print(
+                            f"  [t={pending_state[1]:5.1f}s        ] {pending_state[0]}"
+                        )
                     break
-                time.sleep(1.5)
+                time.sleep(max(0, 0.5 - (time.time() - iter_start)))
 
-            poll_span.set_outputs({"final_status": status, "total_time": round(time.time() - start, 2)})
+            poll_span.set_outputs(
+                {"final_status": status, "total_time": round(time.time() - start, 2)}
+            )
 
-        # === 3. EXTRACT RESULTS ===
         if message and message.get("status") == "COMPLETED":
             with mlflow.start_span(name="3_extract_results") as extract_span:
-                for att in (message.get("attachments") or []):
-                    if att.get("query"):
-                        result["sql"] = att["query"].get("query")
-                        result["description"] = att["query"].get("description")
-                        att_id = att.get("id")
+                sql, description, att_id = _extract_query_attachment(message)
+                if sql:
+                    result["sql"] = sql
+                    result["description"] = description
 
-                        extract_span.set_outputs({
-                            "generated_sql": result["sql"],
-                            "description": result["description"],
-                        })
+                    extract_span.set_outputs(
+                        {
+                            "generated_sql": sql,
+                            "description": description,
+                        }
+                    )
 
-                        # Fetch query results
-                        if att_id:
-                            with mlflow.start_span(name="4_fetch_data") as data_span:
-                                resp = requests.get(
-                                    f"{base_url}/conversations/{conv_id}/messages/{msg_id}/query-result/{att_id}",
-                                    headers=headers
-                                )
-                                if resp.status_code == 200:
-                                    stmt = resp.json().get("statement_response", {})
-                                    cols = [c["name"] for c in stmt.get("manifest", {}).get("schema", {}).get("columns", [])]
-                                    rows = stmt.get("result", {}).get("data_array", [])
-                                    result["columns"] = cols
-                                    result["rows"] = len(rows)
-                                    result["sample"] = [dict(zip(cols, r)) for r in rows[:3]]
+                    if att_id:
+                        with mlflow.start_span(name="3a_fetch_data") as data_span:
+                            resp = requests.get(
+                                f"{base_url}/conversations/{conv_id}/messages/{msg_id}/query-result/{att_id}",
+                                headers=headers,
+                            )
+                            if resp.status_code == 200:
+                                stmt = resp.json().get("statement_response", {})
+                                cols = [
+                                    c["name"]
+                                    for c in stmt.get("manifest", {})
+                                    .get("schema", {})
+                                    .get("columns", [])
+                                ]
+                                rows = stmt.get("result", {}).get("data_array", [])
+                                result["columns"] = cols
+                                result["rows"] = len(rows)
+                                result["sample"] = [
+                                    dict(zip(cols, r)) for r in rows[:3]
+                                ]
 
-                                    data_span.set_outputs({
+                                data_span.set_outputs(
+                                    {
                                         "columns": cols,
                                         "row_count": len(rows),
                                         "sample": result["sample"],
-                                    })
+                                    }
+                                )
 
-        # === FINAL SUMMARY ===
         result["duration"] = round(time.time() - start, 2)
-        root.set_outputs({
-            "success": result["sql"] is not None,
-            "generated_sql": result["sql"],
-            "row_count": result["rows"],
-            "duration_sec": result["duration"],
-        })
+        root.set_outputs(
+            {
+                "success": result["sql"] is not None,
+                "generated_sql": result["sql"],
+                "row_count": result["rows"],
+                "duration_sec": result["duration"],
+            }
+        )
 
     return result
 
+
 # COMMAND ----------
 
-# === RUN DEMO ===
 with mlflow.start_run(run_name="genie_full_visibility"):
 
     print(f"Question: {QUESTION}\n")
@@ -245,11 +292,10 @@ with mlflow.start_run(run_name="genie_full_visibility"):
 # MAGIC │     ├── state_EXECUTING_QUERY      → Executing the generated SQL query
 # MAGIC │     └── state_COMPLETED            → Results are in the attachments field
 # MAGIC │
-# MAGIC ├── 3_extract_results
-# MAGIC │     └── Outputs: generated_sql, description
-# MAGIC │
-# MAGIC └── 4_fetch_data
-# MAGIC       └── Outputs: columns, row_count, sample rows
+# MAGIC └── 3_extract_results
+# MAGIC       ├── Outputs: generated_sql, description
+# MAGIC       └── 3a_fetch_data
+# MAGIC             └── Outputs: columns, row_count, sample rows
 # MAGIC ```
 # MAGIC
 # MAGIC Click any `state_*` span, then the **Outputs** tab, and expand `full_response` to see the complete API payload at that stage.
