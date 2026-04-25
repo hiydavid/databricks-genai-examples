@@ -312,12 +312,13 @@ for turbine in turbines_data:
             }
         )
         # Corrective maintenance work order tied to the failure.
+        corrective_date = min(END_DATE, failure_date + timedelta(days=random.randint(0, 4)))
         maintenance_data.append(
             {
                 "maintenance_id": f"MAINT-{maintenance_counter:07d}",
-                "maintenance_date": min(END_DATE, failure_date + timedelta(days=random.randint(0, 4))),
-                "maintenance_year": failure_date.year,
-                "maintenance_month": failure_date.month,
+                "maintenance_date": corrective_date,
+                "maintenance_year": corrective_date.year,
+                "maintenance_month": corrective_date.month,
                 "turbine_id": turbine["turbine_id"],
                 "component_id": component["component_id"],
                 "maintenance_type": "Corrective",

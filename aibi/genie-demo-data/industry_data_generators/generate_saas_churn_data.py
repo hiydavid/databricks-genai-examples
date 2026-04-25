@@ -323,11 +323,17 @@ INVOICES_BY_SUB = {}
 
 for sub in subscriptions_data:
     account = ACCOUNT_BY_ID[sub["account_id"]]
-    billing_months = [MONTH_LIST[i] for i in range(0, len(MONTH_LIST), 12)] if sub["billing_term"] == "Annual" else MONTH_LIST
-    for year, month in billing_months:
+    start_month_anchor = date(sub["start_date"].year, sub["start_date"].month, 1)
+    for year, month in MONTH_LIST:
         invoice_month = date(year, month, 1)
         if invoice_month < date(sub["start_date"].year, sub["start_date"].month, 1):
             continue
+        if sub["billing_term"] == "Annual":
+            months_since_start = (invoice_month.year - start_month_anchor.year) * 12 + (
+                invoice_month.month - start_month_anchor.month
+            )
+            if months_since_start % 12 != 0:
+                continue
         amount_due = sub["monthly_recurring_revenue_usd"] * (12.0 if sub["billing_term"] == "Annual" else 1.0)
         late_prob = 0.07
         if account["segment"] == "SMB":

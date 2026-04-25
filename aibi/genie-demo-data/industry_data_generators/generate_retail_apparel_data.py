@@ -402,6 +402,8 @@ for sale in sales_data:
     if random.random() < return_prob:
         reason = random.choices(RETURN_REASONS, weights=[33, 28, 12, 18, 9])[0]
         return_date = min(END_DATE, sale["sale_date"] + timedelta(days=random.randint(3, 45)))
+        return_qty = random.randint(1, sale["quantity"])
+        unit_net_price = sale["net_sales_usd"] / sale["quantity"]
         returns_data.append(
             {
                 "return_id": f"RTRN-{return_counter:07d}",
@@ -414,8 +416,8 @@ for sale in sales_data:
                 "store_id": sale["store_id"],
                 "channel": sale["channel"],
                 "return_reason": reason,
-                "return_quantity": sale["quantity"],
-                "return_amount_usd": sale["net_sales_usd"],
+                "return_quantity": return_qty,
+                "return_amount_usd": round(unit_net_price * return_qty, 2),
                 "days_to_return": (return_date - sale["sale_date"]).days,
             }
         )
