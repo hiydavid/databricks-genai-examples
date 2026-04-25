@@ -325,7 +325,10 @@ for encounter in encounters_data:
     severity_mult = {"Low": 0.76, "Medium": 1.0, "High": 1.42, "Critical": 2.1}[encounter["acuity_level"]]
     allowed = base * severity_mult * PAYER_MULT[payer] * random.uniform(0.78, 1.35)
     patient_resp = allowed * {"Medicare": 0.08, "Medicaid": 0.02, "Commercial": 0.12, "Self Pay": 0.45}[payer]
-    paid_date = min(END_DATE, encounter["discharge_date"] + timedelta(days=random.randint(20, 90)))
+    claim_status = random.choices(["Paid", "Denied", "Pending"], weights=[91, 4, 5])[0]
+    paid_date = None
+    if claim_status == "Paid":
+        paid_date = min(END_DATE, encounter["discharge_date"] + timedelta(days=random.randint(20, 90)))
     claims_data.append(
         {
             "claim_id": f"CLM-{claim_counter:07d}",
@@ -336,7 +339,7 @@ for encounter in encounters_data:
             "service_line": encounter["service_line"],
             "allowed_amount_usd": round(allowed, 2),
             "patient_responsibility_usd": round(patient_resp, 2),
-            "claim_status": random.choices(["Paid", "Denied", "Pending"], weights=[91, 4, 5])[0],
+            "claim_status": claim_status,
             "paid_date": paid_date,
         }
     )
