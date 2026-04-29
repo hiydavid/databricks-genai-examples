@@ -221,6 +221,7 @@ for turbine in turbines_data:
                         "maintenance_date": event_date,
                         "maintenance_year": event_date.year,
                         "maintenance_month": event_date.month,
+                        "farm_id": turbine["farm_id"],
                         "turbine_id": turbine["turbine_id"],
                         "component_id": component["component_id"],
                         "maintenance_type": event_type,
@@ -319,6 +320,7 @@ for turbine in turbines_data:
                 "maintenance_date": corrective_date,
                 "maintenance_year": corrective_date.year,
                 "maintenance_month": corrective_date.month,
+                "farm_id": turbine["farm_id"],
                 "turbine_id": turbine["turbine_id"],
                 "component_id": component["component_id"],
                 "maintenance_type": "Corrective",
@@ -427,11 +429,6 @@ print(f"sensor_readings: {len(df_sensor_readings)} rows")
 # =============================================================================
 # CREATE SCHEMA & WRITE DELTA TABLES
 # =============================================================================
-from pyspark.sql import SparkSession
-
-spark = SparkSession.builder.getOrCreate()
-
-spark.sql(f"CREATE CATALOG IF NOT EXISTS `{CATALOG}`")
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{CATALOG}`.`{SCHEMA}`")
 
 
@@ -610,7 +607,7 @@ joins:
     on: source.turbine_id = turbine.turbine_id
   - name: farm
     source: {CATALOG}.{SCHEMA}.wind_farms
-    on: turbine.farm_id = farm.farm_id
+    on: source.farm_id = farm.farm_id
   - name: component
     source: {CATALOG}.{SCHEMA}.components
     on: source.component_id = component.component_id
@@ -723,6 +720,7 @@ FOREIGN_KEYS = [
     ("components", "turbine_id", "turbines", "turbine_id"),
     ("sensor_readings", "farm_id", "wind_farms", "farm_id"),
     ("sensor_readings", "turbine_id", "turbines", "turbine_id"),
+    ("maintenance_events", "farm_id", "wind_farms", "farm_id"),
     ("maintenance_events", "turbine_id", "turbines", "turbine_id"),
     ("maintenance_events", "component_id", "components", "component_id"),
     ("failure_events", "farm_id", "wind_farms", "farm_id"),
