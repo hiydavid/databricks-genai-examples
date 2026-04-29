@@ -420,11 +420,6 @@ print(f"readmissions: {len(df_readmissions)} rows")
 # =============================================================================
 # CREATE SCHEMA & WRITE DELTA TABLES
 # =============================================================================
-from pyspark.sql import SparkSession
-
-spark = SparkSession.builder.getOrCreate()
-
-spark.sql(f"CREATE CATALOG IF NOT EXISTS `{CATALOG}`")
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{CATALOG}`.`{SCHEMA}`")
 
 

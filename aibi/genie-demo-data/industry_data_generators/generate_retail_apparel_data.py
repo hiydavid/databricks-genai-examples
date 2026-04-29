@@ -436,11 +436,6 @@ print(f"returns: {len(df_returns)} rows")
 # =============================================================================
 # CREATE SCHEMA & WRITE DELTA TABLES
 # =============================================================================
-from pyspark.sql import SparkSession
-
-spark = SparkSession.builder.getOrCreate()
-
-spark.sql(f"CREATE CATALOG IF NOT EXISTS `{CATALOG}`")
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{CATALOG}`.`{SCHEMA}`")
 
 
