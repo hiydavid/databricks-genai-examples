@@ -1,6 +1,6 @@
-# Feature Store Declarative API Examples
+# Declarative Feature Engineering Example
 
-This folder contains simple Databricks notebooks that demonstrate the Declarative Feature API.
+This folder contains a simple Databricks example for the Declarative Feature Engineering API.
 
 ## Notebooks
 
@@ -8,16 +8,17 @@ Run the setup notebook first:
 
 1. `00_dummy-data-creation.py` creates dummy credit card customer, merchant, and transaction data.
 
-Then run the example notebooks for each use case:
+Then run the declarative feature example:
 
-1. `01_declarative_features_api.py` demonstrates declarative features for offline training, batch inference, materialization, and online inference with Model Serving.
-2. `03_declarative_feature_spec_serving.py` demonstrates declarative feature specs for feature serving.
-3. Managed streaming features example notebook is planned.
+1. `01_declarative_features_api.py` demonstrates feature definition, feature registration, training set creation, model logging, offline batch inference, feature materialization, online inference with Model Serving, and feature spec serving.
+
+Managed streaming features are not included yet.
 
 ## Prerequisites
 
 - Unity Catalog-enabled Databricks workspace.
 - A classic compute cluster running Databricks Runtime 17.0 ML or above.
-- Permissions to create tables, register features, and create serving resources in the configured catalog and schema.
+- Declarative Feature Engineering preview enabled.
+- Permissions to create tables, register features, materialize features, and create serving resources in the configured catalog and schema.
 
 Update the `CATALOG` and `SCHEMA` constants in each notebook before running.

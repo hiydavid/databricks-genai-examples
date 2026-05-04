@@ -59,6 +59,8 @@ TRANSACTIONS_TABLE = "cc_transactions"
 MODEL_NAME = f"{CATALOG}.{SCHEMA}.recommendation_model"
 ONLINE_STORE_NAME = "cc-online-store"
 ENDPOINT_NAME = "cc-recommendation-model-endpoint"
+FEATURE_SPEC_NAME = f"{CATALOG}.{SCHEMA}.cc_features_for_serving"
+FEATURE_SERVING_ENDPOINT_NAME = "cc-serving-endpoint"
 
 mlflow.set_registry_uri("databricks-uc")
 
@@ -181,10 +183,7 @@ labeled_df = spark.sql(
     f"""
 SELECT
     customer_id,
-    transaction_id,
-    merchant_id,
     transaction_date,
-    transaction_amount,
     fraud_flag
 FROM {CATALOG}.{SCHEMA}.{TRANSACTIONS_TABLE}
 """
@@ -198,13 +197,6 @@ training_set = fe.create_training_set(
     df=labeled_df,
     features=features,
     label="fraud_flag",
-    exclude_columns=[
-        "customer_id",
-        "transaction_id",
-        "merchant_id",
-        "transaction_date",
-        "transaction_amount",
-    ],
 )
 
 training_set_df = training_set.load_df()
@@ -270,6 +262,31 @@ with mlflow.start_run(run_name="fraud_detection_rf") as run:
     print(f"Model logged to MLflow run: {run.info.run_id}")
     print("Model metrics:")
     pprint(metrics)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Inspect logged model metadata
+
+# COMMAND ----------
+
+import os
+
+from mlflow.artifacts import download_artifacts
+
+model_artifact_path = download_artifacts(
+    artifact_uri=f"runs:/{run.info.run_id}/fraud_detection_model"
+)
+print(model_artifact_path)
+
+for metadata_file in ["MLmodel", "feature_spec.yaml", "requirements.txt"]:
+    print(f"\n--- {metadata_file} ---")
+    metadata_path = f"{model_artifact_path}/{metadata_file}"
+    if os.path.exists(metadata_path):
+        with open(metadata_path) as f:
+            print(f.read())
+    else:
+        print("Not found")
 
 # COMMAND ----------
 
@@ -427,10 +444,7 @@ score_df = spark.sql(
     f"""
 SELECT
     customer_id,
-    transaction_id,
-    merchant_id,
-    transaction_date,
-    transaction_amount
+    transaction_date
 FROM {CATALOG}.{SCHEMA}.{TRANSACTIONS_TABLE}
 """
 )
@@ -442,10 +456,7 @@ display(score_df.limit(5))
 records = [
     {
         "customer_id": row.customer_id,
-        "transaction_id": row.transaction_id,
-        "merchant_id": row.merchant_id,
         "transaction_date": str(row.transaction_date),
-        "transaction_amount": row.transaction_amount,
     }
     for row in score_df.limit(100).collect()
 ]
@@ -456,3 +467,70 @@ response = w.serving_endpoints.query(
 )
 
 pprint(response)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Create feature spec
+
+# COMMAND ----------
+
+try:
+    feature_spec = fe.create_feature_spec(name=FEATURE_SPEC_NAME, features=features)
+    print(f"Created feature spec: {FEATURE_SPEC_NAME}")
+except Exception as e:
+    if "already exists" in str(e).lower() or "RESOURCE_ALREADY_EXISTS" in str(e):
+        feature_spec = fe.get_feature_spec(name=FEATURE_SPEC_NAME)
+        print(f"Feature spec already exists: {FEATURE_SPEC_NAME}")
+    else:
+        raise
+
+feature_spec
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Create feature serving endpoint
+
+# COMMAND ----------
+
+feature_serving_config = EndpointCoreConfigInput(
+    name=FEATURE_SERVING_ENDPOINT_NAME,
+    served_entities=[
+        ServedEntityInput(
+            entity_name=FEATURE_SPEC_NAME,
+            scale_to_zero_enabled=True,
+            workload_size="Small",
+        )
+    ],
+)
+
+try:
+    w.serving_endpoints.create(
+        name=FEATURE_SERVING_ENDPOINT_NAME,
+        config=feature_serving_config,
+    )
+    print(f"Created feature serving endpoint: {FEATURE_SERVING_ENDPOINT_NAME}")
+except Exception as e:
+    if "already exists" in str(e).lower():
+        w.serving_endpoints.update_config(
+            name=FEATURE_SERVING_ENDPOINT_NAME,
+            served_entities=feature_serving_config.served_entities,
+        )
+        print(f"Updated feature serving endpoint: {FEATURE_SERVING_ENDPOINT_NAME}")
+    else:
+        raise
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Query the feature serving endpoint
+
+# COMMAND ----------
+
+feature_serving_response = w.serving_endpoints.query(
+    name=FEATURE_SERVING_ENDPOINT_NAME,
+    dataframe_records=records,
+)
+
+pprint(feature_serving_response)
