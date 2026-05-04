@@ -28,8 +28,8 @@ from databricks.feature_engineering.entities import (
     TumblingWindow,
 )
 
-CATALOG_NAME = "main"
-SCHEMA_NAME = "davidhuang"
+CATALOG = "users"
+SCHEMA = "david_huang"
 
 # COMMAND ----------
 
@@ -51,7 +51,7 @@ feature_names = [
 features = []
 
 for f in feature_names:
-    features.append(fe.get_feature(full_name=f"{CATALOG_NAME}.{SCHEMA_NAME}.{f}"))
+    features.append(fe.get_feature(full_name=f"{CATALOG}.{SCHEMA}.{f}"))
 
 features
 
@@ -87,14 +87,14 @@ online_store.state
 # COMMAND ----------
 
 offline_config = OfflineStoreConfig(
-    catalog_name=CATALOG_NAME,
-    schema_name=SCHEMA_NAME,
+    catalog_name=CATALOG,
+    schema_name=SCHEMA,
     table_name_prefix="cc_features",
 )
 
 online_config = OnlineStoreConfig(
-    catalog_name=CATALOG_NAME,
-    schema_name=SCHEMA_NAME,
+    catalog_name=CATALOG,
+    schema_name=SCHEMA,
     table_name_prefix="cc_online_features",
     online_store_name=online_store_name,
 )
@@ -127,7 +127,7 @@ from databricks.sdk.service.serving import EndpointCoreConfigInput, ServedEntity
 
 w = WorkspaceClient()
 
-MODEL_NAME = "main.davidhuang.recommendation_model"
+MODEL_NAME = f"{CATALOG}.{SCHEMA}.recommendation_model"
 ENDPOINT_NAME = "cc-recommendation-model-endpoint"
 
 # Use the latest version as example; you can pin a specific version instead
@@ -169,11 +169,11 @@ except Exception as e:
 
 # get labeled df
 score_df = spark.sql(
-    """
+    f"""
 SELECT
     customer_id, transaction_id, merchant_id, transaction_date, transaction_amount
 FROM
-    main.davidhuang.cc_transactions
+    {CATALOG}.{SCHEMA}.cc_transactions
 """
 )
 

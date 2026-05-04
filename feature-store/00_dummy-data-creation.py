@@ -14,6 +14,9 @@ import pandas as pd
 np.random.seed(42)
 random.seed(42)
 
+CATALOG = "users"
+SCHEMA = "david_huang"
+
 # COMMAND ----------
 
 # DBTITLE 1,Generate Credit Card Customer Metadata
@@ -95,7 +98,7 @@ display(df_customers.head(10))
 spark_df = spark.createDataFrame(df_customers)
 
 # Define table name
-table_name = "main.davidhuang.cc_customers"
+table_name = f"{CATALOG}.{SCHEMA}.cc_customers"
 
 # Write to Delta table
 spark_df.write.format("delta").mode("overwrite").saveAsTable(table_name)
@@ -307,7 +310,7 @@ display(df_merchants.head(10))
 spark_df_merchants = spark.createDataFrame(df_merchants)
 
 # Define table name
-table_name = "main.davidhuang.cc_merchants"
+table_name = f"{CATALOG}.{SCHEMA}.cc_merchants"
 
 # Write to Delta table
 spark_df_merchants.write.format("delta").mode("overwrite").saveAsTable(table_name)
@@ -398,7 +401,7 @@ display(df_risk_locations.head(10))
 spark_df_locations = spark.createDataFrame(df_risk_locations)
 
 # Define table name
-table_name = "main.davidhuang.cc_locations"
+table_name = f"{CATALOG}.{SCHEMA}.cc_locations"
 
 # Write to Delta table
 spark_df_locations.write.format("delta").mode("overwrite").saveAsTable(table_name)
@@ -491,7 +494,7 @@ display(df_transactions.head(10))
 spark_df_transactions = spark.createDataFrame(df_transactions)
 
 # Define table name
-table_name = "main.davidhuang.cc_transactions"
+table_name = f"{CATALOG}.{SCHEMA}.cc_transactions"
 
 # Write to Delta table
 spark_df_transactions.write.format("delta").mode("overwrite").saveAsTable(table_name)

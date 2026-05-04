@@ -26,8 +26,8 @@ from databricks.feature_engineering.entities import (
     TumblingWindow,
 )
 
-CATALOG_NAME = "main"
-SCHEMA_NAME = "davidhuang"
+CATALOG = "users"
+SCHEMA = "david_huang"
 
 # COMMAND ----------
 
@@ -38,8 +38,8 @@ SCHEMA_NAME = "davidhuang"
 
 # transactions data
 source_transactions_by_customer = DeltaTableSource(
-    catalog_name=CATALOG_NAME,
-    schema_name=SCHEMA_NAME,
+    catalog_name=CATALOG,
+    schema_name=SCHEMA,
     table_name="cc_transactions",
     entity_columns=["customer_id"],
     timeseries_column="transaction_date",
@@ -60,8 +60,8 @@ features = []
 # avg_transaction_amount_7d
 try:
     feature = fe.create_feature(
-        catalog_name=CATALOG_NAME,
-        schema_name=SCHEMA_NAME,
+        catalog_name=CATALOG,
+        schema_name=SCHEMA,
         name="avg_trans_amount_7d",
         source=source_transactions_by_customer,
         inputs=["transaction_amount"],
@@ -73,9 +73,7 @@ try:
     features.append(feature)
 except Exception as e:
     if "already exists" in str(e).lower() or "RESOURCE_ALREADY_EXISTS" in str(e):
-        feature = fe.get_feature(
-            full_name=f"{CATALOG_NAME}.{SCHEMA_NAME}.avg_transac_amount_7d"
-        )
+        feature = fe.get_feature(full_name=f"{CATALOG}.{SCHEMA}.avg_trans_amount_7d")
         features.append(feature)
     else:
         raise e
@@ -83,8 +81,8 @@ except Exception as e:
 # avg_transaction_amount_30d
 try:
     feature = fe.create_feature(
-        catalog_name=CATALOG_NAME,
-        schema_name=SCHEMA_NAME,
+        catalog_name=CATALOG,
+        schema_name=SCHEMA,
         name="avg_trans_amount_30d",
         source=source_transactions_by_customer,
         inputs=["transaction_amount"],
@@ -96,9 +94,7 @@ try:
     features.append(feature)
 except Exception as e:
     if "already exists" in str(e).lower() or "RESOURCE_ALREADY_EXISTS" in str(e):
-        feature = fe.get_feature(
-            full_name=f"{CATALOG_NAME}.{SCHEMA_NAME}.avg_trans_amount_30d"
-        )
+        feature = fe.get_feature(full_name=f"{CATALOG}.{SCHEMA}.avg_trans_amount_30d")
         features.append(feature)
     else:
         raise e
@@ -106,8 +102,8 @@ except Exception as e:
 # sum_transaction_amount_7d
 try:
     feature = fe.create_feature(
-        catalog_name=CATALOG_NAME,
-        schema_name=SCHEMA_NAME,
+        catalog_name=CATALOG,
+        schema_name=SCHEMA,
         name="sum_trans_amount_7d",
         source=source_transactions_by_customer,
         inputs=["transaction_amount"],
@@ -119,9 +115,7 @@ try:
     features.append(feature)
 except Exception as e:
     if "already exists" in str(e).lower() or "RESOURCE_ALREADY_EXISTS" in str(e):
-        feature = fe.get_feature(
-            full_name=f"{CATALOG_NAME}.{SCHEMA_NAME}.sum_trans_amount_7d"
-        )
+        feature = fe.get_feature(full_name=f"{CATALOG}.{SCHEMA}.sum_trans_amount_7d")
         features.append(feature)
     else:
         raise e
@@ -129,8 +123,8 @@ except Exception as e:
 # sum_transaction_amount_30d
 try:
     feature = fe.create_feature(
-        catalog_name=CATALOG_NAME,
-        schema_name=SCHEMA_NAME,
+        catalog_name=CATALOG,
+        schema_name=SCHEMA,
         name="sum_trans_amount_30d",
         source=source_transactions_by_customer,
         inputs=["transaction_amount"],
@@ -142,9 +136,7 @@ try:
     features.append(feature)
 except Exception as e:
     if "already exists" in str(e).lower() or "RESOURCE_ALREADY_EXISTS" in str(e):
-        feature = fe.get_feature(
-            full_name=f"{CATALOG_NAME}.{SCHEMA_NAME}.sum_trans_amount_30d"
-        )
+        feature = fe.get_feature(full_name=f"{CATALOG}.{SCHEMA}.sum_trans_amount_30d")
         features.append(feature)
     else:
         raise e
@@ -162,11 +154,11 @@ features
 
 # get labeled df
 labeled_df = spark.sql(
-    """
+    f"""
 SELECT
     customer_id, transaction_id, merchant_id, transaction_date, transaction_amount, fraud_flag
 FROM
-    main.davidhuang.cc_transactions
+    {CATALOG}.{SCHEMA}.cc_transactions
 """
 )
 
@@ -275,7 +267,7 @@ with mlflow.start_run(run_name="fraud_detection_rf") as run:
         artifact_path="fraud_detection_model",
         flavor=mlflow.sklearn,
         training_set=training_set,
-        registered_model_name=f"{CATALOG_NAME}.{SCHEMA_NAME}.recommendation_model",
+        registered_model_name=f"{CATALOG}.{SCHEMA}.recommendation_model",
         input_example=X_train.head(5),
     )
 
@@ -297,7 +289,7 @@ display(batch_df)
 # COMMAND ----------
 
 score_df = fe.score_batch(
-    model_uri=f"models:/{CATALOG_NAME}.{SCHEMA_NAME}.recommendation_model/2",
+    model_uri=f"models:/{CATALOG}.{SCHEMA}.recommendation_model/1",
     df=batch_df,
     result_type="string",
 )
