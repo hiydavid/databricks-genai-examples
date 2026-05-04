@@ -10,10 +10,9 @@ Run the setup notebook first:
 
 Then run the example notebooks for each use case:
 
-1. `01_declarative_api_offline_batch.py` demonstrates declarative features for offline training and batch inference.
-2. `02_declarative_api_online_serving.py` demonstrates materialized declarative features for online inference with Model Serving.
-3. Feature Serving example notebook is planned.
-4. Managed streaming features example notebook is planned.
+1. `01_declarative_features_api.py` demonstrates declarative features for offline training, batch inference, materialization, and online inference with Model Serving.
+2. `03_declarative_feature_spec_serving.py` demonstrates declarative feature specs for feature serving.
+3. Managed streaming features example notebook is planned.
 
 ## Prerequisites
 
