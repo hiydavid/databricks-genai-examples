@@ -4,11 +4,11 @@
 # MAGIC
 # MAGIC Beta:
 # MAGIC * https://docs.databricks.com/aws/en/machine-learning/feature-store/declarative-apis
-# MAGIC * A classic compute cluster running Databricks Runtime 16.4 LTS ML or above.
+# MAGIC * A classic compute cluster running Databricks Runtime 17.0 ML or above.
 
 # COMMAND ----------
 
-# MAGIC %pip install databricks-feature-engineering==0.14.0 --quiet
+# MAGIC %pip install "databricks-feature-engineering>=0.15.0" --quiet
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -17,13 +17,12 @@ from datetime import timedelta
 
 from databricks.feature_engineering import FeatureEngineeringClient
 from databricks.feature_engineering.entities import (
+    AggregationFunction,
     Avg,
-    ContinuousWindow,
     DeltaTableSource,
-    OfflineStoreConfig,
+    Feature,
     SlidingWindow,
     Sum,
-    TumblingWindow,
 )
 
 CATALOG = "users"
@@ -41,8 +40,6 @@ source_transactions_by_customer = DeltaTableSource(
     catalog_name=CATALOG,
     schema_name=SCHEMA,
     table_name="cc_transactions",
-    entity_columns=["customer_id"],
-    timeseries_column="transaction_date",
 )
 
 # COMMAND ----------
@@ -55,91 +52,87 @@ source_transactions_by_customer = DeltaTableSource(
 # define features from transactions data
 fe = FeatureEngineeringClient()
 
-features = []
-
-# avg_transaction_amount_7d
-try:
-    feature = fe.create_feature(
-        catalog_name=CATALOG,
-        schema_name=SCHEMA,
+features = [
+    Feature(
+        source=source_transactions_by_customer,
+        entity=["customer_id"],
+        timeseries_column="transaction_date",
+        function=AggregationFunction(
+            Avg(input="transaction_amount"),
+            SlidingWindow(
+                window_duration=timedelta(days=7), slide_duration=timedelta(days=1)
+            ),
+        ),
         name="avg_trans_amount_7d",
+    ),
+    Feature(
         source=source_transactions_by_customer,
-        inputs=["transaction_amount"],
-        function=Avg(),
-        time_window=SlidingWindow(
-            window_duration=timedelta(days=7), slide_duration=timedelta(days=1)
+        entity=["customer_id"],
+        timeseries_column="transaction_date",
+        function=AggregationFunction(
+            Avg(input="transaction_amount"),
+            SlidingWindow(
+                window_duration=timedelta(days=30), slide_duration=timedelta(days=1)
+            ),
         ),
-    )
-    features.append(feature)
-except Exception as e:
-    if "already exists" in str(e).lower() or "RESOURCE_ALREADY_EXISTS" in str(e):
-        feature = fe.get_feature(full_name=f"{CATALOG}.{SCHEMA}.avg_trans_amount_7d")
-        features.append(feature)
-    else:
-        raise e
-
-# avg_transaction_amount_30d
-try:
-    feature = fe.create_feature(
-        catalog_name=CATALOG,
-        schema_name=SCHEMA,
         name="avg_trans_amount_30d",
+    ),
+    Feature(
         source=source_transactions_by_customer,
-        inputs=["transaction_amount"],
-        function=Avg(),
-        time_window=SlidingWindow(
-            window_duration=timedelta(days=30), slide_duration=timedelta(days=1)
+        entity=["customer_id"],
+        timeseries_column="transaction_date",
+        function=AggregationFunction(
+            Sum(input="transaction_amount"),
+            SlidingWindow(
+                window_duration=timedelta(days=7), slide_duration=timedelta(days=1)
+            ),
         ),
-    )
-    features.append(feature)
-except Exception as e:
-    if "already exists" in str(e).lower() or "RESOURCE_ALREADY_EXISTS" in str(e):
-        feature = fe.get_feature(full_name=f"{CATALOG}.{SCHEMA}.avg_trans_amount_30d")
-        features.append(feature)
-    else:
-        raise e
-
-# sum_transaction_amount_7d
-try:
-    feature = fe.create_feature(
-        catalog_name=CATALOG,
-        schema_name=SCHEMA,
         name="sum_trans_amount_7d",
+    ),
+    Feature(
         source=source_transactions_by_customer,
-        inputs=["transaction_amount"],
-        function=Sum(),
-        time_window=SlidingWindow(
-            window_duration=timedelta(days=7), slide_duration=timedelta(days=1)
+        entity=["customer_id"],
+        timeseries_column="transaction_date",
+        function=AggregationFunction(
+            Sum(input="transaction_amount"),
+            SlidingWindow(
+                window_duration=timedelta(days=30), slide_duration=timedelta(days=1)
+            ),
         ),
-    )
-    features.append(feature)
-except Exception as e:
-    if "already exists" in str(e).lower() or "RESOURCE_ALREADY_EXISTS" in str(e):
-        feature = fe.get_feature(full_name=f"{CATALOG}.{SCHEMA}.sum_trans_amount_7d")
-        features.append(feature)
-    else:
-        raise e
-
-# sum_transaction_amount_30d
-try:
-    feature = fe.create_feature(
-        catalog_name=CATALOG,
-        schema_name=SCHEMA,
         name="sum_trans_amount_30d",
-        source=source_transactions_by_customer,
-        inputs=["transaction_amount"],
-        function=Sum(),
-        time_window=SlidingWindow(
-            window_duration=timedelta(days=30), slide_duration=timedelta(days=1)
-        ),
-    )
-    features.append(feature)
-except Exception as e:
-    if "already exists" in str(e).lower() or "RESOURCE_ALREADY_EXISTS" in str(e):
-        feature = fe.get_feature(full_name=f"{CATALOG}.{SCHEMA}.sum_trans_amount_30d")
-        features.append(feature)
-    else:
-        raise e
+    ),
+]
+
+# COMMAND ----------
+
+features
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Register features
+
+# COMMAND ----------
+
+registered_features = []
+
+for feature in features:
+    try:
+        registered_feature = fe.register_feature(
+            feature=feature,
+            catalog_name=CATALOG,
+            schema_name=SCHEMA,
+        )
+    except Exception as e:
+        if "already exists" in str(e).lower() or "RESOURCE_ALREADY_EXISTS" in str(e):
+            registered_feature = fe.get_feature(
+                full_name=f"{CATALOG}.{SCHEMA}.{feature.name}"
+            )
+        else:
+            raise
+    registered_features.append(registered_feature)
+
+features = registered_features
 
 # COMMAND ----------
 

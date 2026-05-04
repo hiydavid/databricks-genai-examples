@@ -9,23 +9,17 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install "databricks-feature-engineering>=0.14.0" "databricks-sdk>=0.39.0" --quiet
+# MAGIC %pip install "databricks-feature-engineering>=0.15.0" "databricks-sdk>=0.39.0" --quiet
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
 
-from datetime import timedelta
-
 from databricks.feature_engineering import FeatureEngineeringClient
 from databricks.feature_engineering.entities import (
-    Avg,
-    ContinuousWindow,
-    DeltaTableSource,
+    CronSchedule,
+    MaterializedFeaturePipelineScheduleState,
     OfflineStoreConfig,
     OnlineStoreConfig,
-    SlidingWindow,
-    Sum,
-    TumblingWindow,
 )
 
 CATALOG = "users"
@@ -103,8 +97,11 @@ materialized_features = fe.materialize_features(
     features=features,
     offline_config=offline_config,
     online_config=online_config,
-    pipeline_state="ACTIVE",
-    cron_schedule="0 0 * * * ?",
+    trigger=CronSchedule(
+        quartz_cron_expression="0 0 * * * ?",
+        timezone_id="UTC",
+        pipeline_schedule_state=MaterializedFeaturePipelineScheduleState.ACTIVE,
+    ),
 )
 
 # COMMAND ----------
@@ -122,40 +119,40 @@ for mf in materialized_features:
 
 # COMMAND ----------
 
-from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.serving import EndpointCoreConfigInput, ServedEntityInput
+import mlflow
+import mlflow.deployments
+from mlflow.tracking import MlflowClient
 
-w = WorkspaceClient()
+mlflow.set_registry_uri("databricks-uc")
 
 MODEL_NAME = f"{CATALOG}.{SCHEMA}.recommendation_model"
 ENDPOINT_NAME = "cc-recommendation-model-endpoint"
 
 # Use the latest version as example; you can pin a specific version instead
-versions = list(w.model_versions.list(full_name=MODEL_NAME))
+versions = MlflowClient().search_model_versions(f"name='{MODEL_NAME}'")
 latest_version = max(versions, key=lambda mv: int(mv.version)).version
 
-config = EndpointCoreConfigInput(
-    name=ENDPOINT_NAME,
-    served_entities=[
-        ServedEntityInput(
-            name=ENDPOINT_NAME,
-            entity_name=MODEL_NAME,
-            entity_version=str(latest_version),
-            workload_size="Small",
-            scale_to_zero_enabled=True,
-        )
-    ],
-)
+config = {
+    "served_entities": [
+        {
+            "name": ENDPOINT_NAME,
+            "entity_name": MODEL_NAME,
+            "entity_version": str(latest_version),
+            "workload_size": "Small",
+            "scale_to_zero_enabled": True,
+        }
+    ]
+}
+
+client = mlflow.deployments.get_deploy_client("databricks")
 
 # Idempotent create/update
 try:
-    w.serving_endpoints.create(name=ENDPOINT_NAME, config=config)
+    client.create_endpoint(name=ENDPOINT_NAME, config=config)
     print(f"Created model serving endpoint: {ENDPOINT_NAME}")
 except Exception as e:
     if "already exists" in str(e).lower():
-        w.serving_endpoints.update_config(
-            name=ENDPOINT_NAME, served_entities=config.served_entities
-        )
+        client.update_endpoint_config(endpoint=ENDPOINT_NAME, config=config)
         print(f"Updated existing model serving endpoint: {ENDPOINT_NAME}")
     else:
         raise
@@ -182,8 +179,6 @@ display(score_df.limit(5))
 # COMMAND ----------
 
 from pprint import pprint
-
-import mlflow.deployments
 
 inputs = score_df.limit(100).collect()
 records = [
