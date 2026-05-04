@@ -61,11 +61,12 @@ fe = FeatureEngineeringClient()
 # Create an online store with specified capacity
 online_store_name = f"cc-online-store"
 
-fe.create_online_store(
-    name=online_store_name,
-    # Lakebase Serverless not yet supported for Online Feaure Store
-    capacity="CU_2",  # Valid options: "CU_1", "CU_2", "CU_4", "CU_8"
-)
+existing_store = fe.get_online_store(name=online_store_name)
+if existing_store is None:
+    fe.create_online_store(name=online_store_name, capacity="CU_1")
+    print(f"Created online store: {online_store_name}")
+else:
+    print(f"Online store already exists: {online_store_name}")
 
 # COMMAND ----------
 
