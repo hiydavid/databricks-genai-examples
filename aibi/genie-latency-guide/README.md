@@ -119,10 +119,27 @@ Use the **Genie Conversation API** (now GA as of April 2026) to poll message sta
 
 The accompanying [genie-tracing](./genie-tracing.py) notebook can help here.
 
+### How to Run the Tracing Notebook
+
+1. Import or open [genie-tracing.py](./genie-tracing.py) as a Databricks notebook.
+2. In the config cell, paste your Genie space ID into `GENIE_SPACE_ID`. This notebook intentionally does not read the space ID from environment variables.
+3. Adjust `QUESTION` and `EXPERIMENT` if needed.
+4. Run the notebook. On Databricks compute, `HOST` and `TOKEN` are auto-detected. For non-notebook execution, set `DATABRICKS_HOST` and `DATABRICKS_TOKEN` environment variables.
+
+Notebook defaults:
+
+| Setting | Default |
+|---------|---------|
+| `POLL_INTERVAL_SECONDS` | `1.0` |
+| `TIMEOUT_SECONDS` | `300` |
+| `LOG_FULL_RESPONSES` | `False` |
+
+Keep `LOG_FULL_RESPONSES = False` unless you are tracing against non-sensitive data. When enabled, full API payloads and sample result rows are written to MLflow traces.
+
 **Polling best practices:**
 
 - Poll every **1–5 seconds**; increase the interval with exponential backoff up to 60s
-- Set a **10-minute timeout** — stop polling and return an error after that
+- Set a **5-minute timeout** — stop polling and return an error after that
 - **GET polls are exempt** from rate limits — only POST requests count toward throughput
 
 See: [Genie Conversation API](https://docs.databricks.com/aws/en/genie/conversation-api) for additional detail.
