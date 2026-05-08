@@ -6,7 +6,7 @@ Synthetic retail banking dataset for demonstrating Databricks AI/BI Genie. Gener
 
 | File | Purpose |
 |---|---|
-| `generate_data.py` | Databricks notebook — generates all 6 tables, views, and constraints end-to-end |
+| `industry_data_generators/generate_banking_data.py` | Self-contained Databricks notebook — generates all 6 banking tables, metric views, and constraints end-to-end |
 | `generate_genie.py` | Databricks notebook — creates or updates the Genie space via the Databricks SDK |
 
 ## Prerequisites
@@ -14,24 +14,24 @@ Synthetic retail banking dataset for demonstrating Databricks AI/BI Genie. Gener
 - Databricks workspace with Unity Catalog enabled
 - A catalog and schema you have `CREATE TABLE` privileges on
 - A SQL warehouse or cluster with access to that catalog
-- `faker` library (installed automatically by `generate_data.py`)
+- `faker` library (installed automatically by `industry_data_generators/generate_banking_data.py`)
 - `databricks-sdk` (installed automatically by `generate_genie.py`)
 
 ## Setup Steps
 
 ### Step 1 — Set your catalog and schema
 
-At the top of both `generate_data.py` and `generate_genie.py`, set your catalog and schema:
+At the top of both `industry_data_generators/generate_banking_data.py` and `generate_genie.py`, set your catalog and schema:
 
 ```python
 CATALOG = "my_catalog"   # your Unity Catalog name
 SCHEMA  = "horizon_bank" # your target schema
 ```
 
-### Step 2 — Import and run `generate_data.py`
+### Step 2 — Import and run `generate_banking_data.py`
 
 1. In the Databricks workspace, go to **Workspace → Import**
-2. Upload `generate_data.py`
+2. Upload `industry_data_generators/generate_banking_data.py`
 3. Open it and attach to a cluster
 4. Click **Run All**
 
@@ -55,7 +55,7 @@ service_requests:   3,000 rows
 ### Step 3 — Create the Genie space
 
 1. Import `generate_genie.py` into your Databricks workspace
-2. Set `CATALOG`, `SCHEMA`, and optionally `WAREHOUSE_ID` at the top of the notebook (must match `generate_data.py`)
+2. Set `CATALOG`, `SCHEMA`, and optionally `WAREHOUSE_ID` at the top of the notebook (must match `generate_banking_data.py`)
 3. Click **Run All**
 
 The notebook will create (or update) the **Horizon Bank Analytics** Genie space with all tables, metric views, space instructions, sample questions, and verified SQL examples.
@@ -90,4 +90,4 @@ The dataset contains several non-random patterns designed to surface in demo que
 
 ## Reproducing the Data
 
-The generator uses `random.seed(42)` and `Faker.seed(42)`. Running `generate_data.py` with the same seed always produces the same dataset.
+The generator uses `random.seed(42)` and `Faker.seed(42)`. Running `generate_banking_data.py` with the same seed always produces the same dataset.

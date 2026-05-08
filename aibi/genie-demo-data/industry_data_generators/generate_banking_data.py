@@ -14,7 +14,7 @@
 # MAGIC | `transactions` | 10,000 | Primary fact table (2023–2025) |
 # MAGIC | `service_requests` | 3,000 | Secondary fact table (2023–2025) |
 # MAGIC
-# MAGIC **Setup:** Edit `config.py` with your catalog and schema, then **Run All**.
+# MAGIC **Setup:** Edit `CATALOG` and `SCHEMA` below, then **Run All**.
 # MAGIC
 # MAGIC Seed: `42` — fully reproducible.
 
@@ -1623,27 +1623,251 @@ print("\nData generation complete.")
 # =============================================================================
 # CREATE METRIC VIEWS
 # =============================================================================
-import os
-
 print("Creating metric views...")
 
-# Derive the metric_views directory relative to this notebook in the Databricks workspace
-_ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
-_nb_path = _ctx.notebookPath().get()
-_nb_dir = "/Workspace" + _nb_path.rsplit("/", 1)[0]
-metric_views_dir = _nb_dir + "/metric_views"
+metric_views = {
+    "mv_banking_transactions": f"""
+version: "0.1"
+source: {CATALOG}.{SCHEMA}.transactions
 
-for mv_name in ["mv_banking_transactions", "mv_customer_health", "mv_service_quality"]:
-    with open(f"{metric_views_dir}/{mv_name}.yaml") as f:
-        yaml_body = f.read()
-    yaml_body = yaml_body.replace("{CATALOG}", CATALOG).replace("{SCHEMA}", SCHEMA)
+joins:
+  - name: customer
+    source: {CATALOG}.{SCHEMA}.customers
+    on: source.customer_id = customer.customer_id
+  - name: branch
+    source: {CATALOG}.{SCHEMA}.branches
+    on: source.branch_id = branch.branch_id
+  - name: account
+    source: {CATALOG}.{SCHEMA}.accounts
+    on: source.account_id = account.account_id
+
+dimensions:
+  - name: Transaction Month
+    expr: DATE_TRUNC('MONTH', transaction_date)
+  - name: Transaction Year
+    expr: transaction_year
+  - name: Channel
+    expr: channel
+  - name: Transaction Type
+    expr: transaction_type
+  - name: Channel Type
+    expr: CASE WHEN channel IN ('Mobile', 'Online') THEN 'Digital' ELSE 'In-Person' END
+  - name: Relationship Tier
+    expr: customer.relationship_tier
+  - name: Customer Segment
+    expr: customer.customer_segment
+  - name: Region
+    expr: customer.region
+  - name: State
+    expr: customer.state
+  - name: Account Type
+    expr: account.account_type
+
+measures:
+  - name: Transaction Count
+    expr: COUNT(1)
+  - name: Total Transaction Amount
+    expr: SUM(amount_usd)
+  - name: Deposit Volume
+    expr: SUM(amount_usd) FILTER (WHERE transaction_type = 'Deposit')
+  - name: Withdrawal Volume
+    expr: SUM(amount_usd) FILTER (WHERE transaction_type = 'Withdrawal')
+  - name: Net Flow
+    expr: SUM(amount_usd) FILTER (WHERE transaction_type = 'Deposit') - SUM(amount_usd) FILTER (WHERE transaction_type = 'Withdrawal')
+  - name: Fee Revenue
+    expr: SUM(fee_usd)
+  - name: Unique Customers
+    expr: COUNT(DISTINCT source.customer_id)
+  - name: Average Transaction Amount
+    expr: AVG(amount_usd)
+  - name: Digital Transaction Count
+    expr: COUNT(1) FILTER (WHERE channel IN ('Mobile', 'Online'))
+  - name: Digital Share Pct
+    expr: COUNT(1) FILTER (WHERE channel IN ('Mobile', 'Online')) * 100.0 / COUNT(1)
+  - name: Flagged Transaction Count
+    expr: COUNT(1) FILTER (WHERE is_flagged = TRUE)
+  - name: Fee Revenue per Customer
+    expr: SUM(fee_usd) / COUNT(DISTINCT source.customer_id)
+  - name: Previous Month Deposit Volume
+    expr: SUM(amount_usd) FILTER (WHERE transaction_type = 'Deposit')
+    window:
+      - order: Transaction Month
+        range: trailing 1 month
+        semiadditive: last
+  - name: YTD Deposit Volume
+    expr: SUM(amount_usd) FILTER (WHERE transaction_type = 'Deposit')
+    window:
+      - order: Transaction Month
+        range: cumulative
+        semiadditive: last
+      - order: Transaction Year
+        range: current
+        semiadditive: last
+  - name: Trailing 3-Month Fee Revenue
+    expr: SUM(fee_usd)
+    window:
+      - order: Transaction Month
+        range: trailing 3 month
+        semiadditive: last
+  - name: Current Month Deposit Volume
+    expr: SUM(amount_usd) FILTER (WHERE transaction_type = 'Deposit')
+    window:
+      - order: Transaction Month
+        range: current
+        semiadditive: last
+  - name: Month-over-Month Deposit Growth Pct
+    expr: try_divide(MEASURE(`Current Month Deposit Volume`) - MEASURE(`Previous Month Deposit Volume`), MEASURE(`Previous Month Deposit Volume`)) * 100
+""",
+    "mv_customer_health": f"""
+version: "1.1"
+source: {CATALOG}.{SCHEMA}.accounts
+
+joins:
+  - name: customer
+    source: {CATALOG}.{SCHEMA}.customers
+    on: source.customer_id = customer.customer_id
+  - name: product
+    source: {CATALOG}.{SCHEMA}.products
+    on: source.product_id = product.product_id
+
+dimensions:
+  - name: Relationship Tier
+    expr: customer.relationship_tier
+  - name: Customer Segment
+    expr: customer.customer_segment
+  - name: Account Type
+    expr: account_type
+  - name: Account Status
+    expr: status
+  - name: Product Category
+    expr: product.product_category
+  - name: Product Name
+    expr: product.product_name
+  - name: Region
+    expr: customer.region
+  - name: State
+    expr: customer.state
+  - name: Acquisition Channel
+    expr: customer.acquisition_channel
+  - name: Income Band
+    expr: customer.income_band
+  - name: Age Band
+    expr: customer.age_band
+
+measures:
+  - name: Account Count
+    expr: COUNT(1)
+  - name: Active Account Count
+    expr: COUNT(1) FILTER (WHERE status = 'Active')
+  - name: Delinquent Account Count
+    expr: COUNT(1) FILTER (WHERE status = 'Delinquent')
+  - name: Dormant Account Count
+    expr: COUNT(1) FILTER (WHERE status = 'Dormant')
+  - name: Total Balance
+    expr: SUM(current_balance_usd)
+  - name: Average Balance
+    expr: AVG(current_balance_usd)
+  - name: Total Deposit Balance
+    expr: SUM(current_balance_usd) FILTER (WHERE account_type IN ('Checking', 'Savings'))
+  - name: Total Loan Balance
+    expr: SUM(current_balance_usd) FILTER (WHERE account_type IN ('Mortgage', 'Auto Loan', 'Home Equity'))
+  - name: Average Credit Limit
+    expr: AVG(credit_limit_usd) FILTER (WHERE credit_limit_usd > 0)
+  - name: Unique Customers
+    expr: COUNT(DISTINCT source.customer_id)
+  - name: Average Balance per Customer
+    expr: SUM(current_balance_usd) / COUNT(DISTINCT source.customer_id)
+  - name: Delinquency Rate Pct
+    expr: COUNT(1) FILTER (WHERE status = 'Delinquent') * 100.0 / COUNT(1)
+  - name: Dormancy Rate Pct
+    expr: COUNT(1) FILTER (WHERE status = 'Dormant') * 100.0 / COUNT(1)
+  - name: Mortgage Penetration Rate Pct
+    expr: COUNT(DISTINCT source.customer_id) FILTER (WHERE account_type = 'Mortgage') * 100.0 / COUNT(DISTINCT source.customer_id)
+""",
+    "mv_service_quality": f"""
+version: "0.1"
+source: {CATALOG}.{SCHEMA}.service_requests
+
+joins:
+  - name: customer
+    source: {CATALOG}.{SCHEMA}.customers
+    on: source.customer_id = customer.customer_id
+  - name: branch
+    source: {CATALOG}.{SCHEMA}.branches
+    on: source.branch_id = branch.branch_id
+
+dimensions:
+  - name: Request Month
+    expr: DATE_TRUNC('MONTH', request_date)
+  - name: Request Year
+    expr: request_year
+  - name: Channel
+    expr: channel
+  - name: Category
+    expr: category
+  - name: Status
+    expr: status
+  - name: Relationship Tier
+    expr: customer.relationship_tier
+  - name: Customer Segment
+    expr: customer.customer_segment
+  - name: Region
+    expr: customer.region
+  - name: Branch Region
+    expr: branch.region
+
+measures:
+  - name: Request Count
+    expr: COUNT(1)
+  - name: Complaint Count
+    expr: COUNT(1) FILTER (WHERE category = 'Complaint')
+  - name: Escalated Count
+    expr: COUNT(1) FILTER (WHERE status = 'Escalated')
+  - name: Resolved Count
+    expr: COUNT(1) FILTER (WHERE status = 'Resolved')
+  - name: Open Count
+    expr: COUNT(1) FILTER (WHERE status = 'Open')
+  - name: Unique Customers
+    expr: COUNT(DISTINCT source.customer_id)
+  - name: Average Resolution Time Days
+    expr: AVG(resolution_time_days) FILTER (WHERE status = 'Resolved')
+  - name: Average Satisfaction Score
+    expr: AVG(satisfaction_score)
+  - name: Resolution Rate Pct
+    expr: COUNT(1) FILTER (WHERE status = 'Resolved') * 100.0 / COUNT(1)
+  - name: Escalation Rate Pct
+    expr: COUNT(1) FILTER (WHERE status = 'Escalated') * 100.0 / COUNT(1)
+  - name: Complaint Rate Pct
+    expr: COUNT(1) FILTER (WHERE category = 'Complaint') * 100.0 / COUNT(1)
+  - name: Previous Month Complaint Count
+    expr: COUNT(1) FILTER (WHERE category = 'Complaint')
+    window:
+      - order: Request Month
+        range: trailing 1 month
+        semiadditive: last
+  - name: Current Month Complaint Count
+    expr: COUNT(1) FILTER (WHERE category = 'Complaint')
+    window:
+      - order: Request Month
+        range: current
+        semiadditive: last
+  - name: Month-over-Month Complaint Change Pct
+    expr: try_divide(MEASURE(`Current Month Complaint Count`) - MEASURE(`Previous Month Complaint Count`), MEASURE(`Previous Month Complaint Count`)) * 100
+  - name: Trailing 3-Month Resolution Rate Pct
+    expr: COUNT(1) FILTER (WHERE status = 'Resolved') * 100.0 / COUNT(1)
+    window:
+      - order: Request Month
+        range: trailing 3 month
+        semiadditive: last
+""",
+}
+
+for mv_name, yaml_body in metric_views.items():
     ddl = (
-        (
-            f"CREATE OR REPLACE VIEW `{CATALOG}`.`{SCHEMA}`.`{mv_name}`\n"
-            "WITH METRICS\n"
-            "LANGUAGE YAML\n"
-            "AS $$"
-        )
+        f"CREATE OR REPLACE VIEW `{CATALOG}`.`{SCHEMA}`.`{mv_name}`\n"
+        "WITH METRICS\n"
+        "LANGUAGE YAML\n"
+        "AS $$"
         + yaml_body
         + "$$"
     )

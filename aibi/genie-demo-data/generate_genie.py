@@ -5,9 +5,9 @@
 # MAGIC
 # MAGIC Creates (or updates) the **Horizon Bank Analytics** Genie space using the Databricks SDK.
 # MAGIC
-# MAGIC **Prerequisite:** Run `generate_data.py` first to create the 6 Delta tables and 3 metric views.
+# MAGIC **Prerequisite:** Run `industry_data_generators/generate_banking_data.py` first to create the 6 Delta tables and 3 metric views.
 # MAGIC
-# MAGIC **Setup:** Edit `CATALOG` and `SCHEMA` below to match `generate_data.py`, then **Run All**.
+# MAGIC **Setup:** Edit `CATALOG` and `SCHEMA` below to match `generate_banking_data.py`, then **Run All**.
 
 # COMMAND ----------
 
@@ -24,8 +24,8 @@
 # =============================================================================
 # CONFIGURATION — Edit only this section before running
 # =============================================================================
-CATALOG = "my_catalog"  # Unity Catalog name (must match generate_data.py)
-SCHEMA = "horizon_bank"  # Schema name (must match generate_data.py)
+CATALOG = "my_catalog"  # Unity Catalog name (must match generate_banking_data.py)
+SCHEMA = "horizon_bank"  # Schema name (must match generate_banking_data.py)
 WAREHOUSE_ID = ""  # SQL Warehouse ID — leave empty to auto-detect
 PARENT_PATH = ""  # Workspace folder for the Genie space — leave empty for current notebook directory
 
