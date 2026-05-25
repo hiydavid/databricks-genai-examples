@@ -14,7 +14,7 @@
 # MAGIC | `sales` | 15,000 | Item-level sales facts from 2023-2025 |
 # MAGIC | `returns` | variable | Return facts linked to sales |
 # MAGIC
-# MAGIC **Setup:** Edit `CATALOG` and `SCHEMA`, then **Run All**.
+# MAGIC **Setup:** Set the `catalog` and `schema` widgets (or edit defaults below), then **Run All**.
 # MAGIC
 # MAGIC Seed: `42` - fully reproducible.
 
@@ -33,8 +33,29 @@
 # =============================================================================
 # CONFIGURATION - Edit only this section before running
 # =============================================================================
-CATALOG = "my_catalog"  # Unity Catalog name
-SCHEMA = "retail_apparel"  # Schema / database name
+DEFAULT_CATALOG = "my_catalog"  # Unity Catalog name
+DEFAULT_SCHEMA = "retail_apparel"  # Schema / database name
+
+# Widgets let the bulk runner pass values while preserving standalone defaults.
+try:
+    dbutils.widgets.text("catalog", DEFAULT_CATALOG, "Unity Catalog name")
+except Exception:
+    pass
+
+try:
+    dbutils.widgets.text("schema", DEFAULT_SCHEMA, "Schema / database name")
+except Exception:
+    pass
+
+try:
+    CATALOG = dbutils.widgets.get("catalog").strip() or DEFAULT_CATALOG
+except Exception:
+    CATALOG = DEFAULT_CATALOG
+
+try:
+    SCHEMA = dbutils.widgets.get("schema").strip() or DEFAULT_SCHEMA
+except Exception:
+    SCHEMA = DEFAULT_SCHEMA
 
 # COMMAND ----------
 
