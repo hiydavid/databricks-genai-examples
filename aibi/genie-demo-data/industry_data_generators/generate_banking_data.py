@@ -1429,11 +1429,6 @@ print(df_service_requests["category"].value_counts().to_dict())
 # =============================================================================
 # CREATE SCHEMA & WRITE DELTA TABLES
 # =============================================================================
-from pyspark.sql import SparkSession
-
-spark = SparkSession.builder.getOrCreate()
-
-spark.sql(f"CREATE CATALOG IF NOT EXISTS `{CATALOG}`")
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{CATALOG}`.`{SCHEMA}`")
 
 
@@ -1867,9 +1862,7 @@ for mv_name, yaml_body in metric_views.items():
         f"CREATE OR REPLACE VIEW `{CATALOG}`.`{SCHEMA}`.`{mv_name}`\n"
         "WITH METRICS\n"
         "LANGUAGE YAML\n"
-        "AS $$"
-        + yaml_body
-        + "$$"
+        "AS $$" + yaml_body + "$$"
     )
     spark.sql(ddl)
     print(f"  ✓ {mv_name}")
