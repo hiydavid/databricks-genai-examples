@@ -1,0 +1,4 @@
+# Optional upgrade file for Databricks Serverless environment version 5.
+# Serverless env v5 includes pandas>=2.0 and databricks-sdk>=0.67.0.
+mlflow[databricks]>=3.10.0,<4
+databricks-sdk>=0.67.0,<1
