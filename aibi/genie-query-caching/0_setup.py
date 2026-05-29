@@ -2,7 +2,7 @@
 # MAGIC %md
 # MAGIC # Genie Query Caching — Setup
 # MAGIC
-# MAGIC Creates all required infrastructure for the 3 caching scenarios:
+# MAGIC Creates the infrastructure for the 3 caching scenarios.
 # MAGIC
 # MAGIC | Resource | Used by |
 # MAGIC |----------|---------|
@@ -12,11 +12,14 @@
 # MAGIC | Delta table `cache_knowledge_base` | Scenario 3 |
 # MAGIC | Vector Search endpoint + indexes | Scenarios 2 & 3 |
 # MAGIC
+# MAGIC By default this notebook creates empty cache stores. Set `seed_demo_data: true`
+# MAGIC in `configs.yaml` only when you want the scenario notebooks to start with hits.
+# MAGIC
 # MAGIC **Prerequisites:**
-# MAGIC - Copy `configs.template.yaml` → `configs.yaml` and fill in your values
-# MAGIC - A Lakebase instance with the pgvector extension available
+# MAGIC - Copy `configs.template.yaml` to `configs.yaml` and fill in your values
+# MAGIC - A Lakebase instance with pgvector available
 # MAGIC - A Databricks secret scope with Lakebase credentials
-# MAGIC - Run on **Serverless** or a cluster with network access to Lakebase
+# MAGIC - Run on Serverless or a cluster with network access to Lakebase
 
 # COMMAND ----------
 
@@ -31,33 +34,46 @@
 # COMMAND ----------
 
 from utils import (
-    generate_id,
+    GLOBAL_SCOPE,
+    build_cache_context,
+    data_schema_name,
+    delta_cache_upsert,
     get_lakebase_connection,
     lakebase_cache_write,
     load_config,
-    normalize_question,
     sync_vs_index_and_wait,
-    utcnow,
+    table_name,
 )
 
 config = load_config("./configs.yaml")
+context = build_cache_context(config)
 
 CATALOG = config["catalog"]
 SCHEMA = config["schema"]
 VS_ENDPOINT = config["vs_endpoint"]
 EMBEDDING_MODEL = config.get("embedding_model", "databricks-qwen3-embedding-0-6b")
 EMBEDDING_DIM = config.get("embedding_dimension", 1024)
+SEED_DEMO_DATA = bool(config.get("seed_demo_data", False))
 
-print(f"Catalog:          {CATALOG}")
-print(f"Schema:           {SCHEMA}")
-print(f"VS Endpoint:      {VS_ENDPOINT}")
-print(f"Embedding Model:  {EMBEDDING_MODEL}")
-print(f"Embedding Dim:    {EMBEDDING_DIM}")
+CACHE_STORE_TABLE = table_name(config, "cache_store")
+CACHE_KB_TABLE = table_name(config, "cache_knowledge_base")
+CACHE_STORE_INDEX = f"{CATALOG}.{SCHEMA}.cache_store_index"
+CACHE_KB_INDEX = f"{CATALOG}.{SCHEMA}.cache_knowledge_base_index"
+
+print(f"Catalog:           {CATALOG}")
+print(f"Schema:            {SCHEMA}")
+print(f"Data schema:       {data_schema_name(config)}")
+print(f"Cache version:     {context.cache_version}")
+print(f"Cache context key: {context.cache_context_key}")
+print(f"VS Endpoint:       {VS_ENDPOINT}")
+print(f"Embedding Model:   {EMBEDDING_MODEL}")
+print(f"Embedding Dim:     {EMBEDDING_DIM}")
+print(f"Seed demo data:    {SEED_DEMO_DATA}")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Create Catalog & Schema
+# MAGIC ## Create Catalog and Schema
 
 # COMMAND ----------
 
@@ -68,122 +84,176 @@ print(f"Catalog and schema ready: {CATALOG}.{SCHEMA}")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Create Delta Table — `cache_store` (Scenario 2)
+# MAGIC ## Delta Cache Tables
 # MAGIC
-# MAGIC Stores cached Genie responses for the Vector Search caching scenario.
-# MAGIC Change Data Feed (CDF) is enabled so the Delta Sync VS index can track changes.
+# MAGIC These v2 tables store cache metadata and generated SQL. They do not store an
+# MAGIC authoritative result. Scenario notebooks re-execute cached SQL on every hit.
 
 # COMMAND ----------
 
-CACHE_STORE_TABLE = f"{CATALOG}.{SCHEMA}.cache_store"
+DELTA_CACHE_COLUMNS = {
+    "id",
+    "space_id",
+    "cache_context_key",
+    "cache_scope",
+    "session_id",
+    "question_text",
+    "question_normalized",
+    "generated_sql",
+    "genie_response_text",
+    "validated",
+    "validation_source",
+    "created_at",
+    "updated_at",
+    "last_hit_at",
+    "hit_count",
+}
 
-spark.sql(f"""
-    CREATE TABLE IF NOT EXISTS {CACHE_STORE_TABLE} (
-        id STRING NOT NULL,
-        question_text STRING,
-        question_normalized STRING,
-        cached_sql STRING,
-        cached_response STRING,
-        created_at TIMESTAMP,
-        hit_count INT DEFAULT 0
-    )
-    USING DELTA
-    TBLPROPERTIES (delta.enableChangeDataFeed = true)
-""")
-print(f"Delta table ready: {CACHE_STORE_TABLE}")
+
+def assert_delta_table_compatible(full_table_name: str):
+    try:
+        existing_columns = {field.name for field in spark.table(full_table_name).schema.fields}
+    except Exception as e:
+        if "TABLE_OR_VIEW_NOT_FOUND" in str(e) or "not found" in str(e).lower():
+            return
+        raise
+
+    missing = sorted(DELTA_CACHE_COLUMNS - existing_columns)
+    if missing:
+        raise RuntimeError(
+            f"{full_table_name} already exists with a v1/incompatible schema. "
+            f"Missing columns: {missing}. Drop or migrate this cache table, then rerun setup."
+        )
+
+
+def create_delta_cache_table(full_table_name: str):
+    assert_delta_table_compatible(full_table_name)
+    spark.sql(f"""
+        CREATE TABLE IF NOT EXISTS {full_table_name} (
+            id STRING NOT NULL,
+            space_id STRING NOT NULL,
+            cache_context_key STRING NOT NULL,
+            cache_scope STRING NOT NULL,
+            session_id STRING NOT NULL,
+            question_text STRING NOT NULL,
+            question_normalized STRING NOT NULL,
+            generated_sql STRING NOT NULL,
+            genie_response_text STRING,
+            validated BOOLEAN DEFAULT false,
+            validation_source STRING,
+            created_at TIMESTAMP,
+            updated_at TIMESTAMP,
+            last_hit_at TIMESTAMP,
+            hit_count INT DEFAULT 0
+        )
+        USING DELTA
+        TBLPROPERTIES (delta.enableChangeDataFeed = true)
+    """)
+    print(f"Delta table ready: {full_table_name}")
+
+
+create_delta_cache_table(CACHE_STORE_TABLE)
+create_delta_cache_table(CACHE_KB_TABLE)
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Create Delta Table — `cache_knowledge_base` (Scenario 3)
+# MAGIC ## Lakebase Table with pgvector
 # MAGIC
-# MAGIC Long-lived knowledge base of validated cache entries.  Entries are promoted
-# MAGIC here from the L1 session cache after user validation or repeated use.
+# MAGIC The v2 unique key includes Genie space, cache context, scope, session, and
+# MAGIC normalized question. This keeps Scenario 3's session cache isolated.
 
 # COMMAND ----------
 
-CACHE_KB_TABLE = f"{CATALOG}.{SCHEMA}.cache_knowledge_base"
+LAKEBASE_CACHE_COLUMNS = {
+    "id",
+    "space_id",
+    "cache_context_key",
+    "cache_scope",
+    "session_id",
+    "question_text",
+    "question_normalized",
+    "embedding",
+    "generated_sql",
+    "genie_response_text",
+    "validated",
+    "validation_source",
+    "created_at",
+    "updated_at",
+    "last_hit_at",
+    "hit_count",
+}
 
-spark.sql(f"""
-    CREATE TABLE IF NOT EXISTS {CACHE_KB_TABLE} (
-        id STRING NOT NULL,
-        question_text STRING,
-        question_normalized STRING,
-        cached_sql STRING,
-        cached_response STRING,
-        validated BOOLEAN DEFAULT false,
-        validation_source STRING,
-        created_at TIMESTAMP,
-        hit_count INT DEFAULT 0
-    )
-    USING DELTA
-    TBLPROPERTIES (delta.enableChangeDataFeed = true)
-""")
-print(f"Delta table ready: {CACHE_KB_TABLE}")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Setup Lakebase Table with pgvector (Scenarios 1 & 3)
-# MAGIC
-# MAGIC Creates the `genie_cache` table in Lakebase (Databricks-managed PostgreSQL)
-# MAGIC with the pgvector extension for vector similarity search.
-# MAGIC
-# MAGIC - **HNSW index** on the embedding column for fast approximate nearest-neighbor search
-# MAGIC - **B-tree index** on `question_normalized` for exact-match lookups
-# MAGIC - **UNIQUE constraint** on `question_normalized` to support `ON CONFLICT` upserts
-
-# COMMAND ----------
 
 conn = get_lakebase_connection(config)
 try:
     with conn.cursor() as cur:
-        # Enable pgvector extension
         cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
-        # Create cache table
+        cur.execute("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'genie_cache'
+        """)
+        existing_columns = {row[0] for row in cur.fetchall()}
+        missing = sorted(LAKEBASE_CACHE_COLUMNS - existing_columns) if existing_columns else []
+        if missing:
+            raise RuntimeError(
+                "Lakebase table genie_cache already exists with a v1/incompatible schema. "
+                f"Missing columns: {missing}. Drop or migrate the Lakebase table, then rerun setup."
+            )
+
         cur.execute(f"""
             CREATE TABLE IF NOT EXISTS genie_cache (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                question_normalized TEXT NOT NULL UNIQUE,
+                id UUID PRIMARY KEY,
+                space_id TEXT NOT NULL,
+                cache_context_key TEXT NOT NULL,
+                cache_scope TEXT NOT NULL,
+                session_id TEXT NOT NULL DEFAULT '',
+                question_text TEXT NOT NULL,
+                question_normalized TEXT NOT NULL,
                 embedding vector({EMBEDDING_DIM}),
-                cached_sql TEXT,
-                cached_response JSONB,
-                session_id TEXT,
+                generated_sql TEXT NOT NULL,
+                genie_response_text TEXT,
+                validated BOOLEAN DEFAULT false,
+                validation_source TEXT,
                 created_at TIMESTAMPTZ DEFAULT now(),
-                hit_count INTEGER DEFAULT 0
+                updated_at TIMESTAMPTZ DEFAULT now(),
+                last_hit_at TIMESTAMPTZ,
+                hit_count INTEGER DEFAULT 0,
+                UNIQUE (
+                    space_id,
+                    cache_context_key,
+                    cache_scope,
+                    session_id,
+                    question_normalized
+                )
             )
         """)
 
-        # HNSW index for vector similarity search
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_genie_cache_embedding
             ON genie_cache USING hnsw (embedding vector_cosine_ops)
             WITH (m = 16, ef_construction = 64)
         """)
-
-        # B-tree index on session_id for session-scoped queries (Scenario 3)
         cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_genie_cache_session
-            ON genie_cache (session_id)
+            CREATE INDEX IF NOT EXISTS idx_genie_cache_context
+            ON genie_cache (space_id, cache_context_key, cache_scope, session_id)
         """)
 
     conn.commit()
-    print("Lakebase table 'genie_cache' ready with pgvector HNSW index")
-
-    # Connectivity check: verify table exists
     with conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM genie_cache")
         count = cur.fetchone()[0]
-        print(f"  Current row count: {count}")
-
+        print(f"Lakebase genie_cache ready with pgvector ({count} rows)")
 finally:
     conn.close()
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Create Vector Search Endpoint
+# MAGIC ## Vector Search Endpoint and Indexes
 
 # COMMAND ----------
 
@@ -195,7 +265,6 @@ vsc = VectorSearchClient(disable_notice=True)
 
 
 def wait_for_endpoint_ready(endpoint_name: str, timeout_minutes: int = 30):
-    """Wait for a Vector Search endpoint to reach ONLINE state."""
     start_time = time.time()
     timeout_seconds = timeout_minutes * 60
 
@@ -215,10 +284,8 @@ def wait_for_endpoint_ready(endpoint_name: str, timeout_minutes: int = 30):
         time.sleep(30)
 
 
-# COMMAND ----------
-
 try:
-    endpoint = vsc.get_endpoint(VS_ENDPOINT)
+    vsc.get_endpoint(VS_ENDPOINT)
     print(f"Endpoint {VS_ENDPOINT} already exists")
 except Exception as e:
     if "NOT_FOUND" in str(e) or "does not exist" in str(e).lower():
@@ -231,18 +298,26 @@ wait_for_endpoint_ready(VS_ENDPOINT)
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ## Create Vector Search Indexes
-# MAGIC
-# MAGIC Two Delta Sync indexes with managed embeddings on `question_text`:
-# MAGIC 1. `cache_store_index` — for Scenario 2
-# MAGIC 2. `cache_knowledge_base_index` — for Scenario 3 (L2)
-
-# COMMAND ----------
+VS_COLUMNS_TO_SYNC = [
+    "id",
+    "space_id",
+    "cache_context_key",
+    "cache_scope",
+    "session_id",
+    "question_text",
+    "question_normalized",
+    "generated_sql",
+    "genie_response_text",
+    "validated",
+    "validation_source",
+    "created_at",
+    "updated_at",
+    "last_hit_at",
+    "hit_count",
+]
 
 
 def wait_for_index_ready(endpoint_name: str, index_name: str, timeout_minutes: int = 60):
-    """Wait for a Vector Search index to be ready."""
     start_time = time.time()
     timeout_seconds = timeout_minutes * 60
 
@@ -265,10 +340,10 @@ def wait_for_index_ready(endpoint_name: str, index_name: str, timeout_minutes: i
 
 
 def create_or_sync_index(source_table: str, index_name: str):
-    """Create a Delta Sync VS index or trigger sync if it already exists."""
     try:
         index = vsc.get_index(endpoint_name=VS_ENDPOINT, index_name=index_name)
-        print(f"Index {index_name} already exists — triggering sync...")
+        print(f"Index {index_name} already exists; triggering sync...")
+        print("  If this index was created before the v2 schema, delete it and rerun setup.")
         index.sync()
     except Exception as e:
         if "NOT_FOUND" in str(e) or "does not exist" in str(e).lower():
@@ -281,101 +356,66 @@ def create_or_sync_index(source_table: str, index_name: str):
                 pipeline_type="TRIGGERED",
                 embedding_source_column="question_text",
                 embedding_model_endpoint_name=EMBEDDING_MODEL,
+                columns_to_sync=VS_COLUMNS_TO_SYNC,
             )
         else:
             raise
 
 
-# COMMAND ----------
-
-# Scenario 2 index
-CACHE_STORE_INDEX = f"{CATALOG}.{SCHEMA}.cache_store_index"
 create_or_sync_index(CACHE_STORE_TABLE, CACHE_STORE_INDEX)
-
-# COMMAND ----------
-
-# Scenario 3 index
-CACHE_KB_INDEX = f"{CATALOG}.{SCHEMA}.cache_knowledge_base_index"
 create_or_sync_index(CACHE_KB_TABLE, CACHE_KB_INDEX)
-
-# COMMAND ----------
-
-# Wait for both indexes
 wait_for_index_ready(VS_ENDPOINT, CACHE_STORE_INDEX)
 wait_for_index_ready(VS_ENDPOINT, CACHE_KB_INDEX)
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Seed Demo Data
+# MAGIC ## Optional Seed Demo Data
 # MAGIC
-# MAGIC Pre-populates all 3 cache stores with 5 seed entries so the scenario
-# MAGIC notebooks show cache **HITs** immediately on the first pass.
-# MAGIC
-# MAGIC | Store | Scenario | Seeding method |
-# MAGIC |-------|----------|----------------|
-# MAGIC | Lakebase `genie_cache` (pgvector) | 1 & 3 | `lakebase_cache_write()` — upsert with real embeddings |
-# MAGIC | Delta `cache_store` | 2 | Spark append (with duplicate check) |
-# MAGIC | Delta `cache_knowledge_base` | 3 | Spark append (with duplicate check) + `validated=True` |
+# MAGIC Seed rows use the Horizon Bank semantic layer where possible. Seeded mode is
+# MAGIC useful for showing immediate hits; leave `seed_demo_data: false` to exercise
+# MAGIC the cold path and Genie API calls.
 
 # COMMAND ----------
 
-# The seed SQL references the Horizon Bank data schema (from genie-demo-data),
-# which is separate from the cache schema. Adjust DATA_SCHEMA if your Horizon
-# Bank tables live in a different schema.
-DATA_SCHEMA = "horizon_bank"
-ds = f"{CATALOG}.{DATA_SCHEMA}"
+ds = data_schema_name(config)
 
 SEED_ENTRIES = [
     {
         "question_text": "What was total deposit volume in 2024?",
-        "cached_sql": (
-            f"SELECT SUM(amount_usd) AS total_deposit_volume\n"
-            f"FROM {ds}.transactions\n"
-            f"WHERE transaction_type = 'Deposit'\n"
-            f"  AND transaction_year = 2024"
+        "generated_sql": (
+            f"SELECT MEASURE(`Deposit Volume`) AS deposit_volume\n"
+            f"FROM {ds}.mv_banking_transactions\n"
+            f"WHERE `Transaction Year` = 2024"
         ),
-        "response_text": (
-            "The total deposit volume in 2024 was approximately $15.2 million "
-            "across all accounts and branches."
-        ),
+        "response_text": "Seeded validated SQL for 2024 deposit volume.",
     },
     {
         "question_text": "Show monthly deposit trend from Jan 2023 to Dec 2025",
-        "cached_sql": (
-            f"SELECT transaction_year, transaction_month,\n"
-            f"       SUM(amount_usd) AS monthly_deposit_volume\n"
-            f"FROM {ds}.transactions\n"
-            f"WHERE transaction_type = 'Deposit'\n"
-            f"GROUP BY transaction_year, transaction_month\n"
-            f"ORDER BY transaction_year, transaction_month"
+        "generated_sql": (
+            f"SELECT `Transaction Year`, `Transaction Month`,\n"
+            f"       MEASURE(`Deposit Volume`) AS deposit_volume\n"
+            f"FROM {ds}.mv_banking_transactions\n"
+            f"WHERE `Transaction Month` BETWEEN DATE '2023-01-01' AND DATE '2025-12-01'\n"
+            f"GROUP BY `Transaction Year`, `Transaction Month`\n"
+            f"ORDER BY `Transaction Year`, `Transaction Month`"
         ),
-        "response_text": (
-            "Here is the monthly deposit trend from January 2023 through "
-            "December 2025. Notable patterns include seasonal spikes in "
-            "November/December and a Q2 2024 dip of approximately 15%."
-        ),
+        "response_text": "Seeded validated SQL for monthly deposit trend.",
     },
     {
         "question_text": "What is the average account balance for Private Client customers by state?",
-        "cached_sql": (
-            f"SELECT c.state,\n"
-            f"       ROUND(AVG(a.current_balance_usd), 2) AS avg_balance\n"
-            f"FROM {ds}.customers c\n"
-            f"JOIN {ds}.accounts a ON c.customer_id = a.customer_id\n"
-            f"WHERE c.relationship_tier = 'Private Client'\n"
-            f"GROUP BY c.state\n"
-            f"ORDER BY avg_balance DESC"
+        "generated_sql": (
+            f"SELECT `State`, MEASURE(`Average Balance`) AS average_balance\n"
+            f"FROM {ds}.mv_customer_health\n"
+            f"WHERE `Relationship Tier` = 'Private Client'\n"
+            f"GROUP BY `State`\n"
+            f"ORDER BY average_balance DESC"
         ),
-        "response_text": (
-            "Private Client customers have average account balances roughly 3x "
-            "higher than Standard tier. The highest averages are concentrated in "
-            "New York, California, and Florida."
-        ),
+        "response_text": "Seeded validated SQL for Private Client average balances.",
     },
     {
         "question_text": "Which 10 branches had the highest deposit volume this year?",
-        "cached_sql": (
+        "generated_sql": (
             f"SELECT b.branch_name, b.region,\n"
             f"       SUM(t.amount_usd) AS deposit_volume\n"
             f"FROM {ds}.transactions t\n"
@@ -386,141 +426,67 @@ SEED_ENTRIES = [
             f"ORDER BY deposit_volume DESC\n"
             f"LIMIT 10"
         ),
-        "response_text": (
-            "The top 10 branches by deposit volume are led by the Manhattan "
-            "Financial District and Miami South branches. Southeast branches "
-            "show approximately 20% higher average transaction values."
-        ),
+        "response_text": "Seeded validated SQL for top branch deposit volume.",
     },
     {
         "question_text": "What is fee revenue per customer by relationship tier?",
-        "cached_sql": (
-            f"SELECT c.relationship_tier,\n"
-            f"       COUNT(DISTINCT c.customer_id) AS customer_count,\n"
-            f"       SUM(t.fee_usd) AS total_fee_revenue,\n"
-            f"       ROUND(SUM(t.fee_usd) / COUNT(DISTINCT c.customer_id), 2) AS fee_per_customer\n"
-            f"FROM {ds}.transactions t\n"
-            f"JOIN {ds}.accounts a ON t.account_id = a.account_id\n"
-            f"JOIN {ds}.customers c ON a.customer_id = c.customer_id\n"
-            f"WHERE t.fee_usd > 0\n"
-            f"GROUP BY c.relationship_tier\n"
-            f"ORDER BY fee_per_customer DESC"
+        "generated_sql": (
+            f"SELECT `Relationship Tier`,\n"
+            f"       MEASURE(`Fee Revenue per Customer`) AS fee_revenue_per_customer\n"
+            f"FROM {ds}.mv_banking_transactions\n"
+            f"GROUP BY `Relationship Tier`\n"
+            f"ORDER BY fee_revenue_per_customer DESC"
         ),
-        "response_text": (
-            "Fee revenue per customer varies significantly by tier. Private "
-            "Client customers generate the highest fee revenue per customer, "
-            "followed by Preferred and Standard tiers."
-        ),
+        "response_text": "Seeded validated SQL for fee revenue per customer.",
     },
 ]
 
-print(f"Defined {len(SEED_ENTRIES)} seed entries")
+print(f"Defined {len(SEED_ENTRIES)} optional seed entries")
 for i, entry in enumerate(SEED_ENTRIES, 1):
     print(f"  {i}. {entry['question_text']}")
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ### Seed Lakebase pgvector (Scenarios 1 & 3)
-# MAGIC
-# MAGIC Uses `lakebase_cache_write()` which handles normalization, embedding
-# MAGIC generation via the Foundation Model API, and `ON CONFLICT` upsert.
-
-# COMMAND ----------
-
-for entry in SEED_ENTRIES:
-    print(f"  Seeding: {entry['question_text'][:60]}...")
-    lakebase_cache_write(
-        config,
-        question=entry["question_text"],
-        sql=entry["cached_sql"],
-        response_text=entry["response_text"],
-    )
-
-# Verify
-conn = get_lakebase_connection(config)
-with conn.cursor() as cur:
-    cur.execute("SELECT count(*) FROM genie_cache")
-    lb_count = cur.fetchone()[0]
-print(f"\nLakebase genie_cache: {lb_count} rows")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### Seed Delta `cache_store` (Scenario 2)
-# MAGIC
-# MAGIC Appends rows to the Delta table. Skips if seed data already exists
-# MAGIC (checked via row count) to avoid duplicates on re-run.
-
-# COMMAND ----------
-
-from pyspark.sql import Row
-
-existing_count = spark.sql(f"SELECT count(*) FROM {CACHE_STORE_TABLE}").collect()[0][0]
-if existing_count > 0:
-    print(f"Delta table {CACHE_STORE_TABLE} already has {existing_count} rows — skipping seed")
-else:
-    rows = []
+if SEED_DEMO_DATA:
     for entry in SEED_ENTRIES:
-        rows.append(
-            Row(
-                id=generate_id(),
-                question_text=entry["question_text"],
-                question_normalized=normalize_question(entry["question_text"]),
-                cached_sql=entry["cached_sql"],
-                cached_response=entry["response_text"],
-                created_at=utcnow(),
-                hit_count=0,
-            )
+        print(f"  Seeding: {entry['question_text'][:60]}...")
+        lakebase_cache_write(
+            config,
+            question=entry["question_text"],
+            sql=entry["generated_sql"],
+            response_text=entry["response_text"],
+            cache_scope=GLOBAL_SCOPE,
+            validated=True,
+            validation_source="seed",
         )
-    df = spark.createDataFrame(rows)
-    df.write.mode("append").saveAsTable(CACHE_STORE_TABLE)
-    print(f"Seeded {len(rows)} rows into {CACHE_STORE_TABLE}")
+        delta_cache_upsert(
+            spark,
+            CACHE_STORE_TABLE,
+            config,
+            question=entry["question_text"],
+            sql=entry["generated_sql"],
+            response_text=entry["response_text"],
+            cache_scope=GLOBAL_SCOPE,
+            validated=True,
+            validation_source="seed",
+        )
+        delta_cache_upsert(
+            spark,
+            CACHE_KB_TABLE,
+            config,
+            question=entry["question_text"],
+            sql=entry["generated_sql"],
+            response_text=entry["response_text"],
+            cache_scope=GLOBAL_SCOPE,
+            validated=True,
+            validation_source="seed",
+        )
 
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### Seed Delta `cache_knowledge_base` (Scenario 3)
-# MAGIC
-# MAGIC Same entries but marked as `validated=True` with `validation_source="seed"`.
-
-# COMMAND ----------
-
-existing_count = spark.sql(f"SELECT count(*) FROM {CACHE_KB_TABLE}").collect()[0][0]
-if existing_count > 0:
-    print(f"Delta table {CACHE_KB_TABLE} already has {existing_count} rows — skipping seed")
+    print("\nSyncing Vector Search indexes after seed writes...")
+    sync_vs_index_and_wait(vsc, VS_ENDPOINT, CACHE_STORE_INDEX)
+    sync_vs_index_and_wait(vsc, VS_ENDPOINT, CACHE_KB_INDEX)
 else:
-    rows = []
-    for entry in SEED_ENTRIES:
-        rows.append(
-            Row(
-                id=generate_id(),
-                question_text=entry["question_text"],
-                question_normalized=normalize_question(entry["question_text"]),
-                cached_sql=entry["cached_sql"],
-                cached_response=entry["response_text"],
-                validated=True,
-                validation_source="seed",
-                created_at=utcnow(),
-                hit_count=0,
-            )
-        )
-    df = spark.createDataFrame(rows)
-    df.write.mode("append").saveAsTable(CACHE_KB_TABLE)
-    print(f"Seeded {len(rows)} rows into {CACHE_KB_TABLE}")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### Sync Vector Search Indexes
-
-# COMMAND ----------
-
-print("Syncing cache_store index...")
-sync_vs_index_and_wait(vsc, VS_ENDPOINT, CACHE_STORE_INDEX)
-
-print("Syncing cache_knowledge_base index...")
-sync_vs_index_and_wait(vsc, VS_ENDPOINT, CACHE_KB_INDEX)
+    print("Skipping demo seed data. Scenario notebooks will exercise cold misses first.")
 
 # COMMAND ----------
 
@@ -529,7 +495,6 @@ sync_vs_index_and_wait(vsc, VS_ENDPOINT, CACHE_KB_INDEX)
 
 # COMMAND ----------
 
-# Seed row counts
 conn = get_lakebase_connection(config)
 with conn.cursor() as cur:
     cur.execute("SELECT count(*) FROM genie_cache")
@@ -541,15 +506,17 @@ kb_count = spark.sql(f"SELECT count(*) FROM {CACHE_KB_TABLE}").collect()[0][0]
 print("=" * 60)
 print("SETUP COMPLETE")
 print("=" * 60)
-print(f"  Catalog/Schema:        {CATALOG}.{SCHEMA}")
-print(f"  Delta — cache_store:   {CACHE_STORE_TABLE} ({cs_count} rows)")
-print(f"  Delta — knowledge_base:{CACHE_KB_TABLE} ({kb_count} rows)")
-print(f"  Lakebase — genie_cache: ✓ pgvector + HNSW ({lb_count} rows)")
-print(f"  VS Endpoint:           {VS_ENDPOINT}")
-print(f"  VS Index (Scenario 2): {CACHE_STORE_INDEX}")
-print(f"  VS Index (Scenario 3): {CACHE_KB_INDEX}")
+print(f"  Catalog/Schema:         {CATALOG}.{SCHEMA}")
+print(f"  Data schema:            {data_schema_name(config)}")
+print(f"  Cache context key:      {context.cache_context_key}")
+print(f"  Delta - cache_store:    {CACHE_STORE_TABLE} ({cs_count} rows)")
+print(f"  Delta - knowledge_base: {CACHE_KB_TABLE} ({kb_count} rows)")
+print(f"  Lakebase - genie_cache: pgvector + HNSW ({lb_count} rows)")
+print(f"  VS Endpoint:            {VS_ENDPOINT}")
+print(f"  VS Index (Scenario 2):  {CACHE_STORE_INDEX}")
+print(f"  VS Index (Scenario 3):  {CACHE_KB_INDEX}")
 print()
-print("Next steps — run any scenario notebook:")
-print("  1. 1_lakebase_pgvector_cache.py  — Scenario 1: Lakebase + pgvector")
-print("  2. 2_vector_search_cache.py      — Scenario 2: Vector Search")
-print("  3. 3_hybrid_cache.py             — Scenario 3: Hybrid (Recommended)")
+print("Next steps - run any scenario notebook:")
+print("  1. 1_lakebase_pgvector_cache.py  - Scenario 1: Lakebase + pgvector")
+print("  2. 2_vector_search_cache.py      - Scenario 2: Vector Search")
+print("  3. 3_hybrid_cache.py             - Scenario 3: Hybrid (Recommended)")
