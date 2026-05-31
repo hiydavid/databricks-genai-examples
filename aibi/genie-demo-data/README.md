@@ -1,6 +1,6 @@
-# Horizon Bank — Demo Dataset Setup
+# Genie Demo Dataset Setup
 
-Synthetic retail banking dataset for demonstrating Databricks AI/BI Genie. Generates 6 Delta tables and 3 metric views in Unity Catalog.
+Synthetic industry datasets for demonstrating Databricks AI/BI Genie. Each generator creates a standalone Unity Catalog schema with Delta tables, metric views, constraints, comments, and pattern validation queries.
 
 ## Files
 
@@ -8,7 +8,9 @@ Synthetic retail banking dataset for demonstrating Databricks AI/BI Genie. Gener
 |---|---|
 | `industry_data_generators/generate_all_industry_data.py` | Databricks entry point — runs all industry generators sequentially |
 | `industry_data_generators/generate_banking_data.py` | Self-contained Databricks notebook — generates all 6 banking tables, metric views, and constraints end-to-end |
-| `industry_data_generators/generate_*_data.py` | Self-contained industry generator notebooks for banking, healthcare, retail, SaaS, and wind turbine maintenance datasets |
+| `industry_data_generators/generate_talent_advisory_data.py` | Self-contained Databricks notebook — generates the HR talent advisory dataset, topic marts, metric views, and constraints |
+| `industry_data_generators/generate_*_data.py` | Self-contained industry generator notebooks for banking, healthcare, retail, SaaS, wind turbine maintenance, and talent advisory datasets |
+| `talent_advisory_space_map.md` | Recommended multi-Genie space map for the talent advisory dataset |
 | `generate_genie.py` | Databricks notebook — creates or updates the Genie space via the Databricks SDK |
 
 ## Prerequisites
@@ -21,7 +23,7 @@ Synthetic retail banking dataset for demonstrating Databricks AI/BI Genie. Gener
 
 ## Bulk Industry Data Generation
 
-Use `industry_data_generators/generate_all_industry_data.py` to create all five industry demo datasets in one run.
+Use `industry_data_generators/generate_all_industry_data.py` to create all six industry demo datasets in one run.
 
 1. Import all notebooks in `industry_data_generators/` into the same Databricks workspace folder.
 2. Open `generate_all_industry_data.py` and attach it to a cluster.
@@ -37,6 +39,7 @@ The bulk notebook creates these schemas in the selected catalog:
 - `retail_apparel`
 - `saas_churn`
 - `wind_turbine_maintenance`
+- `talent_advisory`
 
 Each child generator notebook remains runnable on its own. Run a child notebook directly and set its `catalog` and `schema` widgets, or use the defaults in its configuration cell.
 
@@ -90,7 +93,55 @@ service_requests:   3,000 rows
 
 The notebook will create (or update) the **Horizon Bank Analytics** Genie space with all tables, metric views, space instructions, sample questions, and verified SQL examples.
 
-## Schema Overview
+## Talent Advisory Dataset
+
+Use `industry_data_generators/generate_talent_advisory_data.py` to create a synthetic HR dataset for multi-Genie talent advisor demos. The generator creates one shared `talent_advisory` schema with source tables, denormalized topic marts, and metric views that can be attached to focused Genie spaces.
+
+### Expected output
+
+```
+locations:                         10 rows
+org_units:                         18 rows
+job_roles:                         44 rows
+skills:                            36 rows
+employees:                     ~2,850 rows (~2,500 active)
+employee_skills:               ~17,000 rows
+learning_activity:              variable
+talent_events:                  variable
+performance_reviews:            variable
+compensation_snapshots:         variable
+engagement_pulses:              variable
+retention_risk_snapshots:       variable
+requisitions:                       640 rows
+applications:                   variable
+succession_plans:               variable
+```
+
+### Topic marts and metric views
+
+| Topic | Mart | Metric view |
+|---|---|---|
+| Workforce Planning | `mart_workforce_planning` | `mv_workforce_planning` |
+| Hiring Funnel | `mart_hiring_funnel` | `mv_hiring_funnel` |
+| Retention & Engagement | `mart_retention_engagement` | `mv_retention_engagement` |
+| Internal Mobility & Skills | `mart_internal_mobility` | `mv_internal_mobility` |
+| Compensation & Performance | `mart_comp_performance` | `mv_comp_performance` |
+| Succession & Critical Roles | `mart_succession_planning` | `mv_succession_planning` |
+
+For Genie One Chat style demos, see `talent_advisory_space_map.md` for recommended Genie space boundaries, table subsets, routing examples, and cross-space prompts.
+
+### Talent advisory injected patterns
+
+| Pattern | Where to see it |
+|---|---|
+| **2025 mobility program lowers retention risk** | `retention_risk_snapshots`, `mart_retention_engagement`, `mart_internal_mobility` |
+| **Sales East 2024 engagement dip followed by regretted attrition** | `engagement_pulses`, `talent_events`, `mart_retention_engagement` |
+| **Data & AI roles grow fastest, have larger skill gaps, and take longer to fill** | `requisitions`, `employee_skills`, `mart_hiring_funnel`, `mart_internal_mobility` |
+| **High performers below 0.90 compa-ratio show higher retention risk** | `compensation_snapshots`, `performance_reviews`, `retention_risk_snapshots`, `mart_comp_performance` |
+| **Product offers below market midpoint have lower acceptance** | `applications`, `requisitions`, `mart_hiring_funnel` |
+| **GTM and Data & AI Platform have weaker critical-role succession coverage** | `succession_plans`, `mart_succession_planning` |
+
+## Horizon Bank Schema Overview
 
 ```
 products (20)          branches (25)
@@ -103,7 +154,7 @@ products (20)          branches (25)
 transactions (10,000)  service_requests (3,000)
 ```
 
-## Injected Patterns
+## Horizon Bank Injected Patterns
 
 The dataset contains several non-random patterns designed to surface in demo queries:
 
@@ -120,4 +171,4 @@ The dataset contains several non-random patterns designed to surface in demo que
 
 ## Reproducing the Data
 
-The generator uses `random.seed(42)` and `Faker.seed(42)`. Running `generate_banking_data.py` with the same seed always produces the same dataset.
+Each generator uses `random.seed(42)` and `Faker.seed(42)`. Running the same generator with the same seed always produces the same dataset.
