@@ -45,6 +45,11 @@ GENERATOR_NOTEBOOKS = [
         "notebook": "generate_wind_turbine_maintenance_data",
         "schema": "wind_turbine_maintenance",
     },
+    {
+        "industry": "Talent Advisory",
+        "notebook": "generate_talent_advisory_data",
+        "schema": "talent_advisory",
+    },
 ]
 
 try:
