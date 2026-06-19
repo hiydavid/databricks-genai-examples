@@ -4,20 +4,15 @@
 # MAGIC
 # MAGIC ![Architecture](scenario2-vector-search.png)
 # MAGIC
-# MAGIC This notebook demonstrates query caching using a **Databricks Vector Search**
-# MAGIC index backed by a Delta table in Unity Catalog.
+# MAGIC This notebook demonstrates a Databricks Vector Search cache backed by Delta.
+# MAGIC Cache hits retrieve generated SQL, then re-execute that SQL under the current
+# MAGIC Databricks identity.
 # MAGIC
 # MAGIC **Cache flow:**
-# MAGIC 1. **Hybrid search** (semantic + BM25) against the VS index with managed embeddings
-# MAGIC 2. **Confidence tiering** on the returned similarity score:
-# MAGIC    - ≥ 0.90 → **auto-execute** the cached SQL
-# MAGIC    - 0.75–0.90 → **confirm** — return cached result but flag for user review
-# MAGIC    - < 0.75 → **fall through** to Genie API
-# MAGIC 3. **MISS** → call Genie API (with retry + backoff)
-# MAGIC 4. **APPEND** result to Delta table `cache_store`, trigger VS index sync
-# MAGIC
-# MAGIC **Key properties:** Unity Catalog governed, hybrid semantic + BM25 search,
-# MAGIC managed embeddings (no manual embedding generation needed).
+# MAGIC 1. Hybrid search (semantic + BM25) against the Vector Search index.
+# MAGIC 2. Confidence tiering on the returned score.
+# MAGIC 3. On a hit, increment hit metadata and re-execute cached SQL.
+# MAGIC 4. On a miss, call Genie, execute the generated SQL, upsert it to Delta, and sync.
 # MAGIC
 # MAGIC **Prerequisites:** Run `0_setup.py` first.
 
@@ -38,22 +33,29 @@ import time
 from databricks.vector_search.client import VectorSearchClient
 
 from utils import (
+    CacheLookupResult,
+    GLOBAL_SCOPE,
+    build_cache_context,
     call_genie_with_retry,
-    generate_id,
+    delta_cache_upsert,
+    delta_increment_hit_count,
+    execute_cached_sql_with_trace,
     load_config,
-    normalize_question,
+    print_sql_preview,
     print_summary_table,
     sync_vs_index_and_wait,
-    utcnow,
+    table_name,
+    trace_operation,
+    vector_search_filters,
 )
 
 config = load_config("./configs.yaml")
+context = build_cache_context(config)
 
-CATALOG = config["catalog"]
-SCHEMA = config["schema"]
 VS_ENDPOINT = config["vs_endpoint"]
-CACHE_STORE_TABLE = f"{CATALOG}.{SCHEMA}.cache_store"
-CACHE_STORE_INDEX = f"{CATALOG}.{SCHEMA}.cache_store_index"
+CACHE_STORE_TABLE = table_name(config, "cache_store")
+CACHE_STORE_INDEX = f"{config['catalog']}.{config['schema']}.cache_store_index"
+RESULT_ROW_LIMIT = int(config.get("result_row_limit", 100))
 
 thresholds = config.get("thresholds", {})
 AUTO_THRESHOLD = thresholds.get("vs_auto_execute", 0.90)
@@ -62,8 +64,10 @@ CONFIRM_THRESHOLD = thresholds.get("vs_confirm", 0.75)
 vsc = VectorSearchClient(disable_notice=True)
 
 print(f"VS Index:           {CACHE_STORE_INDEX}")
+print(f"Cache context key:  {context.cache_context_key}")
 print(f"Auto threshold:     {AUTO_THRESHOLD}")
 print(f"Confirm threshold:  {CONFIRM_THRESHOLD}")
+print(f"Result row limit:   {RESULT_ROW_LIMIT}")
 
 # COMMAND ----------
 
@@ -77,86 +81,49 @@ def cache_lookup_vs(
     question: str,
     auto_threshold: float = AUTO_THRESHOLD,
     confirm_threshold: float = CONFIRM_THRESHOLD,
-):
-    """Search the Vector Search index for a cached response.
-
-    Uses hybrid (semantic + BM25) search with managed embeddings.
-
-    Returns (tier, cached_sql, cached_response, score) where tier is:
-    - "auto"    — score ≥ auto_threshold, safe to execute cached SQL directly
-    - "confirm" — score between confirm and auto thresholds, flag for review
-    - None      — no match above confirm threshold (cache miss)
-    """
-    index = vsc.get_index(endpoint_name=VS_ENDPOINT, index_name=CACHE_STORE_INDEX)
-
-    results = index.similarity_search(
-        query_text=question,
-        columns=["id", "question_text", "cached_sql", "cached_response"],
-        num_results=1,
-        query_type="HYBRID",
-    )
+) -> CacheLookupResult:
+    """Search the Vector Search index for a validated cache entry."""
+    with trace_operation(config, "vector_search_cache_lookup", "RETRIEVER", {"question": question}):
+        index = vsc.get_index(endpoint_name=VS_ENDPOINT, index_name=CACHE_STORE_INDEX)
+        results = index.similarity_search(
+            query_text=question,
+            columns=["id", "question_text", "generated_sql", "genie_response_text"],
+            filters=vector_search_filters(config, cache_scope=GLOBAL_SCOPE, validated_only=True),
+            num_results=1,
+            query_type="HYBRID",
+        )
 
     hits = results.get("result", {}).get("data_array", [])
     if not hits:
-        return None, None, None, 0.0
+        return CacheLookupResult(hit_type=None, score=0.0)
 
     row = hits[0]
-    # VS returns: [id, question_text, cached_sql, cached_response, score]
     score = float(row[-1]) if row[-1] is not None else 0.0
-    cached_sql = row[2]
-    cached_response = row[3]
-
     if score >= auto_threshold:
-        return "auto", cached_sql, cached_response, score
+        tier = "auto"
     elif score >= confirm_threshold:
-        return "confirm", cached_sql, cached_response, score
+        tier = "confirm"
     else:
-        return None, None, None, score
+        return CacheLookupResult(hit_type=None, score=score)
 
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Cache Write — Append to Delta Table
-
-# COMMAND ----------
-
-
-def cache_write_delta(question: str, sql: str, response_text: str):
-    """Append a new entry to the cache_store Delta table.
-
-    The VS index will pick up the new row on the next sync.
-    """
-    from pyspark.sql import Row
-
-    row_id = generate_id()
-    normalized = normalize_question(question)
-
-    new_row = Row(
-        id=row_id,
-        question_text=question,
-        question_normalized=normalized,
-        cached_sql=sql or "",
-        cached_response=response_text or "",
-        created_at=utcnow(),
-        hit_count=0,
+    return CacheLookupResult(
+        hit_type="vector-search",
+        tier=tier,
+        row_id=row[0],
+        question_text=row[1],
+        generated_sql=row[2],
+        genie_response_text=row[3],
+        score=score,
     )
-    df = spark.createDataFrame([new_row])
-    df.write.mode("append").saveAsTable(CACHE_STORE_TABLE)
-
-    print(f"  Written to Delta table {CACHE_STORE_TABLE} (id={row_id})")
-    return row_id
 
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Demo — Cold Pass (Cache Miss → Genie API)
+# MAGIC ## Demo — First Pass
 # MAGIC
-# MAGIC Each question goes through:
-# MAGIC 1. VS hybrid search → expected **MISS** (empty index)
-# MAGIC 2. Genie API call with retry/backoff
-# MAGIC 3. Delta table append → VS index sync
+# MAGIC With `seed_demo_data: false`, each question should miss and call Genie. With
+# MAGIC seeded mode enabled, matching questions may hit immediately.
 
 # COMMAND ----------
 
@@ -167,50 +134,79 @@ demo_questions = config.get("demo_questions", [
 results = []
 
 for question in demo_questions:
-    print(f"\n{'=' * 60}")
-    print(f"Question: {question}")
+    with trace_operation(config, "scenario2_question", "CHAIN", {"question": question}):
+        print(f"\n{'=' * 60}")
+        print(f"Question: {question}")
 
-    # --- Cache lookup ---
-    t0 = time.time()
-    tier, cached_sql, cached_resp, score = cache_lookup_vs(question)
+        t0 = time.time()
+        lookup = cache_lookup_vs(question)
 
-    if tier:
+        if lookup.hit:
+            delta_increment_hit_count(spark, CACHE_STORE_TABLE, lookup.row_id)
+            sql_result = execute_cached_sql_with_trace(
+                config, lookup.generated_sql, row_limit=RESULT_ROW_LIMIT
+            )
+            latency = time.time() - t0
+            print(f"  HIT (tier={lookup.tier}, score={lookup.score:.3f}) in {latency:.3f}s")
+            if lookup.tier == "confirm":
+                print("  Moderate confidence; production UIs should ask for user confirmation.")
+            print(f"  Cached SQL: {lookup.generated_sql[:160]}...")
+            print_sql_preview(sql_result)
+            results.append({
+                "question": question[:50],
+                "first_s": latency,
+                "warm_s": None,
+                "tier": lookup.tier,
+                "source": "vs-hit",
+                "speedup": "-",
+            })
+            continue
+
+        print(f"  MISS (best score={lookup.score:.3f}) -> calling Genie API...")
+        genie_result = call_genie_with_retry(config, question)
+        print(f"  Genie returned in {genie_result.latency_seconds:.1f}s")
+
+        if not genie_result.cacheable:
+            latency = time.time() - t0
+            print("  Genie did not return SQL; not caching this response.")
+            results.append({
+                "question": question[:50],
+                "first_s": latency,
+                "warm_s": None,
+                "tier": "miss",
+                "source": "genie-no-sql",
+                "speedup": None,
+            })
+            continue
+
+        sql_result = execute_cached_sql_with_trace(
+            config, genie_result.generated_sql, row_limit=RESULT_ROW_LIMIT
+        )
+        row_id = delta_cache_upsert(
+            spark,
+            CACHE_STORE_TABLE,
+            config,
+            question=question,
+            sql=genie_result.generated_sql,
+            response_text=genie_result.response_text or "",
+            cache_scope=GLOBAL_SCOPE,
+            validated=True,
+            validation_source="genie",
+        )
         latency = time.time() - t0
-        print(f"  HIT (tier={tier}, score={score:.3f}) in {latency:.3f}s")
+        print(f"  SQL: {genie_result.generated_sql[:160]}...")
+        print_sql_preview(sql_result)
+        print(f"  Upserted Delta cache row id={row_id}")
+
         results.append({
             "question": question[:50],
-            "cold_s": latency,
+            "first_s": latency,
             "warm_s": None,
-            "tier": tier,
-            "speedup": "-",
+            "tier": "miss",
+            "source": "genie",
+            "speedup": None,
         })
-        continue
 
-    print(f"  MISS (best score={score:.3f}) → calling Genie API...")
-
-    # --- Genie API ---
-    genie_result = call_genie_with_retry(config, question)
-    print(f"  Genie returned in {genie_result.latency_seconds:.1f}s")
-    if genie_result.generated_sql:
-        print(f"  SQL: {genie_result.generated_sql[:120]}...")
-
-    # --- Cache write ---
-    cache_write_delta(
-        question,
-        genie_result.generated_sql or "",
-        genie_result.response_text or "",
-    )
-    cold_latency = time.time() - t0
-
-    results.append({
-        "question": question[:50],
-        "cold_s": cold_latency,
-        "warm_s": None,
-        "tier": "miss",
-        "speedup": None,
-    })
-
-# --- Sync VS index so warm pass can find the new entries ---
 print(f"\n{'=' * 60}")
 print("Syncing VS index for warm pass...")
 sync_vs_index_and_wait(vsc, VS_ENDPOINT, CACHE_STORE_INDEX)
@@ -218,64 +214,65 @@ sync_vs_index_and_wait(vsc, VS_ENDPOINT, CACHE_STORE_INDEX)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Demo — Warm Pass (Cache Hit with Confidence Tiering)
-# MAGIC
-# MAGIC Same questions — should now return from VS cache with **auto** tier.
+# MAGIC ## Demo — Warm Pass
 
 # COMMAND ----------
 
 for i, question in enumerate(demo_questions):
-    print(f"\n{'=' * 60}")
-    print(f"Question: {question}")
+    with trace_operation(config, "scenario2_warm_question", "CHAIN", {"question": question}):
+        print(f"\n{'=' * 60}")
+        print(f"Question: {question}")
 
-    t0 = time.time()
-    tier, cached_sql, cached_resp, score = cache_lookup_vs(question)
-    warm_latency = time.time() - t0
+        t0 = time.time()
+        lookup = cache_lookup_vs(question)
 
-    if tier:
-        print(f"  HIT (tier={tier}, score={score:.3f}) in {warm_latency:.3f}s")
-        if tier == "confirm":
-            print("  Confidence is moderate — a production system would ask the user to confirm")
-        if cached_sql:
-            print(f"  Cached SQL: {cached_sql[:120]}...")
-    else:
-        print(f"  Unexpected MISS (score={score:.3f})")
-        warm_latency = None
+        if lookup.hit:
+            delta_increment_hit_count(spark, CACHE_STORE_TABLE, lookup.row_id)
+            sql_result = execute_cached_sql_with_trace(
+                config, lookup.generated_sql, row_limit=RESULT_ROW_LIMIT
+            )
+            warm_latency = time.time() - t0
+            print(f"  HIT (tier={lookup.tier}, score={lookup.score:.3f}) in {warm_latency:.3f}s")
+            if lookup.tier == "confirm":
+                print("  Moderate confidence; production UIs should ask for user confirmation.")
+            print(f"  Cached SQL: {lookup.generated_sql[:160]}...")
+            print_sql_preview(sql_result)
+        else:
+            print(f"  Unexpected MISS (score={lookup.score:.3f})")
+            warm_latency = None
 
-    if i < len(results):
-        results[i]["warm_s"] = warm_latency
-        results[i]["tier"] = tier or "miss"
-        if warm_latency and results[i]["cold_s"]:
-            results[i]["speedup"] = f"{results[i]['cold_s'] / warm_latency:.0f}x"
+        if i < len(results):
+            results[i]["warm_s"] = warm_latency
+            results[i]["tier"] = lookup.tier or "miss"
+            if warm_latency and results[i]["first_s"]:
+                results[i]["speedup"] = f"{results[i]['first_s'] / warm_latency:.0f}x"
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Demo — Confidence Tiering with Paraphrased Question
-# MAGIC
-# MAGIC A paraphrased version of a cached question may score between the confirm and
-# MAGIC auto thresholds, demonstrating the three-tier system.
+# MAGIC ## Demo — Confidence Tiering with a Paraphrased Question
 
 # COMMAND ----------
 
 if demo_questions:
-    original = demo_questions[0]
     paraphrased = "How much total deposit volume did we have in 2024?"
-    print(f"Original:    {original}")
+    print(f"Original:    {demo_questions[0]}")
     print(f"Paraphrased: {paraphrased}")
 
     t0 = time.time()
-    tier, cached_sql, cached_resp, score = cache_lookup_vs(paraphrased)
-    latency = time.time() - t0
+    lookup = cache_lookup_vs(paraphrased)
 
-    if tier == "auto":
-        print(f"\n  AUTO tier (score={score:.3f}) in {latency:.3f}s")
-        print("  High confidence — safe to execute cached SQL directly")
-    elif tier == "confirm":
-        print(f"\n  CONFIRM tier (score={score:.3f}) in {latency:.3f}s")
-        print("  Moderate confidence — production system would ask user to review")
+    if lookup.hit:
+        delta_increment_hit_count(spark, CACHE_STORE_TABLE, lookup.row_id)
+        sql_result = execute_cached_sql_with_trace(
+            config, lookup.generated_sql, row_limit=RESULT_ROW_LIMIT
+        )
+        latency = time.time() - t0
+        print(f"\n  HIT tier={lookup.tier} (score={lookup.score:.3f}) in {latency:.3f}s")
+        print_sql_preview(sql_result)
     else:
-        print(f"\n  MISS (score={score:.3f}) in {latency:.3f}s")
+        latency = time.time() - t0
+        print(f"\n  MISS (score={lookup.score:.3f}) in {latency:.3f}s")
         print(f"  Below confirm threshold ({CONFIRM_THRESHOLD})")
 
 # COMMAND ----------
@@ -286,13 +283,12 @@ if demo_questions:
 # COMMAND ----------
 
 print("\n" + "=" * 80)
-print("SCENARIO 2: Vector Search Cache — Results")
+print("SCENARIO 2: Vector Search Cache - Results")
 print("=" * 80)
-print_summary_table(results, ["question", "cold_s", "warm_s", "tier", "speedup"])
+print_summary_table(results, ["question", "first_s", "warm_s", "tier", "source", "speedup"])
 print()
-print("Note: Cold latency includes Genie API time + Delta write + VS index sync.")
-print("In production, continuous sync eliminates the sync wait (~10-30s).")
-print("Cache hit latency is ~200-500ms (VS round-trip + managed embedding).")
+print("Cache hits avoid Genie latency but still execute SQL for freshness and access control.")
+print("Triggered VS sync is for demo reproducibility; production can use continuous sync.")
 
 # COMMAND ----------
 

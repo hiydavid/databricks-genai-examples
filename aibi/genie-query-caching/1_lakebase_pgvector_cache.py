@@ -4,18 +4,14 @@
 # MAGIC
 # MAGIC ![Architecture](scenario1-lakebase-pgvector.png)
 # MAGIC
-# MAGIC This notebook demonstrates query caching using **Lakebase** (Databricks-managed
-# MAGIC PostgreSQL) with the **pgvector** extension.
+# MAGIC This notebook demonstrates a Lakebase cache for generated Genie SQL.
 # MAGIC
 # MAGIC **Cache flow:**
-# MAGIC 1. Normalize the incoming question
-# MAGIC 2. **Exact match** — look up `question_normalized` in Lakebase
-# MAGIC 3. **Vector similarity** — if no exact match, generate an embedding and run
-# MAGIC    cosine similarity search via pgvector (threshold ≥ 0.92)
-# MAGIC 4. **HIT** → return cached SQL / response immediately
-# MAGIC 5. **MISS** → call Genie API (with retry + backoff), cache the response
-# MAGIC
-# MAGIC **Key properties:** ACID writes, immediate read-after-write, scale-to-zero.
+# MAGIC 1. Normalize the incoming question.
+# MAGIC 2. Check Lakebase for an exact match in the current cache context.
+# MAGIC 3. If no exact match exists, generate an embedding and search with pgvector.
+# MAGIC 4. On a hit, re-execute cached SQL under the current Databricks identity.
+# MAGIC 5. On a miss, call Genie, execute the generated SQL, then cache it.
 # MAGIC
 # MAGIC **Prerequisites:** Run `0_setup.py` first.
 
@@ -34,29 +30,36 @@
 import time
 
 from utils import (
+    GLOBAL_SCOPE,
+    build_cache_context,
     call_genie_with_retry,
+    execute_cached_sql_with_trace,
     lakebase_cache_lookup,
     lakebase_cache_write,
     load_config,
+    print_sql_preview,
     print_summary_table,
+    trace_operation,
 )
 
 config = load_config("./configs.yaml")
+context = build_cache_context(config)
 
 SIMILARITY_THRESHOLD = config.get("thresholds", {}).get("lakebase_similarity", 0.92)
+RESULT_ROW_LIMIT = int(config.get("result_row_limit", 100))
 
 print(f"Genie Space:          {config['genie_space_id']}")
+print(f"Cache context key:    {context.cache_context_key}")
 print(f"Similarity threshold: {SIMILARITY_THRESHOLD}")
+print(f"Result row limit:     {RESULT_ROW_LIMIT}")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Demo — Cold Pass (Cache Miss → Genie API)
+# MAGIC ## Demo — First Pass
 # MAGIC
-# MAGIC Each question goes through:
-# MAGIC 1. Cache lookup → expected **MISS**
-# MAGIC 2. Genie API call with retry/backoff
-# MAGIC 3. Cache write (immediate, ACID)
+# MAGIC With `seed_demo_data: false`, each question should miss and call Genie. With
+# MAGIC seeded mode enabled, matching questions may hit immediately.
 
 # COMMAND ----------
 
@@ -67,113 +70,147 @@ demo_questions = config.get("demo_questions", [
 results = []
 
 for question in demo_questions:
-    print(f"\n{'=' * 60}")
-    print(f"Question: {question}")
+    with trace_operation(config, "scenario1_question", "CHAIN", {"question": question}):
+        print(f"\n{'=' * 60}")
+        print(f"Question: {question}")
 
-    # --- Cache lookup ---
-    t0 = time.time()
-    hit_type, cached_sql, cached_resp, score, embedding = lakebase_cache_lookup(
-        config, question, threshold=SIMILARITY_THRESHOLD
-    )
+        t0 = time.time()
+        lookup = lakebase_cache_lookup(
+            config,
+            question,
+            threshold=SIMILARITY_THRESHOLD,
+            cache_scope=GLOBAL_SCOPE,
+        )
 
-    if hit_type:
+        if lookup.hit:
+            sql_result = execute_cached_sql_with_trace(
+                config, lookup.generated_sql, row_limit=RESULT_ROW_LIMIT
+            )
+            latency = time.time() - t0
+            print(f"  HIT ({lookup.hit_type}, score={lookup.score:.3f}) in {latency:.3f}s")
+            print(f"  Cached SQL: {lookup.generated_sql[:160]}...")
+            print_sql_preview(sql_result)
+            results.append({
+                "question": question[:50],
+                "first_s": latency,
+                "warm_s": None,
+                "source": f"hit-{lookup.hit_type}",
+                "speedup": "-",
+            })
+            continue
+
+        print("  MISS -> calling Genie API with retry/backoff...")
+        genie_result = call_genie_with_retry(config, question)
+        print(f"  Genie returned in {genie_result.latency_seconds:.1f}s")
+
+        if not genie_result.cacheable:
+            latency = time.time() - t0
+            print("  Genie did not return SQL; not caching this response.")
+            results.append({
+                "question": question[:50],
+                "first_s": latency,
+                "warm_s": None,
+                "source": "genie-no-sql",
+                "speedup": None,
+            })
+            continue
+
+        sql_result = execute_cached_sql_with_trace(
+            config, genie_result.generated_sql, row_limit=RESULT_ROW_LIMIT
+        )
+        lakebase_cache_write(
+            config,
+            question=question,
+            sql=genie_result.generated_sql,
+            response_text=genie_result.response_text or "",
+            cache_scope=GLOBAL_SCOPE,
+            embedding=lookup.embedding,
+            validated=True,
+            validation_source="genie",
+        )
         latency = time.time() - t0
-        print(f"  HIT ({hit_type}, score={score:.3f}) in {latency:.3f}s")
+        print(f"  SQL: {genie_result.generated_sql[:160]}...")
+        print_sql_preview(sql_result)
+        print(f"  Written to Lakebase cache (total: {latency:.1f}s)")
+
         results.append({
             "question": question[:50],
-            "cold_s": latency,
+            "first_s": latency,
             "warm_s": None,
-            "speedup": "-",
+            "source": "genie",
+            "speedup": None,
         })
-        continue
-
-    # --- Cache miss → Genie API ---
-    print("  MISS → calling Genie API with retry/backoff...")
-    genie_result = call_genie_with_retry(config, question)
-    print(f"  Genie returned in {genie_result.latency_seconds:.1f}s")
-    if genie_result.generated_sql:
-        print(f"  SQL: {genie_result.generated_sql[:120]}...")
-
-    # --- Cache write (reuse embedding from lookup to avoid duplicate API call) ---
-    lakebase_cache_write(
-        config, question,
-        genie_result.generated_sql or "",
-        genie_result.response_text or "",
-        embedding=embedding,
-    )
-    cold_latency = time.time() - t0
-    print(f"  Written to Lakebase cache (total: {cold_latency:.1f}s)")
-
-    results.append({
-        "question": question[:50],
-        "cold_s": cold_latency,
-        "warm_s": None,
-        "speedup": None,
-    })
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Demo — Warm Pass (Cache Hit)
+# MAGIC ## Demo — Warm Pass
 # MAGIC
-# MAGIC Same questions again — all should return from cache (exact match).
+# MAGIC Same questions again. Cache hits still re-execute cached SQL; the cache saves
+# MAGIC Genie latency, not SQL execution or authorization.
 
 # COMMAND ----------
 
 for i, question in enumerate(demo_questions):
-    print(f"\n{'=' * 60}")
-    print(f"Question: {question}")
+    with trace_operation(config, "scenario1_warm_question", "CHAIN", {"question": question}):
+        print(f"\n{'=' * 60}")
+        print(f"Question: {question}")
 
-    t0 = time.time()
-    hit_type, cached_sql, cached_resp, score, _ = lakebase_cache_lookup(
-        config, question, threshold=SIMILARITY_THRESHOLD
-    )
-    warm_latency = time.time() - t0
+        t0 = time.time()
+        lookup = lakebase_cache_lookup(
+            config,
+            question,
+            threshold=SIMILARITY_THRESHOLD,
+            cache_scope=GLOBAL_SCOPE,
+        )
 
-    if hit_type:
-        print(f"  HIT ({hit_type}, score={score:.3f}) in {warm_latency:.3f}s")
-        if cached_sql:
-            print(f"  Cached SQL: {cached_sql[:120]}...")
-    else:
-        print("  Unexpected MISS")
-        warm_latency = None
+        if lookup.hit:
+            sql_result = execute_cached_sql_with_trace(
+                config, lookup.generated_sql, row_limit=RESULT_ROW_LIMIT
+            )
+            warm_latency = time.time() - t0
+            print(f"  HIT ({lookup.hit_type}, score={lookup.score:.3f}) in {warm_latency:.3f}s")
+            print(f"  Cached SQL: {lookup.generated_sql[:160]}...")
+            print_sql_preview(sql_result)
+        else:
+            print("  Unexpected MISS")
+            warm_latency = None
 
-    if i < len(results):
-        results[i]["warm_s"] = warm_latency
-        if warm_latency and results[i]["cold_s"]:
-            results[i]["speedup"] = f"{results[i]['cold_s'] / warm_latency:.0f}x"
+        if i < len(results):
+            results[i]["warm_s"] = warm_latency
+            if warm_latency and results[i]["first_s"]:
+                results[i]["speedup"] = f"{results[i]['first_s'] / warm_latency:.0f}x"
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## Demo — Semantic Similarity Hit
-# MAGIC
-# MAGIC Ask a **paraphrased** version of a previously cached question.  The exact-match
-# MAGIC lookup will miss, but the pgvector similarity search should find a match above
-# MAGIC the threshold (≥ 0.92).
 
 # COMMAND ----------
 
 if demo_questions:
-    original = demo_questions[0]
     paraphrased = "How much total deposit volume did we have in 2024?"
-    print(f"Original:    {original}")
+    print(f"Original:    {demo_questions[0]}")
     print(f"Paraphrased: {paraphrased}")
 
     t0 = time.time()
-    hit_type, cached_sql, cached_resp, score, _ = lakebase_cache_lookup(
-        config, paraphrased, threshold=SIMILARITY_THRESHOLD
+    lookup = lakebase_cache_lookup(
+        config,
+        paraphrased,
+        threshold=SIMILARITY_THRESHOLD,
+        cache_scope=GLOBAL_SCOPE,
     )
     latency = time.time() - t0
 
-    if hit_type:
-        print(f"\n  HIT ({hit_type}, score={score:.3f}) in {latency:.3f}s")
-        print("  The paraphrased question matched via vector similarity!")
-        if cached_sql:
-            print(f"  Cached SQL: {cached_sql[:120]}...")
+    if lookup.hit:
+        sql_result = execute_cached_sql_with_trace(
+            config, lookup.generated_sql, row_limit=RESULT_ROW_LIMIT
+        )
+        print(f"\n  HIT ({lookup.hit_type}, score={lookup.score:.3f}) in {latency:.3f}s")
+        print("  The paraphrased question matched via vector similarity.")
+        print_sql_preview(sql_result)
     else:
         print(f"\n  MISS (score below threshold {SIMILARITY_THRESHOLD})")
-        print("  This is expected if the paraphrase differs significantly.")
 
 # COMMAND ----------
 
@@ -183,12 +220,11 @@ if demo_questions:
 # COMMAND ----------
 
 print("\n" + "=" * 80)
-print("SCENARIO 1: Lakebase + pgvector Cache — Results")
+print("SCENARIO 1: Lakebase + pgvector Cache - Results")
 print("=" * 80)
-print_summary_table(results, ["question", "cold_s", "warm_s", "speedup"])
+print_summary_table(results, ["question", "first_s", "warm_s", "source", "speedup"])
 print()
-print("Cache hit latency is dominated by the Lakebase round-trip (~50-200ms),")
-print("vs. Genie API latency (~5-30s).  Expect 50-500x speedup on cache hits.")
+print("Cache hits avoid Genie latency but still execute SQL for freshness and access control.")
 
 # COMMAND ----------
 
