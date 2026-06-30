@@ -35,8 +35,6 @@ def create_text_widget(name, default, label):
 create_text_widget("space_id", "", "Target Genie Space ID")
 create_text_widget("catalog", DEFAULT_CATALOG, "Unity Catalog name")
 create_text_widget("schema", DEFAULT_SCHEMA, "Schema name")
-create_text_widget("run_sql_validation", "true", "Run SQL validation before patch")
-create_text_widget("run_conversation_check", "false", "Run optional Genie conversation spot-check")
 
 
 def widget_value(name, default=""):
@@ -50,8 +48,6 @@ def widget_value(name, default=""):
 space_id = widget_value("space_id")
 catalog = widget_value("catalog", DEFAULT_CATALOG)
 schema = widget_value("schema", DEFAULT_SCHEMA)
-run_sql_validation = widget_value("run_sql_validation", "true").lower() == "true"
-run_conversation_check = widget_value("run_conversation_check", "false").lower() == "true"
 
 if not space_id:
     raise ValueError("The space_id widget is required.")
@@ -68,19 +64,6 @@ print(f"Configured benchmark loader for `{catalog}`.`{schema}`")
 # COMMAND ----------
 
 BENCHMARKS = [
-    {
-        "question": "How many accounts do we have by customer segment and active status?",
-        "difficulty": "EASY",
-        "sql": """
-SELECT
-  `segment`,
-  `is_active`,
-  COUNT(*) AS `account_count`
-FROM `{catalog}`.`{schema}`.`accounts`
-GROUP BY `segment`, `is_active`
-ORDER BY `segment`, `is_active` DESC
-""",
-    },
     {
         "question": "What are total ARR and MRR by subscription status?",
         "difficulty": "EASY",
@@ -144,20 +127,6 @@ ORDER BY
 """,
     },
     {
-        "question": "What invoice dollars are paid, late, or still open?",
-        "difficulty": "EASY",
-        "sql": """
-SELECT
-  `payment_status`,
-  COUNT(*) AS `invoice_count`,
-  ROUND(SUM(`amount_due_usd`), 2) AS `total_due_usd`,
-  ROUND(SUM(`amount_paid_usd`), 2) AS `total_paid_usd`
-FROM `{catalog}`.`{schema}`.`invoices`
-GROUP BY `payment_status`
-ORDER BY `total_due_usd` DESC, `payment_status`
-""",
-    },
-    {
         "question": "What was average seat utilization and health score by plan tier in 2025?",
         "difficulty": "EASY",
         "sql": """
@@ -170,19 +139,6 @@ FROM `{catalog}`.`{schema}`.`mv_product_usage`
 WHERE `Usage Year` = 2025
 GROUP BY `Plan Tier`
 ORDER BY `avg_seat_utilization_pct` DESC, `plan_tier`
-""",
-    },
-    {
-        "question": "How many accounts are in each region and industry?",
-        "difficulty": "EASY",
-        "sql": """
-SELECT
-  `region`,
-  `industry`,
-  COUNT(*) AS `account_count`
-FROM `{catalog}`.`{schema}`.`accounts`
-GROUP BY `region`, `industry`
-ORDER BY `region`, `account_count` DESC, `industry`
 """,
     },
     {
@@ -498,6 +454,24 @@ FROM `{catalog}`.`{schema}`.`product_usage`
 WHERE `usage_year` = 2025
 GROUP BY `usage_month`, `segment`
 ORDER BY `usage_month`, `segment`
+""",
+    },
+    {
+        "question": "Which regions generate the most active ARR, and what share comes from AI feature adopters?",
+        "difficulty": "MEDIUM",
+        "sql": """
+SELECT
+  a.`region`,
+  COUNT(*) AS `active_subscription_count`,
+  ROUND(SUM(s.`annual_recurring_revenue_usd`), 2) AS `active_arr_usd`,
+  ROUND(SUM(CASE WHEN a.`ai_feature_adopter` THEN s.`annual_recurring_revenue_usd` ELSE 0 END), 2) AS `ai_adopter_arr_usd`,
+  ROUND(SUM(CASE WHEN a.`ai_feature_adopter` THEN s.`annual_recurring_revenue_usd` ELSE 0 END) * 100.0 / SUM(s.`annual_recurring_revenue_usd`), 2) AS `ai_adopter_arr_share_pct`
+FROM `{catalog}`.`{schema}`.`subscriptions` s
+JOIN `{catalog}`.`{schema}`.`accounts` a
+  ON s.`account_id` = a.`account_id`
+WHERE s.`subscription_status` = 'Active'
+GROUP BY a.`region`
+ORDER BY `active_arr_usd` DESC
 """,
     },
     {
@@ -859,6 +833,106 @@ WHERE `ai_adopter_churn_rate_pct` IS NOT NULL
 ORDER BY `non_adopter_minus_adopter_churn_gap_pct_points` DESC, `industry`
 """,
     },
+    {
+        "question": "What is the 2025 annualized logo churn rate by segment, measured against the average monthly active subscription base?",
+        "difficulty": "HARD",
+        "sql": """
+WITH months AS (
+  SELECT DISTINCT
+    `usage_month` AS `month_start`
+  FROM `{catalog}`.`{schema}`.`product_usage`
+  WHERE `usage_year` = 2025
+),
+monthly_active AS (
+  SELECT
+    m.`month_start`,
+    a.`segment`,
+    COUNT(*) AS `active_subscription_count`
+  FROM months m
+  JOIN `{catalog}`.`{schema}`.`subscriptions` s
+    ON s.`start_date` <= LAST_DAY(m.`month_start`)
+   AND (s.`end_date` IS NULL OR s.`end_date` >= m.`month_start`)
+  JOIN `{catalog}`.`{schema}`.`accounts` a
+    ON s.`account_id` = a.`account_id`
+  GROUP BY m.`month_start`, a.`segment`
+),
+avg_base AS (
+  -- Average the per-month active counts; do NOT sum point-in-time levels across months.
+  SELECT
+    `segment`,
+    AVG(`active_subscription_count`) AS `avg_monthly_active_base`
+  FROM monthly_active
+  GROUP BY `segment`
+),
+churns AS (
+  SELECT
+    `segment`,
+    COUNT(*) AS `churned_subscription_count`
+  FROM `{catalog}`.`{schema}`.`churn_events`
+  WHERE `churn_year` = 2025
+  GROUP BY `segment`
+)
+SELECT
+  b.`segment`,
+  ROUND(b.`avg_monthly_active_base`, 1) AS `avg_monthly_active_base`,
+  COALESCE(c.`churned_subscription_count`, 0) AS `churned_subscriptions_2025`,
+  ROUND(COALESCE(c.`churned_subscription_count`, 0) * 100.0 / b.`avg_monthly_active_base`, 2) AS `annual_logo_churn_rate_pct`
+FROM avg_base b
+LEFT JOIN churns c
+  ON b.`segment` = c.`segment`
+ORDER BY `annual_logo_churn_rate_pct` DESC, b.`segment`
+""",
+    },
+    {
+        "question": "Within each segment, which active accounts have a latest health score below their segment's 25th-percentile health score?",
+        "difficulty": "HARD",
+        "sql": """
+WITH latest_month AS (
+  SELECT
+    `subscription_id`,
+    MAX(`usage_month`) AS `latest_usage_month`
+  FROM `{catalog}`.`{schema}`.`product_usage`
+  GROUP BY `subscription_id`
+),
+latest_health AS (
+  SELECT
+    a.`account_name`,
+    a.`segment`,
+    s.`subscription_id`,
+    s.`annual_recurring_revenue_usd`,
+    u.`health_score` AS `latest_health_score`,
+    u.`seat_utilization_pct` AS `latest_utilization_pct`
+  FROM `{catalog}`.`{schema}`.`product_usage` u
+  JOIN latest_month lm
+    ON u.`subscription_id` = lm.`subscription_id`
+   AND u.`usage_month` = lm.`latest_usage_month`
+  JOIN `{catalog}`.`{schema}`.`subscriptions` s
+    ON u.`subscription_id` = s.`subscription_id`
+  JOIN `{catalog}`.`{schema}`.`accounts` a
+    ON s.`account_id` = a.`account_id`
+  WHERE s.`subscription_status` = 'Active'
+),
+segment_threshold AS (
+  SELECT
+    `segment`,
+    PERCENTILE_APPROX(`latest_health_score`, 0.25) AS `segment_p25_health_score`
+  FROM latest_health
+  GROUP BY `segment`
+)
+SELECT
+  lh.`segment`,
+  lh.`account_name`,
+  ROUND(lh.`latest_health_score`, 2) AS `latest_health_score`,
+  ROUND(st.`segment_p25_health_score`, 2) AS `segment_p25_health_score`,
+  ROUND(lh.`latest_utilization_pct`, 2) AS `latest_utilization_pct`,
+  ROUND(lh.`annual_recurring_revenue_usd`, 2) AS `arr_usd`
+FROM latest_health lh
+JOIN segment_threshold st
+  ON lh.`segment` = st.`segment`
+WHERE lh.`latest_health_score` < st.`segment_p25_health_score`
+ORDER BY lh.`segment`, lh.`latest_health_score`, `arr_usd` DESC
+""",
+    },
 ]
 
 assert len(BENCHMARKS) == 30
@@ -866,68 +940,7 @@ assert len(BENCHMARKS) == 30
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 3. Validate Benchmark SQL
-
-# COMMAND ----------
-
-
-def render_sql(benchmark):
-    return benchmark["sql"].strip().format(catalog=catalog, schema=schema)
-
-
-if run_sql_validation:
-    print("Validating benchmark SQL with spark.sql...")
-    validation_results = []
-    validation_failures = []
-    for index, benchmark in enumerate(BENCHMARKS, start=1):
-        rendered_sql = render_sql(benchmark)
-        try:
-            result_df = spark.sql(rendered_sql)
-            sample_rows = [row.asDict(recursive=True) for row in result_df.limit(1).collect()]
-            row_count = result_df.count()
-            validation_results.append(
-                {
-                    "index": index,
-                    "difficulty": benchmark["difficulty"],
-                    "status": "PASS",
-                    "row_count": row_count,
-                    "sample": sample_rows[0] if sample_rows else None,
-                    "question": benchmark["question"],
-                }
-            )
-        except Exception as exc:
-            validation_failures.append((index, benchmark["question"], str(exc), rendered_sql))
-            validation_results.append(
-                {
-                    "index": index,
-                    "difficulty": benchmark["difficulty"],
-                    "status": "FAIL",
-                    "row_count": None,
-                    "sample": None,
-                    "question": benchmark["question"],
-                }
-            )
-
-    print("index | status | difficulty | row_count | question")
-    for result in validation_results:
-        print(
-            f"{result['index']:02d} | {result['status']} | {result['difficulty']} | "
-            f"{result['row_count']} | {result['question']}"
-        )
-
-    if validation_failures:
-        for index, question, error, sql in validation_failures:
-            print(f"\nFAILED {index:02d}: {question}\n{error}\n{sql}")
-        raise ValueError(f"{len(validation_failures)} benchmark SQL statements failed validation.")
-
-    print(f"Validated {len(validation_results)} benchmark SQL statements with 0 failures.")
-else:
-    print("Skipping SQL validation because run_sql_validation is false.")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 4. Fetch Genie Space
+# MAGIC ## 3. Fetch Genie Space
 
 # COMMAND ----------
 
@@ -950,11 +963,16 @@ print(f"Fetched Genie Space `{space_id}`.")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 5. Replace Benchmark Questions
+# MAGIC ## 4. Replace Benchmark Questions
 
 # COMMAND ----------
 
 import uuid
+
+
+def render_sql(benchmark):
+    return benchmark["sql"].strip().format(catalog=catalog, schema=schema)
+
 
 questions = []
 for benchmark in BENCHMARKS:
@@ -983,7 +1001,7 @@ print(f"Prepared {len(questions)} benchmark questions.")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 6. Patch Genie Space
+# MAGIC ## 5. Patch Genie Space
 
 # COMMAND ----------
 
@@ -999,7 +1017,7 @@ print(f"Patched Genie Space `{space_id}`.")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 7. Round-trip Verification
+# MAGIC ## 6. Round-trip Verification
 
 # COMMAND ----------
 
@@ -1026,57 +1044,3 @@ assert verify_serialized.get("version") == pre_version, "version changed during 
 print("Round-trip verification succeeded.")
 print("Benchmarks replaced: 30")
 print("Verified unchanged keys: data_sources, instructions, version")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 8. Optional Conversation Spot-check
-
-# COMMAND ----------
-
-import time
-
-
-def nested_get(source, path, default=None):
-    current = source
-    for key in path:
-        if not isinstance(current, dict):
-            return default
-        current = current.get(key)
-        if current is None:
-            return default
-    return current
-
-
-if run_conversation_check:
-    print("Running sampled Genie conversation spot-check for the first 3 questions...")
-    for benchmark in BENCHMARKS[:3]:
-        start_resp = w.api_client.do(
-            "POST",
-            f"/api/2.0/genie/spaces/{space_id}/start-conversation",
-            body={"content": benchmark["question"]},
-        )
-        conversation_id = start_resp.get("conversation_id") or nested_get(start_resp, ["conversation", "id"])
-        message_id = start_resp.get("message_id") or nested_get(start_resp, ["message", "id"])
-        message_resp = start_resp
-
-        if conversation_id and message_id:
-            for _ in range(30):
-                status = (
-                    message_resp.get("status")
-                    or nested_get(message_resp, ["message", "status"])
-                    or ""
-                ).upper()
-                if status in ("COMPLETED", "FAILED", "CANCELLED"):
-                    break
-                time.sleep(2)
-                message_resp = w.api_client.do(
-                    "GET",
-                    f"/api/2.0/genie/spaces/{space_id}/conversations/{conversation_id}/messages/{message_id}",
-                )
-
-        print("=" * 80)
-        print(benchmark["question"])
-        print(json.dumps(message_resp, indent=2, default=str)[:4000])
-else:
-    print("Skipping optional conversation check because run_conversation_check is false.")
