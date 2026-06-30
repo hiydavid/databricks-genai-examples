@@ -235,9 +235,13 @@ serialized2 = json.loads(resp2["serialized_space"])
 post_questions = (serialized2.get("benchmarks") or {}).get("questions") or []
 assert len(post_questions) == 30, f"expected 30 benchmark questions, found {len(post_questions)}"
 
-# The 30 questions must match what we authored, in order.
-expected_questions = [b["question"] for b in BENCHMARKS]
-actual_questions = [(q.get("question") or [None])[0] for q in post_questions]
+# The 30 questions must match what we authored (order-independent: compare
+# sorted lists so missing/extra/duplicate questions are still caught).
+expected_questions = sorted(b["question"] for b in BENCHMARKS)
+actual_questions = sorted(
+    (q["question"][0] if isinstance(q.get("question"), list) else q.get("question"))
+    for q in post_questions
+)
 assert actual_questions == expected_questions, "benchmark question text does not match what was sent"
 
 # data_sources / instructions / version must be UNCHANGED vs the pre-image.

@@ -923,11 +923,16 @@ verify_resp = w.api_client.do(
 verify_serialized = json.loads(verify_resp["serialized_space"])
 
 actual_questions = verify_serialized.get("benchmarks", {}).get("questions", [])
-actual_question_text = [q["question"][0] for q in actual_questions]
-expected_question_text = [b["question"] for b in BENCHMARKS]
+# Compare sorted lists so the check is order-independent (the API does not
+# preserve submission order) while still catching missing/extra/duplicate questions.
+actual_question_text = sorted(
+    (q["question"][0] if isinstance(q.get("question"), list) else q.get("question"))
+    for q in actual_questions
+)
+expected_question_text = sorted(b["question"] for b in BENCHMARKS)
 
 assert len(actual_questions) == 30, f"Expected 30 benchmark questions, found {len(actual_questions)}"
-assert actual_question_text == expected_question_text, "Round-trip question text does not match BENCHMARKS."
+assert actual_question_text == expected_question_text, "Round-trip question text does not match BENCHMARKS (order-independent)."
 assert verify_serialized.get("data_sources") == pre_data_sources, "data_sources changed unexpectedly."
 assert verify_serialized.get("instructions") == pre_instructions, "instructions changed unexpectedly."
 assert verify_serialized.get("version") == pre_version, "version changed unexpectedly."

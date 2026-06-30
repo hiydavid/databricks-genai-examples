@@ -533,12 +533,16 @@ resp2 = w.api_client.do(
 serialized2 = json.loads(resp2["serialized_space"])
 
 post_questions = (serialized2.get("benchmarks") or {}).get("questions") or []
-post_texts = [q.get("question", [None])[0] for q in post_questions]
-expected_texts = [b["question"] for b in BENCHMARKS]
+post_texts = sorted(
+    (q["question"][0] if isinstance(q.get("question"), list) else q.get("question"))
+    for q in post_questions
+)
+expected_texts = sorted(b["question"] for b in BENCHMARKS)
 
 # (a) Exactly 30 benchmark questions landed.
 assert len(post_questions) == 30, f"Expected 30 questions, found {len(post_questions)}"
-# (b) The 30 questions match what we loaded, in order (idempotent replace).
+# (b) The 30 questions match what we loaded (order-independent: compare sorted
+#     lists so missing/extra/duplicate questions are still caught).
 assert post_texts == expected_texts, "Loaded benchmark questions do not match BENCHMARKS"
 # (c) Untouched sections are byte-for-byte unchanged vs the pre-image.
 assert serialized2.get("data_sources") == pre_data_sources, "data_sources changed!"
