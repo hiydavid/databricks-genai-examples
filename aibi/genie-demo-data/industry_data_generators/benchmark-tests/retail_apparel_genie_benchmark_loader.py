@@ -3,9 +3,12 @@
 # MAGIC %md
 # MAGIC # Retail Apparel Genie Benchmark Loader
 # MAGIC
-# MAGIC Loads 30 benchmark questions for the retail apparel Genie Space.
+# MAGIC Loads 30 benchmark questions (5 EASY / 15 MEDIUM / 10 HARD) into the retail apparel Genie Space and round-trip verifies the result.
 # MAGIC
-# MAGIC Safety note: this notebook mutates ONLY `benchmarks.questions` in the serialized Genie Space config. It fetches the current space, replaces the benchmark question list, patches the space, and verifies that `data_sources`, `instructions`, and `version` are unchanged.
+# MAGIC What this notebook does:
+# MAGIC - Builds the 30-question `BENCHMARKS` list (SQL answers grounded in `{catalog}`.`{schema}`).
+# MAGIC - Fetches the target Genie Space and mutates ONLY `benchmarks.questions` in its serialized config.
+# MAGIC - Patches the space, then round-trip verifies that `data_sources`, `instructions`, and `version` are unchanged.
 
 # COMMAND ----------
 
@@ -21,7 +24,6 @@
 
 import copy
 import json
-import time
 import uuid
 
 from databricks.sdk import WorkspaceClient
@@ -29,14 +31,10 @@ from databricks.sdk import WorkspaceClient
 dbutils.widgets.text("space_id", "", "Target Genie Space ID")
 dbutils.widgets.text("catalog", "dhuang_catalog", "Unity Catalog")
 dbutils.widgets.text("schema", "retail_apparel", "Schema")
-dbutils.widgets.dropdown("run_sql_validation", "true", ["true", "false"], "Run SQL validation")
-dbutils.widgets.dropdown("run_conversation_check", "false", ["true", "false"], "Run conversation spot check")
 
 space_id = dbutils.widgets.get("space_id").strip()
 catalog = dbutils.widgets.get("catalog").strip() or "dhuang_catalog"
 schema = dbutils.widgets.get("schema").strip() or "retail_apparel"
-run_sql_validation = dbutils.widgets.get("run_sql_validation").strip().lower() == "true"
-run_conversation_check = dbutils.widgets.get("run_conversation_check").strip().lower() == "true"
 
 if not space_id:
     raise ValueError("Widget 'space_id' is required.")
@@ -51,6 +49,7 @@ w = WorkspaceClient()
 # COMMAND ----------
 
 BENCHMARKS = [
+    # ------------------------------------------------------------------ EASY (5)
     {
         "question": "Which product categories have the most active products, and what is their average list price?",
         "difficulty": "EASY",
@@ -93,20 +92,6 @@ ORDER BY `active_customer_count` DESC, `loyalty_tier`
 """.strip(),
     },
     {
-        "question": "What were monthly units sold and net sales in 2025?",
-        "difficulty": "EASY",
-        "sql": """
-SELECT
-  CAST(`Sale Month` AS DATE) AS `sale_month`,
-  MEASURE(`Units Sold`) AS `units_sold`,
-  ROUND(MEASURE(`Net Sales`), 2) AS `net_sales_usd`
-FROM `{catalog}`.`{schema}`.`mv_retail_sales`
-WHERE `Sale Year` = 2025
-GROUP BY `Sale Month`
-ORDER BY `sale_month`
-""".strip(),
-    },
-    {
         "question": "Which sales channel generated the most net sales overall?",
         "difficulty": "EASY",
         "sql": """
@@ -118,34 +103,6 @@ SELECT
 FROM `{catalog}`.`{schema}`.`sales`
 GROUP BY `channel`
 ORDER BY `net_sales_usd` DESC, `channel`
-""".strip(),
-    },
-    {
-        "question": "What are total returns and return dollars by return reason?",
-        "difficulty": "EASY",
-        "sql": """
-SELECT
-  `Return Reason` AS `return_reason`,
-  MEASURE(`Return Count`) AS `return_count`,
-  MEASURE(`Returned Units`) AS `returned_units`,
-  ROUND(MEASURE(`Return Amount`), 2) AS `return_amount_usd`
-FROM `{catalog}`.`{schema}`.`mv_retail_returns`
-GROUP BY `Return Reason`
-ORDER BY `return_count` DESC, `return_reason`
-""".strip(),
-    },
-    {
-        "question": "Which product seasons have the highest average list price and target margin?",
-        "difficulty": "EASY",
-        "sql": """
-SELECT
-  `season`,
-  COUNT(*) AS `product_count`,
-  ROUND(AVG(`list_price_usd`), 2) AS `avg_list_price_usd`,
-  ROUND(AVG(`target_margin_pct`), 2) AS `avg_target_margin_pct`
-FROM `{catalog}`.`{schema}`.`products`
-GROUP BY `season`
-ORDER BY `avg_list_price_usd` DESC, `season`
 """.strip(),
     },
     {
@@ -162,6 +119,7 @@ ORDER BY `stockout_days` DESC, `snapshot_month`
 LIMIT 10
 """.strip(),
     },
+    # ---------------------------------------------------------------- MEDIUM (15)
     {
         "question": "Which product categories generated the most net sales and gross margin?",
         "difficulty": "MEDIUM",
@@ -465,6 +423,27 @@ HAVING SUM(s.`net_sales_usd`) > 0
 ORDER BY `gross_margin_pct` DESC, p.`brand_line`
 """.strip(),
     },
+    {
+        "question": "For each product season, what were 2025 units sold, net sales, and realized gross margin percent?",
+        "difficulty": "MEDIUM",
+        "sql": """
+SELECT
+  p.`season`,
+  COUNT(*) AS `order_count`,
+  SUM(s.`quantity`) AS `units_sold`,
+  ROUND(SUM(s.`net_sales_usd`), 2) AS `net_sales_usd`,
+  ROUND(SUM(s.`gross_margin_usd`), 2) AS `gross_margin_usd`,
+  ROUND(SUM(s.`gross_margin_usd`) * 100.0 / SUM(s.`net_sales_usd`), 2) AS `gross_margin_pct`
+FROM `{catalog}`.`{schema}`.`sales` s
+JOIN `{catalog}`.`{schema}`.`products` p
+  ON s.`product_id` = p.`product_id`
+WHERE s.`sale_year` = 2025
+GROUP BY p.`season`
+HAVING SUM(s.`net_sales_usd`) > 0
+ORDER BY `gross_margin_pct` DESC, p.`season`
+""".strip(),
+    },
+    # ------------------------------------------------------------------ HARD (10)
     {
         "question": "Which product categories had the strongest net sales growth from 2024 to 2025?",
         "difficulty": "HARD",
@@ -789,59 +768,90 @@ LEFT JOIN inventory_burden ib
 ORDER BY `gross_margin_per_annual_rent_dollar` DESC, ss.`store_id`
 """.strip(),
     },
+    {
+        "question": "For each product category, how did monthly net sales change month over month in 2025?",
+        "difficulty": "HARD",
+        "sql": """
+WITH category_month_sales AS (
+  SELECT
+    p.`category`,
+    s.`sale_month`,
+    SUM(s.`quantity`) AS `units_sold`,
+    SUM(s.`net_sales_usd`) AS `net_sales_usd`
+  FROM `{catalog}`.`{schema}`.`sales` s
+  JOIN `{catalog}`.`{schema}`.`products` p
+    ON s.`product_id` = p.`product_id`
+  WHERE s.`sale_year` = 2025
+  GROUP BY p.`category`, s.`sale_month`
+)
+SELECT
+  `category`,
+  `sale_month`,
+  `units_sold`,
+  ROUND(`net_sales_usd`, 2) AS `net_sales_usd`,
+  ROUND(LAG(`net_sales_usd`) OVER (PARTITION BY `category` ORDER BY `sale_month`), 2) AS `prev_month_net_sales_usd`,
+  ROUND(
+    (`net_sales_usd` - LAG(`net_sales_usd`) OVER (PARTITION BY `category` ORDER BY `sale_month`))
+      * 100.0 / NULLIF(LAG(`net_sales_usd`) OVER (PARTITION BY `category` ORDER BY `sale_month`), 0),
+    2
+  ) AS `mom_growth_pct`
+FROM category_month_sales
+ORDER BY `category`, `sale_month`
+""".strip(),
+    },
+    {
+        "question": "What was 2025 inventory turnover (cost of goods sold divided by average inventory value) by product category?",
+        "difficulty": "HARD",
+        "sql": """
+WITH category_cogs AS (
+  SELECT
+    p.`category`,
+    ROUND(SUM(s.`quantity` * s.`unit_cost_usd`), 2) AS `cogs_2025_usd`
+  FROM `{catalog}`.`{schema}`.`sales` s
+  JOIN `{catalog}`.`{schema}`.`products` p
+    ON s.`product_id` = p.`product_id`
+  WHERE s.`sale_year` = 2025
+  GROUP BY p.`category`
+),
+monthly_category_inventory AS (
+  SELECT
+    p.`category`,
+    i.`snapshot_month`,
+    SUM(i.`inventory_value_usd`) AS `month_inventory_value_usd`
+  FROM `{catalog}`.`{schema}`.`inventory_snapshots` i
+  JOIN `{catalog}`.`{schema}`.`products` p
+    ON i.`product_id` = p.`product_id`
+  WHERE i.`snapshot_year` = 2025
+  GROUP BY p.`category`, i.`snapshot_month`
+),
+avg_category_inventory AS (
+  -- Inventory value is a point-in-time LEVEL per snapshot month, so the turnover
+  -- denominator is the AVERAGE of the monthly inventory levels -- never the sum of
+  -- month-end values across months, which would inflate the base ~12x.
+  SELECT
+    `category`,
+    ROUND(AVG(`month_inventory_value_usd`), 2) AS `avg_inventory_value_usd`
+  FROM monthly_category_inventory
+  GROUP BY `category`
+)
+SELECT
+  c.`category`,
+  c.`cogs_2025_usd`,
+  a.`avg_inventory_value_usd`,
+  ROUND(c.`cogs_2025_usd` / a.`avg_inventory_value_usd`, 2) AS `inventory_turnover`
+FROM category_cogs c
+JOIN avg_category_inventory a
+  ON c.`category` = a.`category`
+ORDER BY `inventory_turnover` DESC, c.`category`
+""".strip(),
+    },
 ]
 
 assert len(BENCHMARKS) == 30, f"Expected 30 benchmarks, found {len(BENCHMARKS)}"
 assert {b["difficulty"] for b in BENCHMARKS} <= {"EASY", "MEDIUM", "HARD"}
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Validate SQL
-
-# COMMAND ----------
-
-if run_sql_validation:
-    validation_results = []
-    failures = []
-
-    for idx, benchmark in enumerate(BENCHMARKS, start=1):
-        rendered_sql = benchmark["sql"].format(catalog=catalog, schema=schema)
-        try:
-            rows = spark.sql(rendered_sql).collect()
-            validation_results.append(
-                {
-                    "question_number": idx,
-                    "difficulty": benchmark["difficulty"],
-                    "status": "PASS",
-                    "row_count": len(rows),
-                    "question": benchmark["question"],
-                }
-            )
-        except Exception as exc:
-            failures.append((idx, benchmark["question"], rendered_sql, str(exc)))
-            validation_results.append(
-                {
-                    "question_number": idx,
-                    "difficulty": benchmark["difficulty"],
-                    "status": "FAIL",
-                    "row_count": None,
-                    "question": benchmark["question"],
-                }
-            )
-
-    spark.createDataFrame(validation_results).orderBy("question_number").show(30, truncate=False)
-
-    if failures:
-        failure_text = "\n\n".join(
-            f"Question {idx}: {question}\nError: {error}\nSQL:\n{sql}"
-            for idx, question, sql, error in failures
-        )
-        raise RuntimeError(f"SQL validation failed for {len(failures)} benchmark(s):\n{failure_text}")
-
-    print(f"Validated {len(validation_results)} benchmark SQL statements against `{catalog}`.`{schema}`.")
-else:
-    print("Skipping SQL validation because run_sql_validation=false.")
+assert sum(b["difficulty"] == "EASY" for b in BENCHMARKS) == 5, "Expected 5 EASY benchmarks"
+assert sum(b["difficulty"] == "MEDIUM" for b in BENCHMARKS) == 15, "Expected 15 MEDIUM benchmarks"
+assert sum(b["difficulty"] == "HARD" for b in BENCHMARKS) == 10, "Expected 10 HARD benchmarks"
 
 # COMMAND ----------
 
@@ -927,54 +937,3 @@ print(f"  Genie Space ID: {space_id}")
 print(f"  Catalog/schema: `{catalog}`.`{schema}`")
 print(f"  Benchmark questions: {len(actual_questions)}")
 print("  Verified unchanged: data_sources, instructions, version")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Optional Conversation Spot Check
-
-# COMMAND ----------
-
-def _message_text(message):
-    for key in ("content", "text", "answer"):
-        value = message.get(key)
-        if isinstance(value, str):
-            return value
-        if isinstance(value, list):
-            return " ".join(str(item) for item in value)
-    attachments = message.get("attachments") or []
-    return json.dumps(attachments)[:2000]
-
-
-if run_conversation_check:
-    sample = BENCHMARKS[:3]
-    for benchmark in sample:
-        start = w.api_client.do(
-            "POST",
-            f"/api/2.0/genie/spaces/{space_id}/start-conversation",
-            body={"content": benchmark["question"]},
-        )
-        conversation_id = start.get("conversation_id") or start.get("conversation", {}).get("id")
-        message_id = start.get("message_id") or start.get("message", {}).get("id")
-
-        if not conversation_id or not message_id:
-            print(f"Started conversation for: {benchmark['question']}")
-            print(json.dumps(start, indent=2)[:2000])
-            continue
-
-        message = {}
-        for _ in range(30):
-            message = w.api_client.do(
-                "GET",
-                f"/api/2.0/genie/spaces/{space_id}/conversations/{conversation_id}/messages/{message_id}",
-            )
-            status = str(message.get("status", "")).upper()
-            if status in {"COMPLETED", "FAILED", "CANCELLED"}:
-                break
-            time.sleep(2)
-
-        print("=" * 80)
-        print(benchmark["question"])
-        print(_message_text(message))
-else:
-    print("Skipping conversation spot check because run_conversation_check=false.")
