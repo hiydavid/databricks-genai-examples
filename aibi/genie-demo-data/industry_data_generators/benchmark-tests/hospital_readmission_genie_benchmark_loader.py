@@ -27,23 +27,20 @@
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 1. Widgets & Configuration
+# MAGIC ## 1. Configuration
 
 # COMMAND ----------
 
-# =============================================================================
-# CONFIGURATION
-# =============================================================================
-dbutils.widgets.text("space_id", "", "Target Genie Space ID (required)")
-dbutils.widgets.text("catalog", "dhuang_catalog", "Unity Catalog name")
-dbutils.widgets.text("schema", "hospital_readmission", "Schema / database name")
-
-space_id = dbutils.widgets.get("space_id").strip()
-catalog = dbutils.widgets.get("catalog").strip()
-schema = dbutils.widgets.get("schema").strip()
+# ============================================================
+# CONFIGURATION — edit these three values, then Run All
+# ============================================================
+space_id = ""                # REQUIRED: target Genie Space ID (e.g. "01ef...")
+catalog  = "dhuang_catalog"  # Unity Catalog name
+schema   = "hospital_readmission"  # Schema / database name
+# ============================================================
 
 if not space_id:
-    raise ValueError("Widget 'space_id' is required (the target Genie Space ID).")
+    raise ValueError("space_id is required — set it at the top of this cell.")
 
 print(f"space_id : {space_id}")
 print(f"catalog  : {catalog}")
@@ -67,7 +64,7 @@ print("WorkspaceClient ready.")
 # MAGIC
 # MAGIC Each entry: a business question, a difficulty tag (`EASY` / `MEDIUM` / `HARD`),
 # MAGIC and the ground-truth Databricks SQL. Tables are referenced with `{catalog}` /
-# MAGIC `{schema}` Python format placeholders, rendered from the widgets at load time.
+# MAGIC `{schema}` Python format placeholders, rendered from the config variables at load time.
 # MAGIC
 # MAGIC Mix: 5 EASY / 15 MEDIUM / 10 HARD. Note: each encounter has at most one
 # MAGIC readmission row, so `COUNT(DISTINCT readmission_id) / COUNT(DISTINCT encounter_id)`

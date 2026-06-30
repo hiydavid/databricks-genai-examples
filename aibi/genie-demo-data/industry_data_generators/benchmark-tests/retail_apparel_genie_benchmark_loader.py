@@ -22,22 +22,22 @@
 
 # COMMAND ----------
 
+# ============================================================
+# CONFIGURATION — edit these three values, then Run All
+# ============================================================
+space_id = ""                # REQUIRED: target Genie Space ID (e.g. "01ef...")
+catalog  = "dhuang_catalog"  # Unity Catalog name
+schema   = "retail_apparel"  # Schema / database name
+# ============================================================
+
 import copy
 import json
 import uuid
 
 from databricks.sdk import WorkspaceClient
 
-dbutils.widgets.text("space_id", "", "Target Genie Space ID")
-dbutils.widgets.text("catalog", "dhuang_catalog", "Unity Catalog")
-dbutils.widgets.text("schema", "retail_apparel", "Schema")
-
-space_id = dbutils.widgets.get("space_id").strip()
-catalog = dbutils.widgets.get("catalog").strip() or "dhuang_catalog"
-schema = dbutils.widgets.get("schema").strip() or "retail_apparel"
-
 if not space_id:
-    raise ValueError("Widget 'space_id' is required.")
+    raise ValueError("space_id is required — set it at the top of this cell.")
 
 w = WorkspaceClient()
 

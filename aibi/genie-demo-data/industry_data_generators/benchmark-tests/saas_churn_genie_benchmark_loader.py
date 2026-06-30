@@ -15,42 +15,22 @@
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 1. Widgets and Configuration
+# MAGIC ## 1. Configuration
 
 # COMMAND ----------
 
+# ============================================================
+# CONFIGURATION — edit these three values, then Run All
+# ============================================================
+space_id = ""                # REQUIRED: target Genie Space ID (e.g. "01ef...")
+catalog  = "dhuang_catalog"  # Unity Catalog name
+schema   = "saas_churn"  # Schema / database name
+# ============================================================
+
 from databricks.sdk import WorkspaceClient
 
-DEFAULT_CATALOG = "dhuang_catalog"
-DEFAULT_SCHEMA = "saas_churn"
-
-
-def create_text_widget(name, default, label):
-    try:
-        dbutils.widgets.text(name, default, label)
-    except Exception:
-        pass
-
-
-create_text_widget("space_id", "", "Target Genie Space ID")
-create_text_widget("catalog", DEFAULT_CATALOG, "Unity Catalog name")
-create_text_widget("schema", DEFAULT_SCHEMA, "Schema name")
-
-
-def widget_value(name, default=""):
-    try:
-        value = dbutils.widgets.get(name).strip()
-        return value if value else default
-    except Exception:
-        return default
-
-
-space_id = widget_value("space_id")
-catalog = widget_value("catalog", DEFAULT_CATALOG)
-schema = widget_value("schema", DEFAULT_SCHEMA)
-
 if not space_id:
-    raise ValueError("The space_id widget is required.")
+    raise ValueError("space_id is required — set it at the top of this cell.")
 
 w = WorkspaceClient()
 
