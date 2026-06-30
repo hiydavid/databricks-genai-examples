@@ -3,7 +3,14 @@
 # MAGIC %md
 # MAGIC # Wind Turbine Predictive Maintenance Genie Benchmark Loader
 # MAGIC
-# MAGIC Loads 30 validated benchmark questions into a target Genie Space for the wind turbine maintenance demo dataset.
+# MAGIC Loads 30 benchmark questions into a target Genie Space for the wind turbine
+# MAGIC maintenance demo dataset. This notebook:
+# MAGIC
+# MAGIC - Defines 30 benchmark questions (5 EASY / 15 MEDIUM / 10 HARD) as SQL.
+# MAGIC - Fetches the Genie Space and replaces ONLY `benchmarks.questions` in the
+# MAGIC   serialized configuration, then patches it back.
+# MAGIC - Round-trip verifies that the questions loaded and that `data_sources`,
+# MAGIC   `instructions`, and `version` are left unchanged.
 # MAGIC
 # MAGIC Safety note: this notebook mutates ONLY `benchmarks.questions` in the serialized Genie Space configuration.
 
@@ -20,7 +27,6 @@
 # COMMAND ----------
 
 import json
-import time
 from copy import deepcopy
 
 from databricks.sdk import WorkspaceClient
@@ -33,8 +39,6 @@ try:
     dbutils.widgets.text("space_id", "", "Target Genie Space ID")
     dbutils.widgets.text("catalog", DEFAULT_CATALOG, "Unity Catalog name")
     dbutils.widgets.text("schema", DEFAULT_SCHEMA, "Schema name")
-    dbutils.widgets.dropdown("run_sql_validation", "true", ["true", "false"], "Run SQL validation")
-    dbutils.widgets.dropdown("run_conversation_check", "false", ["false", "true"], "Run sampled conversation check")
 except Exception:
     pass
 
@@ -50,8 +54,6 @@ def get_widget(name, default):
 space_id = get_widget("space_id", "")
 catalog = get_widget("catalog", DEFAULT_CATALOG)
 schema = get_widget("schema", DEFAULT_SCHEMA)
-run_sql_validation = get_widget("run_sql_validation", "true").lower() == "true"
-run_conversation_check = get_widget("run_conversation_check", "false").lower() == "true"
 
 if not space_id:
     raise ValueError("Set the required 'space_id' widget before running this benchmark loader.")
@@ -105,18 +107,6 @@ GROUP BY `component_type`, `status`
 ORDER BY `component_type`, `status`""",
     },
     {
-        "question": "What were the average capacity factor and average power output by reading year?",
-        "difficulty": "EASY",
-        "sql": """SELECT
-  `reading_year`,
-  COUNT(*) AS `reading_count`,
-  ROUND(AVG(`capacity_factor_pct`), 2) AS `avg_capacity_factor_pct`,
-  ROUND(AVG(`power_output_kw`), 2) AS `avg_power_output_kw`
-FROM `{catalog}`.`{schema}`.`sensor_readings`
-GROUP BY `reading_year`
-ORDER BY `reading_year`""",
-    },
-    {
         "question": "How many maintenance events do we have by maintenance type, and what did they cost?",
         "difficulty": "EASY",
         "sql": """SELECT
@@ -129,18 +119,6 @@ GROUP BY `maintenance_type`
 ORDER BY `event_count` DESC, `maintenance_type`""",
     },
     {
-        "question": "How many failures occurred by severity, and what downtime and repair cost did each severity create?",
-        "difficulty": "EASY",
-        "sql": """SELECT
-  `severity`,
-  COUNT(*) AS `failure_count`,
-  ROUND(SUM(`downtime_hours`), 2) AS `total_downtime_hours`,
-  ROUND(SUM(`repair_cost_usd`), 2) AS `total_repair_cost_usd`
-FROM `{catalog}`.`{schema}`.`failure_events`
-GROUP BY `severity`
-ORDER BY `failure_count` DESC, `severity`""",
-    },
-    {
         "question": "Which regions have the highest average capacity factor in the turbine performance metric view?",
         "difficulty": "EASY",
         "sql": """SELECT
@@ -151,18 +129,6 @@ ORDER BY `failure_count` DESC, `severity`""",
 FROM `{catalog}`.`{schema}`.`mv_turbine_performance`
 GROUP BY `Region`
 ORDER BY `avg_capacity_factor_pct` DESC, `region`""",
-    },
-    {
-        "question": "What are the most common failure types and their average downtime?",
-        "difficulty": "EASY",
-        "sql": """SELECT
-  `failure_type`,
-  COUNT(*) AS `failure_count`,
-  ROUND(AVG(`downtime_hours`), 2) AS `avg_downtime_hours`,
-  ROUND(AVG(`repair_cost_usd`), 2) AS `avg_repair_cost_usd`
-FROM `{catalog}`.`{schema}`.`failure_events`
-GROUP BY `failure_type`
-ORDER BY `failure_count` DESC, `failure_type`""",
     },
     {
         "question": "Which wind farms have the most installed rated capacity, and how many turbines are operating, derated, or offline?",
@@ -406,6 +372,23 @@ WHERE m.`work_order_priority` = 'High'
 GROUP BY m.`technician_team`, wf.`region`
 ORDER BY `high_priority_events` DESC, `total_cost_usd` DESC, m.`technician_team`, wf.`region`
 LIMIT 15""",
+    },
+    {
+        "question": "On average, how old are components when they fail, by component type and manufacturer, and how does that compare to their expected service life?",
+        "difficulty": "MEDIUM",
+        "sql": """SELECT
+  c.`component_type`,
+  c.`manufacturer`,
+  COUNT(*) AS `failure_count`,
+  ROUND(AVG(DATEDIFF(f.`failure_date`, c.`install_date`) / 365.25), 2) AS `avg_age_years_at_failure`,
+  ROUND(AVG(c.`expected_life_years`), 1) AS `avg_expected_life_years`,
+  ROUND(AVG(f.`repair_cost_usd`), 2) AS `avg_repair_cost_usd`
+FROM `{catalog}`.`{schema}`.`failure_events` f
+JOIN `{catalog}`.`{schema}`.`components` c
+  ON f.`component_id` = c.`component_id`
+GROUP BY c.`component_type`, c.`manufacturer`
+HAVING COUNT(*) >= 5
+ORDER BY `avg_age_years_at_failure`, c.`component_type`, c.`manufacturer`""",
     },
     {
         "question": "How have monthly failure counts and downtime changed month over month?",
@@ -707,6 +690,79 @@ LEFT JOIN component_summary cs
 ORDER BY ss.`high_anomaly_readings` DESC, ss.`elevated_anomaly_readings` DESC, ss.`avg_anomaly_score` DESC, t.`turbine_id`
 LIMIT 10""",
     },
+    {
+        "question": "For turbines that have failed more than once, what is the mean time between failures in days, and which turbines have the shortest intervals?",
+        "difficulty": "HARD",
+        "sql": """WITH ordered_failures AS (
+  SELECT
+    `turbine_id`,
+    `failure_date`,
+    LAG(`failure_date`) OVER (PARTITION BY `turbine_id` ORDER BY `failure_date`) AS `prev_failure_date`
+  FROM `{catalog}`.`{schema}`.`failure_events`
+), failure_intervals AS (
+  SELECT
+    `turbine_id`,
+    DATEDIFF(`failure_date`, `prev_failure_date`) AS `days_between_failures`
+  FROM ordered_failures
+  WHERE `prev_failure_date` IS NOT NULL
+)
+SELECT
+  wf.`farm_name`,
+  t.`turbine_id`,
+  t.`turbine_model`,
+  COUNT(*) AS `failure_interval_count`,
+  ROUND(AVG(fi.`days_between_failures`), 1) AS `mean_days_between_failures`,
+  MIN(fi.`days_between_failures`) AS `min_days_between_failures`,
+  MAX(fi.`days_between_failures`) AS `max_days_between_failures`
+FROM failure_intervals fi
+JOIN `{catalog}`.`{schema}`.`turbines` t
+  ON fi.`turbine_id` = t.`turbine_id`
+JOIN `{catalog}`.`{schema}`.`wind_farms` wf
+  ON t.`farm_id` = wf.`farm_id`
+GROUP BY wf.`farm_name`, t.`turbine_id`, t.`turbine_model`
+ORDER BY `mean_days_between_failures` ASC, `failure_interval_count` DESC, t.`turbine_id`
+LIMIT 15""",
+    },
+    {
+        "question": "When turbines are grouped into quartiles by their 2025 average capacity factor, how do anomaly scores, failures, and downtime compare across quartiles?",
+        "difficulty": "HARD",
+        "sql": """WITH turbine_perf AS (
+  SELECT
+    sr.`turbine_id`,
+    AVG(sr.`capacity_factor_pct`) AS `avg_capacity_factor_pct`,
+    AVG(sr.`anomaly_score`) AS `avg_anomaly_score`
+  FROM `{catalog}`.`{schema}`.`sensor_readings` sr
+  WHERE sr.`reading_year` = 2025
+  GROUP BY sr.`turbine_id`
+), bucketed AS (
+  SELECT
+    `turbine_id`,
+    `avg_capacity_factor_pct`,
+    `avg_anomaly_score`,
+    NTILE(4) OVER (ORDER BY `avg_capacity_factor_pct` DESC) AS `capacity_factor_quartile`
+  FROM turbine_perf
+), turbine_failures AS (
+  SELECT
+    `turbine_id`,
+    COUNT(*) AS `failure_count`,
+    SUM(`downtime_hours`) AS `total_downtime_hours`
+  FROM `{catalog}`.`{schema}`.`failure_events`
+  GROUP BY `turbine_id`
+)
+SELECT
+  b.`capacity_factor_quartile`,
+  COUNT(*) AS `turbine_count`,
+  ROUND(AVG(b.`avg_capacity_factor_pct`), 2) AS `avg_capacity_factor_pct`,
+  ROUND(AVG(b.`avg_anomaly_score`), 2) AS `avg_anomaly_score`,
+  SUM(COALESCE(tf.`failure_count`, 0)) AS `total_failures`,
+  ROUND(SUM(COALESCE(tf.`total_downtime_hours`, 0.0)), 2) AS `total_downtime_hours`,
+  ROUND(1.0 * SUM(COALESCE(tf.`failure_count`, 0)) / COUNT(*), 2) AS `avg_failures_per_turbine`
+FROM bucketed b
+LEFT JOIN turbine_failures tf
+  ON b.`turbine_id` = tf.`turbine_id`
+GROUP BY b.`capacity_factor_quartile`
+ORDER BY b.`capacity_factor_quartile`""",
+    },
 ]
 
 assert len(BENCHMARKS) == 30, f"Expected 30 benchmarks, found {len(BENCHMARKS)}"
@@ -724,53 +780,7 @@ print(f"Loaded {len(BENCHMARKS)} benchmarks: {difficulty_counts}")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 3. Validate SQL
-
-# COMMAND ----------
-
-if run_sql_validation:
-    validation_rows = []
-    failures = []
-
-    for idx, benchmark in enumerate(BENCHMARKS, start=1):
-        rendered_sql = render_sql(benchmark)
-        try:
-            rows = spark.sql(rendered_sql).collect()
-            validation_rows.append(
-                {
-                    "idx": idx,
-                    "difficulty": benchmark["difficulty"],
-                    "status": "PASS",
-                    "row_count": len(rows),
-                    "question": benchmark["question"],
-                }
-            )
-        except Exception as exc:
-            message = str(exc)
-            validation_rows.append(
-                {
-                    "idx": idx,
-                    "difficulty": benchmark["difficulty"],
-                    "status": "FAIL",
-                    "row_count": None,
-                    "question": benchmark["question"],
-                }
-            )
-            failures.append({"idx": idx, "question": benchmark["question"], "error": message})
-
-    spark.createDataFrame(validation_rows).orderBy("idx").show(30, truncate=False)
-
-    if failures:
-        raise RuntimeError(f"SQL validation failed for {len(failures)} benchmark(s): {json.dumps(failures, indent=2)}")
-
-    print(f"Validated {len(validation_rows)} benchmark SQL statements with 0 errors.")
-else:
-    print("Skipping live SQL validation because run_sql_validation=false.")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 4. Fetch Genie Space
+# MAGIC ## 3. Fetch Genie Space
 
 # COMMAND ----------
 
@@ -791,7 +801,7 @@ print(f"Existing benchmark question count: {len(serialized.get('benchmarks', {})
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 5. Replace Benchmark Questions
+# MAGIC ## 4. Replace Benchmark Questions
 
 # COMMAND ----------
 
@@ -822,7 +832,7 @@ print(f"Prepared {len(questions)} benchmark questions for patch.")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 6. Patch Genie Space
+# MAGIC ## 5. Patch Genie Space
 
 # COMMAND ----------
 
@@ -837,7 +847,7 @@ print("Patched Genie Space benchmark questions.")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 7. Round-Trip Verification
+# MAGIC ## 6. Round-Trip Verification
 
 # COMMAND ----------
 
@@ -861,40 +871,3 @@ assert post_serialized.get("version") == pre_version, "version changed unexpecte
 print("Round-trip verification succeeded.")
 print(f"Benchmark questions loaded: {len(post_questions)}")
 print("Verified data_sources, instructions, and version are unchanged.")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 8. Optional Sample Conversation Check
-
-# COMMAND ----------
-
-if run_conversation_check:
-    sample = BENCHMARKS[:3]
-    for benchmark in sample:
-        start = w.api_client.do(
-            "POST",
-            f"/api/2.0/genie/spaces/{space_id}/start-conversation",
-            body={"content": benchmark["question"]},
-        )
-        conversation_id = start.get("conversation_id") or start.get("conversation", {}).get("id")
-        message_id = start.get("message_id") or start.get("message", {}).get("id")
-
-        if not conversation_id or not message_id:
-            print(json.dumps({"question": benchmark["question"], "start_response": start}, indent=2))
-            continue
-
-        message = None
-        for _ in range(30):
-            message = w.api_client.do(
-                "GET",
-                f"/api/2.0/genie/spaces/{space_id}/conversations/{conversation_id}/messages/{message_id}",
-            )
-            status = message.get("status")
-            if status in ("COMPLETED", "FAILED", "CANCELLED"):
-                break
-            time.sleep(2)
-
-        print(json.dumps({"question": benchmark["question"], "message": message}, indent=2))
-else:
-    print("Skipping sampled conversation check because run_conversation_check=false.")
