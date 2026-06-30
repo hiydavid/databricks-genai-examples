@@ -16,3 +16,5 @@ databricks.yml
 typings/
 .cursor/
 .pi
+.worktrees/
+.polly/
