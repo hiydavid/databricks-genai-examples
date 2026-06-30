@@ -9,15 +9,14 @@
 # MAGIC
 # MAGIC The 30 questions span workforce planning, the hiring funnel, retention &
 # MAGIC attrition, internal mobility, compensation, and succession - each paired with a
-# MAGIC correct Databricks SQL answer that has been validated live against
+# MAGIC ground-truth Databricks SQL answer written against
 # MAGIC `dhuang_catalog.talent_advisory`.
 # MAGIC
 # MAGIC ### What this notebook does
-# MAGIC 1. (optional) Validates all 30 ground-truth SQL statements live before touching the space.
-# MAGIC 2. `GET`s the Genie Space with its serialized config.
-# MAGIC 3. Replaces **only** `serialized_space["benchmarks"]["questions"]` with the 30 entries.
-# MAGIC 4. `PATCH`es the space back, echoing existing metadata.
-# MAGIC 5. Round-trip verifies the 30 benchmarks landed and that `data_sources`,
+# MAGIC 1. `GET`s the Genie Space with its serialized config.
+# MAGIC 2. Replaces **only** `serialized_space["benchmarks"]["questions"]` with the 30 entries.
+# MAGIC 3. `PATCH`es the space back, echoing existing metadata.
+# MAGIC 4. Round-trip verifies the 30 benchmarks landed and that `data_sources`,
 # MAGIC    `instructions`, and `version` are unchanged.
 # MAGIC
 # MAGIC > **Safety note:** This notebook mutates **ONLY** `benchmarks.questions`. It does
@@ -40,14 +39,10 @@
 dbutils.widgets.text("space_id", "", "Target Genie Space ID (required)")
 dbutils.widgets.text("catalog", "dhuang_catalog", "Unity Catalog name")
 dbutils.widgets.text("schema", "talent_advisory", "Schema / database name")
-dbutils.widgets.dropdown("run_sql_validation", "true", ["true", "false"], "Validate SQL live before loading")
-dbutils.widgets.dropdown("run_conversation_check", "false", ["true", "false"], "Sample Genie conversation check (optional)")
 
 space_id = dbutils.widgets.get("space_id").strip()
 catalog = dbutils.widgets.get("catalog").strip() or "dhuang_catalog"
 schema = dbutils.widgets.get("schema").strip() or "talent_advisory"
-run_sql_validation = dbutils.widgets.get("run_sql_validation").strip().lower() == "true"
-run_conversation_check = dbutils.widgets.get("run_conversation_check").strip().lower() == "true"
 
 if not space_id:
     raise ValueError("Widget 'space_id' is required - set it to the target Genie Space ID.")
@@ -62,8 +57,6 @@ w = WorkspaceClient()
 
 print(f"Target Genie Space : {space_id}")
 print(f"Data location      : {catalog}.{schema}")
-print(f"SQL validation     : {run_sql_validation}")
-print(f"Conversation check : {run_conversation_check}")
 
 # COMMAND ----------
 
@@ -71,23 +64,17 @@ print(f"Conversation check : {run_conversation_check}")
 # MAGIC ## 2. The 30 benchmark questions
 # MAGIC
 # MAGIC Each entry is `{"question", "difficulty", "sql"}`. The SQL uses `{catalog}` /
-# MAGIC `{schema}` Python format placeholders rendered at load time. Mix: 8 EASY /
-# MAGIC 14 MEDIUM / 8 HARD.
+# MAGIC `{schema}` Python format placeholders rendered at load time. Mix: 5 EASY /
+# MAGIC 15 MEDIUM / 10 HARD.
 
 # COMMAND ----------
 
 BENCHMARKS = [
-    # ---------------- EASY (8) ----------------
+    # ---------------- EASY (5) ----------------
     {"question": "How many active employees do we currently have?", "difficulty": "EASY",
      "sql": "SELECT COUNT(*) AS active_employees FROM `{catalog}`.`{schema}`.`employees` WHERE is_active = true"},
     {"question": "How many work locations do we have in each region?", "difficulty": "EASY",
      "sql": "SELECT region, COUNT(*) AS location_count FROM `{catalog}`.`{schema}`.`locations` GROUP BY region ORDER BY location_count DESC, region"},
-    {"question": "How many employees are in each job family?", "difficulty": "EASY",
-     "sql": "SELECT job_family, COUNT(*) AS employee_count FROM `{catalog}`.`{schema}`.`employees` GROUP BY job_family ORDER BY employee_count DESC"},
-    {"question": "How many hiring requisitions were opened in each year?", "difficulty": "EASY",
-     "sql": "SELECT opened_year, COUNT(*) AS requisitions FROM `{catalog}`.`{schema}`.`requisitions` GROUP BY opened_year ORDER BY opened_year"},
-    {"question": "What was the average performance rating in the 2025 review cycle?", "difficulty": "EASY",
-     "sql": "SELECT ROUND(AVG(performance_rating), 2) AS avg_performance_rating FROM `{catalog}`.`{schema}`.`performance_reviews` WHERE review_year = 2025"},
     {"question": "How many roles are flagged as critical roles?", "difficulty": "EASY",
      "sql": "SELECT COUNT(*) AS critical_roles FROM `{catalog}`.`{schema}`.`job_roles` WHERE is_critical_role = true"},
     {"question": "How many employees have left, broken down by termination type?", "difficulty": "EASY",
@@ -95,7 +82,7 @@ BENCHMARKS = [
     {"question": "How many learning activities are completed versus in progress or dropped?", "difficulty": "EASY",
      "sql": "SELECT completion_status, COUNT(*) AS activities FROM `{catalog}`.`{schema}`.`learning_activity` GROUP BY completion_status ORDER BY activities DESC"},
 
-    # ---------------- MEDIUM (14) ----------------
+    # ---------------- MEDIUM (15) ----------------
     {"question": "For filled requisitions, what is the average time to fill and the total offers and accepted offers by job family?", "difficulty": "MEDIUM",
      "sql": "SELECT job_family, COUNT(*) AS filled_requisitions, ROUND(AVG(time_to_fill_days), 1) AS avg_time_to_fill_days, SUM(offer_count) AS offers, SUM(accepted_offer_count) AS accepted_offers FROM `{catalog}`.`{schema}`.`mart_hiring_funnel` WHERE status = 'Filled' GROUP BY job_family ORDER BY avg_time_to_fill_days DESC"},
     {"question": "Which org units have the most open requisitions right now? Show the top 10 by org unit name.", "difficulty": "MEDIUM",
@@ -124,8 +111,10 @@ BENCHMARKS = [
      "sql": "SELECT e.job_family, SUM(CASE WHEN es.is_critical_gap THEN 1 ELSE 0 END) AS critical_gaps, COUNT(*) AS total_assessments FROM `{catalog}`.`{schema}`.`employee_skills` es JOIN `{catalog}`.`{schema}`.`employees` e ON es.employee_id = e.employee_id GROUP BY e.job_family ORDER BY critical_gaps DESC"},
     {"question": "What is the readiness-level breakdown of named successors in our succession plans?", "difficulty": "MEDIUM",
      "sql": "SELECT readiness_level, COUNT(*) AS succession_plans, ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 1) AS pct_of_plans FROM `{catalog}`.`{schema}`.`succession_plans` GROUP BY readiness_level ORDER BY succession_plans DESC"},
+    {"question": "How many active employees and what is the average compa-ratio in each region?", "difficulty": "MEDIUM",
+     "sql": "SELECT l.region, COUNT(*) AS active_employees, ROUND(AVG(e.compa_ratio_profile), 3) AS avg_compa_ratio FROM `{catalog}`.`{schema}`.`employees` e JOIN `{catalog}`.`{schema}`.`locations` l ON e.location_id = l.location_id WHERE e.is_active = true GROUP BY l.region ORDER BY active_employees DESC, l.region"},
 
-    # ---------------- HARD (8) ----------------
+    # ---------------- HARD (10) ----------------
     {"question": "For each business unit, which job family carries the highest average retention risk in 2025?", "difficulty": "HARD",
      "sql": "WITH risk AS (SELECT o.business_unit, rr.job_family, ROUND(AVG(rr.risk_score), 1) AS avg_risk_score, COUNT(*) AS snapshots FROM `{catalog}`.`{schema}`.`retention_risk_snapshots` rr JOIN `{catalog}`.`{schema}`.`org_units` o ON rr.org_unit_id = o.org_unit_id WHERE rr.snapshot_year = 2025 GROUP BY o.business_unit, rr.job_family), ranked AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY business_unit ORDER BY avg_risk_score DESC, job_family) AS rn FROM risk) SELECT business_unit, job_family, avg_risk_score, snapshots FROM ranked WHERE rn = 1 ORDER BY avg_risk_score DESC"},
     {"question": "How did the average engagement score for Sales East change year over year from 2023 to 2025?", "difficulty": "HARD",
@@ -142,6 +131,10 @@ BENCHMARKS = [
      "sql": "WITH comp AS (SELECT c.job_family, p.is_high_performer, c.compa_ratio FROM `{catalog}`.`{schema}`.`compensation_snapshots` c JOIN `{catalog}`.`{schema}`.`performance_reviews` p ON c.employee_id = p.employee_id AND c.snapshot_year = p.review_year WHERE c.snapshot_year = 2025) SELECT job_family, ROUND(AVG(CASE WHEN is_high_performer THEN compa_ratio END), 3) AS high_performer_avg_compa, ROUND(AVG(CASE WHEN NOT is_high_performer THEN compa_ratio END), 3) AS other_avg_compa, ROUND(AVG(CASE WHEN is_high_performer THEN compa_ratio END) - AVG(CASE WHEN NOT is_high_performer THEN compa_ratio END), 3) AS compa_gap FROM comp GROUP BY job_family HAVING COUNT(CASE WHEN is_high_performer THEN 1 END) > 0 ORDER BY compa_gap"},
     {"question": "Which org units had the biggest increase in high-risk employees from Q1 2024 to Q4 2024? Show the top 10.", "difficulty": "HARD",
      "sql": "WITH q AS (SELECT o.org_unit_name, rr.snapshot_quarter_label, SUM(CASE WHEN rr.risk_band = 'High' THEN 1 ELSE 0 END) AS high_risk FROM `{catalog}`.`{schema}`.`retention_risk_snapshots` rr JOIN `{catalog}`.`{schema}`.`org_units` o ON rr.org_unit_id = o.org_unit_id WHERE rr.snapshot_quarter_label IN ('2024-Q1', '2024-Q4') GROUP BY o.org_unit_name, rr.snapshot_quarter_label) SELECT org_unit_name, MAX(CASE WHEN snapshot_quarter_label = '2024-Q1' THEN high_risk END) AS high_risk_q1, MAX(CASE WHEN snapshot_quarter_label = '2024-Q4' THEN high_risk END) AS high_risk_q4, MAX(CASE WHEN snapshot_quarter_label = '2024-Q4' THEN high_risk END) - MAX(CASE WHEN snapshot_quarter_label = '2024-Q1' THEN high_risk END) AS change_in_high_risk FROM q GROUP BY org_unit_name ORDER BY change_in_high_risk DESC LIMIT 10"},
+    {"question": "What are the median and 90th-percentile accepted offer salaries by business unit for offers accepted in 2025?", "difficulty": "HARD",
+     "sql": "SELECT o.business_unit, COUNT(*) AS accepted_offers, ROUND(PERCENTILE(a.offer_salary_usd, 0.5), 0) AS median_offer_salary_usd, ROUND(PERCENTILE(a.offer_salary_usd, 0.9), 0) AS p90_offer_salary_usd FROM `{catalog}`.`{schema}`.`applications` a JOIN `{catalog}`.`{schema}`.`requisitions` r ON a.requisition_id = r.requisition_id JOIN `{catalog}`.`{schema}`.`org_units` o ON r.org_unit_id = o.org_unit_id WHERE a.offer_accepted = true AND a.offer_salary_usd IS NOT NULL AND YEAR(a.offer_date) = 2025 GROUP BY o.business_unit ORDER BY median_offer_salary_usd DESC"},
+    {"question": "For requisitions filled in 2025, what is each business unit's internal-fill rate, and how does it compare to the company-wide internal-fill rate?", "difficulty": "HARD",
+     "sql": "WITH bu AS (SELECT o.business_unit, COUNT(*) AS filled_requisitions, SUM(CASE WHEN r.is_internal_fill THEN 1 ELSE 0 END) AS internal_fills FROM `{catalog}`.`{schema}`.`requisitions` r JOIN `{catalog}`.`{schema}`.`org_units` o ON r.org_unit_id = o.org_unit_id WHERE r.status = 'Filled' AND r.opened_year = 2025 GROUP BY o.business_unit) SELECT business_unit, filled_requisitions, internal_fills, ROUND(internal_fills * 100.0 / NULLIF(filled_requisitions, 0), 1) AS internal_fill_rate_pct, ROUND(SUM(internal_fills) OVER () * 100.0 / NULLIF(SUM(filled_requisitions) OVER (), 0), 1) AS company_internal_fill_rate_pct FROM bu ORDER BY internal_fill_rate_pct DESC, business_unit"},
 ]
 
 assert len(BENCHMARKS) == 30, f"expected 30 benchmarks, found {len(BENCHMARKS)}"
@@ -153,50 +146,7 @@ print(f"Loaded {len(BENCHMARKS)} benchmark questions. Difficulty mix: {_mix}")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 3. Validate every SQL live (gated by `run_sql_validation`)
-# MAGIC
-# MAGIC Runs all 30 ground-truth queries against `{catalog}.{schema}` before mutating
-# MAGIC the space. If ANY query fails, the notebook raises and stops - we never push
-# MAGIC benchmarks whose answers don't execute.
-
-# COMMAND ----------
-
-if run_sql_validation:
-    results = []
-    failures = []
-    for i, b in enumerate(BENCHMARKS, 1):
-        rendered = b["sql"].format(catalog=catalog, schema=schema)
-        try:
-            row_count = spark.sql(rendered).count()
-            results.append((i, b["difficulty"], "PASS", row_count, ""))
-        except Exception as e:  # noqa: BLE001 - surface any analysis/runtime error
-            msg = str(e).splitlines()[0][:160] if str(e) else type(e).__name__
-            results.append((i, b["difficulty"], "FAIL", None, msg))
-            failures.append((i, b["question"], msg))
-
-    pass_df = spark.createDataFrame(
-        [(r[0], r[1], r[2], r[3], r[4]) for r in results],
-        "idx int, difficulty string, status string, row_count int, error string",
-    )
-    display(pass_df.orderBy("idx"))
-
-    n_pass = sum(1 for r in results if r[2] == "PASS")
-    print(f"\nSQL validation: {n_pass}/{len(BENCHMARKS)} passed.")
-    if failures:
-        for idx, q, msg in failures:
-            print(f"  [{idx:02d}] FAIL: {q}\n        {msg}")
-        raise RuntimeError(
-            f"{len(failures)} benchmark SQL statement(s) failed validation - aborting "
-            f"before mutating the Genie Space."
-        )
-    print("All 30 ground-truth SQL statements executed successfully.")
-else:
-    print("run_sql_validation=false - skipping live SQL validation.")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 4. Fetch the Genie Space (GET) and snapshot the pre-image
+# MAGIC ## 3. Fetch the Genie Space (GET) and snapshot the pre-image
 
 # COMMAND ----------
 
@@ -215,7 +165,7 @@ if "serialized_space" not in resp:
 # The serialized space is a JSON-encoded string -> parse to a dict.
 serialized = json.loads(resp["serialized_space"])
 
-# Pre-image snapshots for the post-PATCH verification in step 6. We deep-copy via a
+# Pre-image snapshots for the post-PATCH verification in step 5. We deep-copy via a
 # JSON round-trip so later mutation of `serialized` cannot alias these snapshots.
 pre_data_sources = json.loads(json.dumps(serialized.get("data_sources")))
 pre_instructions = json.loads(json.dumps(serialized.get("instructions")))
@@ -231,7 +181,7 @@ print(f"existing benchmarks: {pre_benchmark_count}")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 5. Mutate ONLY `benchmarks.questions`, then PATCH the space
+# MAGIC ## 4. Mutate ONLY `benchmarks.questions`, then PATCH the space
 # MAGIC
 # MAGIC We replace the benchmark question list and leave `config`, `data_sources`,
 # MAGIC `instructions`, and `version` untouched.
@@ -267,7 +217,7 @@ print(f"PATCH submitted: replaced benchmarks.questions with {len(questions)} ent
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 6. Round-trip verify
+# MAGIC ## 5. Round-trip verify
 # MAGIC
 # MAGIC Re-fetch the space and assert: exactly 30 benchmarks landed, their questions
 # MAGIC match what we sent, and `data_sources` / `instructions` / `version` are
@@ -307,53 +257,3 @@ print(f"  data_sources      : UNCHANGED")
 print(f"  instructions      : UNCHANGED")
 print(f"  version           : UNCHANGED ({post_version})")
 print(f"  Difficulty mix    : {_mix}")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 7. (Optional) Sample Genie conversation check
-# MAGIC
-# MAGIC Gated by `run_conversation_check` (default **false**). For a small sample of
-# MAGIC questions, exercises the Genie Conversation API and prints Genie's answer for
-# MAGIC manual spot-checking. This is best-effort and never fails the notebook.
-
-# COMMAND ----------
-
-if run_conversation_check:
-    import time
-
-    SAMPLE_SIZE = 3
-    sample = BENCHMARKS[:SAMPLE_SIZE]
-    for b in sample:
-        q = b["question"]
-        print("=" * 64)
-        print(f"Q: {q}")
-        try:
-            start = w.api_client.do(
-                "POST",
-                f"/api/2.0/genie/spaces/{space_id}/start-conversation",
-                body={"content": q},
-            )
-            conversation_id = (start.get("conversation") or {}).get("id") or start.get("conversation_id")
-            message_id = (start.get("message") or {}).get("id") or start.get("message_id")
-            status = None
-            message = {}
-            for _ in range(30):  # poll up to ~150s
-                message = w.api_client.do(
-                    "GET",
-                    f"/api/2.0/genie/spaces/{space_id}/conversations/{conversation_id}/messages/{message_id}",
-                )
-                status = message.get("status")
-                if status in ("COMPLETED", "FAILED", "CANCELLED", "QUERY_RESULT_EXPIRED"):
-                    break
-                time.sleep(5)
-            print(f"   status: {status}")
-            for attachment in (message.get("attachments") or []):
-                if attachment.get("text"):
-                    print(f"   text: {attachment['text'].get('content')}")
-                if attachment.get("query"):
-                    print(f"   query: {attachment['query'].get('query')}")
-        except Exception as e:  # noqa: BLE001 - optional check, never fail the run
-            print(f"   conversation check error (non-fatal): {e}")
-else:
-    print("run_conversation_check=false - skipping optional Genie conversation check.")

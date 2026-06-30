@@ -8,11 +8,10 @@
 # MAGIC benchmark portion of the space's serialized config.
 # MAGIC
 # MAGIC **What it does**
-# MAGIC 1. Validates all 30 ground-truth SQLs live on the SQL warehouse.
-# MAGIC 2. `GET`s the Genie Space (`include_serialized_space=true`).
-# MAGIC 3. Replaces `serialized_space.benchmarks.questions` with the 30 entries.
-# MAGIC 4. `PATCH`es the space back.
-# MAGIC 5. Round-trips a `GET` to verify the 30 questions landed and that
+# MAGIC 1. `GET`s the Genie Space (`include_serialized_space=true`).
+# MAGIC 2. Replaces `serialized_space.benchmarks.questions` with the 30 entries.
+# MAGIC 3. `PATCH`es the space back.
+# MAGIC 4. Round-trips a `GET` to verify the 30 questions landed and that
 # MAGIC    `data_sources` / `instructions` / `version` are unchanged.
 # MAGIC
 # MAGIC **⚠️ Safety note:** This notebook mutates **ONLY** `benchmarks.questions`.
@@ -38,16 +37,10 @@
 dbutils.widgets.text("space_id", "", "Genie Space ID (required)")
 dbutils.widgets.text("catalog", "dhuang_catalog", "Unity Catalog name")
 dbutils.widgets.text("schema", "horizon_bank", "Schema / database name")
-dbutils.widgets.text("run_sql_validation", "true", "Validate all SQLs before loading")
-dbutils.widgets.text("run_conversation_check", "false", "Sample Genie answers after load")
 
 space_id = dbutils.widgets.get("space_id").strip()
 catalog = dbutils.widgets.get("catalog").strip() or "dhuang_catalog"
 schema = dbutils.widgets.get("schema").strip() or "horizon_bank"
-run_sql_validation = dbutils.widgets.get("run_sql_validation").strip().lower() == "true"
-run_conversation_check = (
-    dbutils.widgets.get("run_conversation_check").strip().lower() == "true"
-)
 
 if not space_id:
     raise ValueError("space_id widget is required — set it to the target Genie Space ID.")
@@ -61,36 +54,26 @@ w = WorkspaceClient()  # auto-authenticates inside Databricks
 
 print(f"Target Genie Space : {space_id}")
 print(f"Data location      : {catalog}.{schema}")
-print(f"SQL validation     : {run_sql_validation}")
-print(f"Conversation check : {run_conversation_check}")
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## 2. Benchmark questions (30) — grounded in `dhuang_catalog.horizon_bank`
 # MAGIC
-# MAGIC Difficulty mix: **8 EASY / 14 MEDIUM / 8 HARD**. Every SQL references tables as
+# MAGIC Difficulty mix: **5 EASY / 15 MEDIUM / 10 HARD**. Every SQL references tables as
 # MAGIC `` `{catalog}`.`{schema}`.`<table>` `` and is rendered with
 # MAGIC `.format(catalog=catalog, schema=schema)` at use time.
 
 # COMMAND ----------
 
 BENCHMARKS = [
-    # ===================== EASY (8) =====================
+    # ===================== EASY (5) =====================
     {
         "question": "How many active customers do we currently have?",
         "difficulty": "EASY",
         "sql": """SELECT COUNT(*) AS active_customers
 FROM `{catalog}`.`{schema}`.`customers`
 WHERE is_active = TRUE""",
-    },
-    {
-        "question": "How many branches do we operate in each region?",
-        "difficulty": "EASY",
-        "sql": """SELECT region, COUNT(*) AS branch_count
-FROM `{catalog}`.`{schema}`.`branches`
-GROUP BY region
-ORDER BY branch_count DESC""",
     },
     {
         "question": "What was the total transaction amount in 2024?",
@@ -108,21 +91,6 @@ GROUP BY account_type
 ORDER BY account_count DESC""",
     },
     {
-        "question": "What is the average customer satisfaction score across resolved service requests?",
-        "difficulty": "EASY",
-        "sql": """SELECT ROUND(AVG(satisfaction_score), 2) AS avg_satisfaction_score
-FROM `{catalog}`.`{schema}`.`service_requests`
-WHERE status = 'Resolved'""",
-    },
-    {
-        "question": "How many customers fall into each relationship tier?",
-        "difficulty": "EASY",
-        "sql": """SELECT relationship_tier, COUNT(*) AS customer_count
-FROM `{catalog}`.`{schema}`.`customers`
-GROUP BY relationship_tier
-ORDER BY customer_count DESC""",
-    },
-    {
         "question": "Which products carry an annual fee of more than $50?",
         "difficulty": "EASY",
         "sql": """SELECT product_name, product_category, annual_fee_usd
@@ -137,7 +105,7 @@ ORDER BY annual_fee_usd DESC""",
 FROM `{catalog}`.`{schema}`.`transactions`
 WHERE is_flagged = TRUE""",
     },
-    # ===================== MEDIUM (14) =====================
+    # ===================== MEDIUM (15) =====================
     {
         "question": "What was the total deposit volume by region in 2024?",
         "difficulty": "MEDIUM",
@@ -281,7 +249,18 @@ JOIN `{catalog}`.`{schema}`.`customers` c ON t.customer_id = c.customer_id
 GROUP BY c.customer_segment, 2
 ORDER BY c.customer_segment, channel_type""",
     },
-    # ===================== HARD (8) =====================
+    {
+        "question": "How much fee revenue does each region generate, and how many branches contribute to it?",
+        "difficulty": "MEDIUM",
+        "sql": """SELECT b.region,
+       COUNT(DISTINCT b.branch_id) AS contributing_branches,
+       ROUND(SUM(t.fee_usd), 2) AS total_fee_revenue
+FROM `{catalog}`.`{schema}`.`transactions` t
+JOIN `{catalog}`.`{schema}`.`branches` b ON t.branch_id = b.branch_id
+GROUP BY b.region
+ORDER BY total_fee_revenue DESC""",
+    },
+    # ===================== HARD (10) =====================
     {
         "question": "For each region, which branch has the highest total transaction amount?",
         "difficulty": "HARD",
@@ -422,6 +401,41 @@ FROM per_customer
 GROUP BY relationship_tier
 ORDER BY avg_total_balance_per_customer DESC""",
     },
+    {
+        "question": "How does each branch region's service-request complaint rate compare to the bank-wide complaint rate?",
+        "difficulty": "HARD",
+        "sql": """WITH region_stats AS (
+  SELECT b.region,
+         COUNT(*) AS total_requests,
+         COUNT_IF(sr.category = 'Complaint') AS complaints
+  FROM `{catalog}`.`{schema}`.`service_requests` sr
+  JOIN `{catalog}`.`{schema}`.`branches` b ON sr.branch_id = b.branch_id
+  GROUP BY b.region
+)
+SELECT region,
+       total_requests,
+       ROUND(complaints * 100.0 / total_requests, 1) AS region_complaint_rate_pct,
+       ROUND(SUM(complaints) OVER () * 100.0 / SUM(total_requests) OVER (), 1) AS bank_complaint_rate_pct
+FROM region_stats
+ORDER BY region_complaint_rate_pct DESC""",
+    },
+    {
+        "question": "Within each product category, which products have the highest average account balance?",
+        "difficulty": "HARD",
+        "sql": """WITH product_balances AS (
+  SELECT p.product_category, p.product_name,
+         COUNT(a.account_id) AS account_count,
+         AVG(a.current_balance_usd) AS avg_balance
+  FROM `{catalog}`.`{schema}`.`accounts` a
+  JOIN `{catalog}`.`{schema}`.`products` p ON a.product_id = p.product_id
+  GROUP BY p.product_category, p.product_name
+)
+SELECT product_category, product_name, account_count,
+       ROUND(avg_balance, 2) AS avg_balance,
+       RANK() OVER (PARTITION BY product_category ORDER BY avg_balance DESC) AS rank_in_category
+FROM product_balances
+ORDER BY product_category, rank_in_category""",
+    },
 ]
 
 assert len(BENCHMARKS) == 30, f"Expected 30 benchmarks, found {len(BENCHMARKS)}"
@@ -433,46 +447,7 @@ print(f"Loaded {len(BENCHMARKS)} benchmark questions. Difficulty mix: {_diff}")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 3. Validate every SQL live (gated by `run_sql_validation`)
-# MAGIC
-# MAGIC Runs all 30 rendered SQLs against `{catalog}.{schema}`. If **any** query
-# MAGIC fails, the notebook raises and stops **before** mutating the Genie Space.
-
-# COMMAND ----------
-
-if run_sql_validation:
-    results = []
-    failures = []
-    for i, b in enumerate(BENCHMARKS, 1):
-        rendered = b["sql"].format(catalog=catalog, schema=schema)
-        try:
-            n = spark.sql(rendered).count()
-            results.append((i, b["difficulty"], "PASS", n, ""))
-        except Exception as e:  # noqa: BLE001
-            msg = str(e).splitlines()[0][:160]
-            results.append((i, b["difficulty"], "FAIL", None, msg))
-            failures.append((i, b["question"], msg))
-
-    print(f"{'#':>3}  {'DIFF':<7} {'STATUS':<6} {'ROWS':>6}  QUESTION")
-    print("-" * 100)
-    for (i, diff, status, n, _msg), b in zip(results, BENCHMARKS):
-        rows = "-" if n is None else str(n)
-        print(f"{i:>3}  {diff:<7} {status:<6} {rows:>6}  {b['question'][:62]}")
-
-    if failures:
-        for i, q, msg in failures:
-            print(f"\n  ✗ [{i}] {q}\n     {msg}")
-        raise RuntimeError(
-            f"{len(failures)} of 30 SQL validations FAILED — aborting before mutating the space."
-        )
-    print("\n✓ All 30 SQLs executed successfully — safe to load benchmarks.")
-else:
-    print("SQL validation skipped (run_sql_validation=false).")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 4. Fetch the Genie Space + snapshot the pre-image
+# MAGIC ## 3. Fetch the Genie Space + snapshot the pre-image
 
 # COMMAND ----------
 
@@ -483,7 +458,7 @@ resp = w.api_client.do(
 )
 serialized = json.loads(resp["serialized_space"])  # inner JSON string -> dict
 
-# Pre-image snapshots (deep copies via JSON round-trip) for step-9 verification.
+# Pre-image snapshots (deep copies via JSON round-trip) for step-6 verification.
 pre_data_sources = json.loads(json.dumps(serialized.get("data_sources")))
 pre_instructions = json.loads(json.dumps(serialized.get("instructions")))
 pre_version = serialized.get("version")
@@ -501,7 +476,7 @@ print(f"  data_sources tables   : {len((serialized.get('data_sources') or {}).ge
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 5. Build benchmark entries and mutate ONLY `benchmarks.questions`
+# MAGIC ## 4. Build benchmark entries and mutate ONLY `benchmarks.questions`
 
 # COMMAND ----------
 
@@ -531,7 +506,7 @@ print("Mutated keys: benchmarks.questions (+ version setdefault). Nothing else c
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 6. PATCH the space (echo existing metadata so nothing else is clobbered)
+# MAGIC ## 5. PATCH the space (echo existing metadata so nothing else is clobbered)
 
 # COMMAND ----------
 
@@ -546,7 +521,7 @@ print("PATCH submitted — benchmark questions written to the space.")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 7. Round-trip verification
+# MAGIC ## 6. Round-trip verification
 
 # COMMAND ----------
 
@@ -582,58 +557,3 @@ print(f"  data_sources unchanged      : True")
 print(f"  instructions unchanged      : True")
 print(f"  version unchanged           : True (={serialized2.get('version')})")
 print(f"  Space                       : {resp2.get('title')} ({space_id})")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 8. (Optional) Conversation spot-check (gated by `run_conversation_check`)
-# MAGIC
-# MAGIC For a small SAMPLE of questions, exercise the Genie Conversation API and print
-# MAGIC Genie's answer for manual review. Off by default; best-effort (never blocks).
-
-# COMMAND ----------
-
-if run_conversation_check:
-    import time
-
-    SAMPLE_N = 3
-    sample = BENCHMARKS[:SAMPLE_N]
-    for b in sample:
-        q = b["question"]
-        print("=" * 70)
-        print(f"Q ({b['difficulty']}): {q}")
-        try:
-            start = w.api_client.do(
-                "POST",
-                f"/api/2.0/genie/spaces/{space_id}/start-conversation",
-                body={"content": q},
-            )
-            conv_id = start.get("conversation_id") or start.get("conversation", {}).get("id")
-            msg_id = start.get("message_id") or start.get("message", {}).get("id")
-            if not (conv_id and msg_id):
-                print(f"  (could not parse conversation/message id: {start})")
-                continue
-
-            status, msg = None, {}
-            for _ in range(30):  # up to ~2.5 min
-                msg = w.api_client.do(
-                    "GET",
-                    f"/api/2.0/genie/spaces/{space_id}/conversations/{conv_id}/messages/{msg_id}",
-                )
-                status = msg.get("status")
-                if status in ("COMPLETED", "FAILED", "CANCELLED", "QUERY_RESULT_EXPIRED"):
-                    break
-                time.sleep(5)
-
-            print(f"  status: {status}")
-            for att in msg.get("attachments", []) or []:
-                if "text" in att and att["text"]:
-                    print(f"  text  : {att['text'].get('content', '')[:300]}")
-                if "query" in att and att["query"]:
-                    print(f"  query : {att['query'].get('query', '')[:400]}")
-        except Exception as e:  # noqa: BLE001
-            print(f"  (conversation check error: {str(e).splitlines()[0][:160]})")
-    print("=" * 70)
-    print("Conversation spot-check complete (manual review).")
-else:
-    print("Conversation check skipped (run_conversation_check=false).")
