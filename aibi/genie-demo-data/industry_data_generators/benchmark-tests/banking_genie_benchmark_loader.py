@@ -30,20 +30,20 @@
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 1. Configuration & widgets
+# MAGIC ## 1. Configuration
 
 # COMMAND ----------
 
-dbutils.widgets.text("space_id", "", "Genie Space ID (required)")
-dbutils.widgets.text("catalog", "dhuang_catalog", "Unity Catalog name")
-dbutils.widgets.text("schema", "horizon_bank", "Schema / database name")
-
-space_id = dbutils.widgets.get("space_id").strip()
-catalog = dbutils.widgets.get("catalog").strip() or "dhuang_catalog"
-schema = dbutils.widgets.get("schema").strip() or "horizon_bank"
+# ============================================================
+# CONFIGURATION — edit these three values, then Run All
+# ============================================================
+space_id = ""                # REQUIRED: target Genie Space ID (e.g. "01ef...")
+catalog  = "dhuang_catalog"  # Unity Catalog name
+schema   = "horizon_bank"  # Schema / database name
+# ============================================================
 
 if not space_id:
-    raise ValueError("space_id widget is required — set it to the target Genie Space ID.")
+    raise ValueError("space_id is required — set it at the top of this cell.")
 
 import json
 import uuid

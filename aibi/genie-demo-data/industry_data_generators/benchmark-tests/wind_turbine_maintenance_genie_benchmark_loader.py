@@ -22,41 +22,25 @@
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 1. Widgets and Configuration
+# MAGIC ## 1. Configuration
 
 # COMMAND ----------
+
+# ============================================================
+# CONFIGURATION — edit these three values, then Run All
+# ============================================================
+space_id = ""                # REQUIRED: target Genie Space ID (e.g. "01ef...")
+catalog  = "dhuang_catalog"  # Unity Catalog name
+schema   = "wind_turbine_maintenance"  # Schema / database name
+# ============================================================
 
 import json
 from copy import deepcopy
 
 from databricks.sdk import WorkspaceClient
 
-
-DEFAULT_CATALOG = "dhuang_catalog"
-DEFAULT_SCHEMA = "wind_turbine_maintenance"
-
-try:
-    dbutils.widgets.text("space_id", "", "Target Genie Space ID")
-    dbutils.widgets.text("catalog", DEFAULT_CATALOG, "Unity Catalog name")
-    dbutils.widgets.text("schema", DEFAULT_SCHEMA, "Schema name")
-except Exception:
-    pass
-
-
-def get_widget(name, default):
-    try:
-        value = dbutils.widgets.get(name).strip()
-        return value or default
-    except Exception:
-        return default
-
-
-space_id = get_widget("space_id", "")
-catalog = get_widget("catalog", DEFAULT_CATALOG)
-schema = get_widget("schema", DEFAULT_SCHEMA)
-
 if not space_id:
-    raise ValueError("Set the required 'space_id' widget before running this benchmark loader.")
+    raise ValueError("space_id is required — set it at the top of this cell.")
 
 w = WorkspaceClient()
 
