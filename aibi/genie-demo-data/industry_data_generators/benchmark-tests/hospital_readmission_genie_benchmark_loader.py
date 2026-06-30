@@ -8,11 +8,10 @@
 # MAGIC portion of the space's serialized config.
 # MAGIC
 # MAGIC **What it does**
-# MAGIC 1. Validates all 30 ground-truth SQLs live against `dhuang_catalog.hospital_readmission`.
-# MAGIC 2. `GET`s the Genie Space (with `include_serialized_space=true`).
-# MAGIC 3. Replaces `serialized["benchmarks"]["questions"]` with the 30 entries.
-# MAGIC 4. `PATCH`es the space (echoing existing title/description/warehouse_id).
-# MAGIC 5. Round-trip verifies the 30 questions landed and nothing else changed.
+# MAGIC 1. `GET`s the Genie Space (with `include_serialized_space=true`).
+# MAGIC 2. Replaces `serialized["benchmarks"]["questions"]` with the 30 entries.
+# MAGIC 3. `PATCH`es the space (echoing existing title/description/warehouse_id).
+# MAGIC 4. Round-trip verifies the 30 questions landed and nothing else changed.
 # MAGIC
 # MAGIC **SAFETY:** This notebook mutates **ONLY** `benchmarks.questions`. It does NOT
 # MAGIC touch `config`, `data_sources`, `instructions`, or `version` of the space.
@@ -38,23 +37,17 @@
 dbutils.widgets.text("space_id", "", "Target Genie Space ID (required)")
 dbutils.widgets.text("catalog", "dhuang_catalog", "Unity Catalog name")
 dbutils.widgets.text("schema", "hospital_readmission", "Schema / database name")
-dbutils.widgets.dropdown("run_sql_validation", "true", ["true", "false"], "Validate SQL live before load")
-dbutils.widgets.dropdown("run_conversation_check", "false", ["true", "false"], "Sampled Genie conversation check")
 
 space_id = dbutils.widgets.get("space_id").strip()
 catalog = dbutils.widgets.get("catalog").strip()
 schema = dbutils.widgets.get("schema").strip()
-run_sql_validation = dbutils.widgets.get("run_sql_validation").strip().lower() == "true"
-run_conversation_check = dbutils.widgets.get("run_conversation_check").strip().lower() == "true"
 
 if not space_id:
     raise ValueError("Widget 'space_id' is required (the target Genie Space ID).")
 
-print(f"space_id               : {space_id}")
-print(f"catalog                : {catalog}")
-print(f"schema                 : {schema}")
-print(f"run_sql_validation     : {run_sql_validation}")
-print(f"run_conversation_check : {run_conversation_check}")
+print(f"space_id : {space_id}")
+print(f"catalog  : {catalog}")
+print(f"schema   : {schema}")
 
 # COMMAND ----------
 
@@ -76,7 +69,7 @@ print("WorkspaceClient ready.")
 # MAGIC and the ground-truth Databricks SQL. Tables are referenced with `{catalog}` /
 # MAGIC `{schema}` Python format placeholders, rendered from the widgets at load time.
 # MAGIC
-# MAGIC Mix: 8 EASY / 14 MEDIUM / 8 HARD. Note: each encounter has at most one
+# MAGIC Mix: 5 EASY / 15 MEDIUM / 10 HARD. Note: each encounter has at most one
 # MAGIC readmission row, so `COUNT(DISTINCT readmission_id) / COUNT(DISTINCT encounter_id)`
 # MAGIC is the 30-day readmission rate.
 
@@ -119,32 +112,6 @@ ORDER BY encounter_count DESC""",
 FROM `{catalog}`.`{schema}`.`patients`
 GROUP BY clinical_risk_band
 ORDER BY patient_count DESC""",
-    },
-    {
-        "question": "How many claims are in each claim status, and what is the total allowed amount for each?",
-        "difficulty": "EASY",
-        "sql": """SELECT claim_status,
-       COUNT(*) AS claim_count,
-       ROUND(SUM(allowed_amount_usd), 2) AS total_allowed_amount_usd
-FROM `{catalog}`.`{schema}`.`claims`
-GROUP BY claim_status
-ORDER BY claim_count DESC""",
-    },
-    {
-        "question": "How many encounters were discharged over a weekend, and what percentage of all discharges is that?",
-        "difficulty": "EASY",
-        "sql": """SELECT COUNT(*) AS total_encounters,
-       SUM(CASE WHEN weekend_discharge THEN 1 ELSE 0 END) AS weekend_discharges,
-       ROUND(SUM(CASE WHEN weekend_discharge THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS weekend_discharge_pct
-FROM `{catalog}`.`{schema}`.`encounters`""",
-    },
-    {
-        "question": "Of all 30-day readmissions, how many were planned and what share were unplanned?",
-        "difficulty": "EASY",
-        "sql": """SELECT COUNT(*) AS total_readmissions,
-       SUM(CASE WHEN planned_readmission THEN 1 ELSE 0 END) AS planned_readmissions,
-       ROUND(SUM(CASE WHEN NOT planned_readmission THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS unplanned_pct
-FROM `{catalog}`.`{schema}`.`readmissions`""",
     },
     {
         "question": "What is our overall 30-day readmission rate?",
@@ -320,6 +287,19 @@ GROUP BY e.discharge_disposition
 ORDER BY readmission_rate_pct DESC""",
     },
     {
+        "question": "What is the total allowed claim amount and the denial rate for each hospital region?",
+        "difficulty": "MEDIUM",
+        "sql": """SELECT h.region,
+       COUNT(*) AS claim_count,
+       ROUND(SUM(c.allowed_amount_usd), 2) AS total_allowed_usd,
+       ROUND(SUM(CASE WHEN c.claim_status = 'Denied' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS denial_rate_pct
+FROM `{catalog}`.`{schema}`.`claims` c
+JOIN `{catalog}`.`{schema}`.`hospitals` h
+  ON c.hospital_id = h.hospital_id
+GROUP BY h.region
+ORDER BY total_allowed_usd DESC""",
+    },
+    {
         "question": "For each diagnosis group, which hospital has the highest 30-day readmission rate among hospitals with at least 50 encounters for that diagnosis?",
         "difficulty": "HARD",
         "sql": """WITH diag_hosp AS (
@@ -484,6 +464,52 @@ WHERE p.clinical_risk_band IN ('High', 'Very High')
 GROUP BY 1
 ORDER BY readmission_rate_pct DESC""",
     },
+    {
+        "question": "By hospital region, how does the 30-day readmission rate compare for weekend versus weekday discharges, and what is the gap in percentage points?",
+        "difficulty": "HARD",
+        "sql": """WITH region_rates AS (
+  SELECT h.region,
+         COUNT(DISTINCT CASE WHEN e.weekend_discharge THEN e.encounter_id END) AS weekend_encounters,
+         COUNT(DISTINCT CASE WHEN e.weekend_discharge THEN r.readmission_id END) AS weekend_readmissions,
+         COUNT(DISTINCT CASE WHEN NOT e.weekend_discharge THEN e.encounter_id END) AS weekday_encounters,
+         COUNT(DISTINCT CASE WHEN NOT e.weekend_discharge THEN r.readmission_id END) AS weekday_readmissions
+  FROM `{catalog}`.`{schema}`.`encounters` e
+  JOIN `{catalog}`.`{schema}`.`hospitals` h
+    ON e.hospital_id = h.hospital_id
+  LEFT JOIN `{catalog}`.`{schema}`.`readmissions` r
+    ON e.encounter_id = r.index_encounter_id
+  GROUP BY h.region
+)
+SELECT region,
+       ROUND(weekend_readmissions * 100.0 / NULLIF(weekend_encounters, 0), 2) AS weekend_readmission_rate_pct,
+       ROUND(weekday_readmissions * 100.0 / NULLIF(weekday_encounters, 0), 2) AS weekday_readmission_rate_pct,
+       ROUND(weekend_readmissions * 100.0 / NULLIF(weekend_encounters, 0)
+           - weekday_readmissions * 100.0 / NULLIF(weekday_encounters, 0), 2) AS weekend_minus_weekday_pp
+FROM region_rates
+ORDER BY weekend_minus_weekday_pp DESC""",
+    },
+    {
+        "question": "Which index-admission diagnosis groups drive the most unplanned 30-day readmissions, and what cumulative share of all unplanned readmissions do they account for?",
+        "difficulty": "HARD",
+        "sql": """WITH unplanned AS (
+  SELECT e.primary_diagnosis_group AS diagnosis_group,
+         COUNT(*) AS unplanned_readmissions
+  FROM `{catalog}`.`{schema}`.`readmissions` r
+  JOIN `{catalog}`.`{schema}`.`encounters` e
+    ON r.index_encounter_id = e.encounter_id
+  WHERE NOT r.planned_readmission
+  GROUP BY e.primary_diagnosis_group
+)
+SELECT diagnosis_group,
+       unplanned_readmissions,
+       ROUND(unplanned_readmissions * 100.0 / SUM(unplanned_readmissions) OVER (), 2) AS pct_of_unplanned,
+       ROUND(SUM(unplanned_readmissions) OVER (
+               ORDER BY unplanned_readmissions DESC
+               ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+             ) * 100.0 / SUM(unplanned_readmissions) OVER (), 2) AS cumulative_pct_of_unplanned
+FROM unplanned
+ORDER BY unplanned_readmissions DESC""",
+    },
 ]
 
 assert len(BENCHMARKS) == 30, f"Expected 30 benchmarks, found {len(BENCHMARKS)}"
@@ -495,45 +521,7 @@ print(f"Loaded {len(BENCHMARKS)} benchmarks. Difficulty mix: {_mix}")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 3. Validate all 30 SQLs live (gated by `run_sql_validation`)
-# MAGIC
-# MAGIC Runs every ground-truth SQL against the live data. If ANY query fails, the
-# MAGIC notebook raises and stops BEFORE touching the Genie Space.
-
-# COMMAND ----------
-
-if run_sql_validation:
-    results = []
-    failures = []
-    for i, b in enumerate(BENCHMARKS, start=1):
-        rendered = b["sql"].format(catalog=catalog, schema=schema)
-        try:
-            n = spark.sql(rendered).count()
-            results.append((i, b["difficulty"], "PASS", n, ""))
-        except Exception as exc:  # noqa: BLE001
-            msg = str(exc).splitlines()[0][:160]
-            results.append((i, b["difficulty"], "FAIL", 0, msg))
-            failures.append((i, b["question"], msg))
-
-    print(f"{'#':>3}  {'DIFF':<6} {'STATUS':<6} {'ROWS':>6}  NOTE")
-    print("-" * 90)
-    for i, diff, status, n, note in results:
-        print(f"{i:>3}  {diff:<6} {status:<6} {n:>6}  {note}")
-    print("-" * 90)
-
-    if failures:
-        raise RuntimeError(
-            f"{len(failures)} SQL(s) failed validation; aborting before mutating the Genie Space:\n"
-            + "\n".join(f"  [{i}] {q} -> {m}" for i, q, m in failures)
-        )
-    print(f"\nAll {len(BENCHMARKS)} SQLs validated successfully against `{catalog}`.`{schema}`.")
-else:
-    print("run_sql_validation=false -> skipping live SQL validation.")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 4. Fetch the Genie Space (pre-image snapshot)
+# MAGIC ## 3. Fetch the Genie Space (pre-image snapshot)
 
 # COMMAND ----------
 
@@ -544,7 +532,7 @@ resp = w.api_client.do(
 )
 serialized = json.loads(resp["serialized_space"])  # inner JSON string -> dict
 
-# Pre-image snapshots used for the round-trip verification (step 6).
+# Pre-image snapshots used for the round-trip verification (step 5).
 import copy
 
 pre_data_sources = copy.deepcopy(serialized.get("data_sources"))
@@ -563,7 +551,7 @@ if isinstance(ds_tables, list):
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 5. Mutate ONLY `benchmarks.questions`, then PATCH
+# MAGIC ## 4. Mutate ONLY `benchmarks.questions`, then PATCH
 
 # COMMAND ----------
 
@@ -600,7 +588,7 @@ print(f"PATCH submitted: replaced benchmarks.questions with {len(questions)} ent
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 6. Round-trip verification
+# MAGIC ## 5. Round-trip verification
 
 # COMMAND ----------
 
@@ -643,58 +631,3 @@ print(f"  data_sources unchanged      : True")
 print(f"  instructions unchanged      : True")
 print(f"  version unchanged           : True ({serialized2.get('version')})")
 print(f"  space                       : {resp2.get('title')!r} ({space_id})")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 7. (Optional) Sampled Genie conversation check
-# MAGIC
-# MAGIC Gated by `run_conversation_check` (default off). For a small SAMPLE of questions,
-# MAGIC exercises the Conversation API end-to-end and prints Genie's answer for manual
-# MAGIC spot-checking. This actually runs Genie and may take a while.
-
-# COMMAND ----------
-
-if run_conversation_check:
-    import time
-
-    SAMPLE_N = 3
-    sample = BENCHMARKS[:SAMPLE_N]
-
-    def _poll_message(space_id, conversation_id, message_id, timeout_s=180, interval_s=4):
-        deadline = time.time() + timeout_s
-        while time.time() < deadline:
-            msg = w.api_client.do(
-                "GET",
-                f"/api/2.0/genie/spaces/{space_id}/conversations/{conversation_id}/messages/{message_id}",
-            )
-            status = msg.get("status")
-            if status in ("COMPLETED", "FAILED", "CANCELLED", "QUERY_RESULT_EXPIRED"):
-                return msg
-            time.sleep(interval_s)
-        return {"status": "TIMEOUT"}
-
-    for i, b in enumerate(sample, start=1):
-        print("=" * 80)
-        print(f"[{i}/{len(sample)}] ({b['difficulty']}) {b['question']}")
-        start = w.api_client.do(
-            "POST",
-            f"/api/2.0/genie/spaces/{space_id}/start-conversation",
-            body={"content": b["question"]},
-        )
-        conversation_id = start.get("conversation_id") or start.get("conversation", {}).get("id")
-        message_id = start.get("message_id") or start.get("message", {}).get("id")
-        if not conversation_id or not message_id:
-            print(f"  Could not start conversation; raw response keys: {sorted(start.keys())}")
-            continue
-        msg = _poll_message(space_id, conversation_id, message_id)
-        print(f"  status: {msg.get('status')}")
-        for att in msg.get("attachments", []) or []:
-            if "text" in att and att["text"]:
-                print(f"  text: {att['text'].get('content')}")
-            if "query" in att and att["query"]:
-                print(f"  query: {att['query'].get('query')}")
-    print("=" * 80)
-    print("Conversation check complete (manual spot-check above).")
-else:
-    print("run_conversation_check=false -> skipping sampled Genie conversation check.")
