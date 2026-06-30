@@ -24,11 +24,6 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install databricks-sdk --upgrade -q
-# MAGIC %restart_python
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC ## 1. Configuration
 
@@ -37,9 +32,9 @@
 # ============================================================
 # CONFIGURATION — edit these three values, then Run All
 # ============================================================
-space_id = ""                # REQUIRED: target Genie Space ID (e.g. "01ef...")
-catalog  = "dhuang_catalog"  # Unity Catalog name
-schema   = "horizon_bank"  # Schema / database name
+space_id = ""  # REQUIRED: target Genie Space ID (e.g. "01ef...")
+catalog = "dhuang_catalog"  # Unity Catalog name
+schema = "horizon_bank"  # Schema / database name
 # ============================================================
 
 if not space_id:
@@ -471,7 +466,9 @@ print(f"Fetched space '{resp.get('title')}' (id={space_id}).")
 print(f"  serialized_space keys : {sorted(serialized.keys())}")
 print(f"  existing version      : {pre_version}")
 print(f"  existing benchmarks   : {n_pre_benchmarks} question(s)")
-print(f"  data_sources tables   : {len((serialized.get('data_sources') or {}).get('tables') or [])}")
+print(
+    f"  data_sources tables   : {len((serialized.get('data_sources') or {}).get('tables') or [])}"
+)
 
 # COMMAND ----------
 
@@ -501,7 +498,9 @@ serialized.setdefault("benchmarks", {})["questions"] = questions
 serialized.setdefault("version", 2)
 
 print(f"Prepared {len(questions)} benchmark entries to load.")
-print("Mutated keys: benchmarks.questions (+ version setdefault). Nothing else changed.")
+print(
+    "Mutated keys: benchmarks.questions (+ version setdefault). Nothing else changed."
+)
 
 # COMMAND ----------
 
@@ -543,7 +542,9 @@ expected_texts = sorted(b["question"] for b in BENCHMARKS)
 assert len(post_questions) == 30, f"Expected 30 questions, found {len(post_questions)}"
 # (b) The 30 questions match what we loaded (order-independent: compare sorted
 #     lists so missing/extra/duplicate questions are still caught).
-assert post_texts == expected_texts, "Loaded benchmark questions do not match BENCHMARKS"
+assert (
+    post_texts == expected_texts
+), "Loaded benchmark questions do not match BENCHMARKS"
 # (c) Untouched sections are byte-for-byte unchanged vs the pre-image.
 assert serialized2.get("data_sources") == pre_data_sources, "data_sources changed!"
 assert serialized2.get("instructions") == pre_instructions, "instructions changed!"

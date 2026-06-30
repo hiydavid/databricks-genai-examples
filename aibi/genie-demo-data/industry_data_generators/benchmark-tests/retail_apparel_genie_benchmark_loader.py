@@ -12,11 +12,6 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install databricks-sdk --upgrade -q
-# MAGIC %restart_python
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC ## Configuration
 
@@ -25,9 +20,9 @@
 # ============================================================
 # CONFIGURATION — edit these three values, then Run All
 # ============================================================
-space_id = ""                # REQUIRED: target Genie Space ID (e.g. "01ef...")
-catalog  = "dhuang_catalog"  # Unity Catalog name
-schema   = "retail_apparel"  # Schema / database name
+space_id = ""  # REQUIRED: target Genie Space ID (e.g. "01ef...")
+catalog = "dhuang_catalog"  # Unity Catalog name
+schema = "retail_apparel"  # Schema / database name
 # ============================================================
 
 import copy
@@ -849,9 +844,15 @@ ORDER BY `inventory_turnover` DESC, c.`category`
 
 assert len(BENCHMARKS) == 30, f"Expected 30 benchmarks, found {len(BENCHMARKS)}"
 assert {b["difficulty"] for b in BENCHMARKS} <= {"EASY", "MEDIUM", "HARD"}
-assert sum(b["difficulty"] == "EASY" for b in BENCHMARKS) == 5, "Expected 5 EASY benchmarks"
-assert sum(b["difficulty"] == "MEDIUM" for b in BENCHMARKS) == 15, "Expected 15 MEDIUM benchmarks"
-assert sum(b["difficulty"] == "HARD" for b in BENCHMARKS) == 10, "Expected 10 HARD benchmarks"
+assert (
+    sum(b["difficulty"] == "EASY" for b in BENCHMARKS) == 5
+), "Expected 5 EASY benchmarks"
+assert (
+    sum(b["difficulty"] == "MEDIUM" for b in BENCHMARKS) == 15
+), "Expected 15 MEDIUM benchmarks"
+assert (
+    sum(b["difficulty"] == "HARD" for b in BENCHMARKS) == 10
+), "Expected 10 HARD benchmarks"
 
 # COMMAND ----------
 
@@ -931,10 +932,18 @@ actual_question_text = sorted(
 )
 expected_question_text = sorted(b["question"] for b in BENCHMARKS)
 
-assert len(actual_questions) == 30, f"Expected 30 benchmark questions, found {len(actual_questions)}"
-assert actual_question_text == expected_question_text, "Round-trip question text does not match BENCHMARKS (order-independent)."
-assert verify_serialized.get("data_sources") == pre_data_sources, "data_sources changed unexpectedly."
-assert verify_serialized.get("instructions") == pre_instructions, "instructions changed unexpectedly."
+assert (
+    len(actual_questions) == 30
+), f"Expected 30 benchmark questions, found {len(actual_questions)}"
+assert (
+    actual_question_text == expected_question_text
+), "Round-trip question text does not match BENCHMARKS (order-independent)."
+assert (
+    verify_serialized.get("data_sources") == pre_data_sources
+), "data_sources changed unexpectedly."
+assert (
+    verify_serialized.get("instructions") == pre_instructions
+), "instructions changed unexpectedly."
 assert verify_serialized.get("version") == pre_version, "version changed unexpectedly."
 
 print("Round-trip verification succeeded.")

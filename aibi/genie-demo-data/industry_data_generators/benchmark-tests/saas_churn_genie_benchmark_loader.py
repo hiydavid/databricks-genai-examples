@@ -9,11 +9,6 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install databricks-sdk --upgrade -q
-# MAGIC %restart_python
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC ## 1. Configuration
 
@@ -22,9 +17,9 @@
 # ============================================================
 # CONFIGURATION — edit these three values, then Run All
 # ============================================================
-space_id = ""                # REQUIRED: target Genie Space ID (e.g. "01ef...")
-catalog  = "dhuang_catalog"  # Unity Catalog name
-schema   = "saas_churn"  # Schema / database name
+space_id = ""  # REQUIRED: target Genie Space ID (e.g. "01ef...")
+catalog = "dhuang_catalog"  # Unity Catalog name
+schema = "saas_churn"  # Schema / database name
 # ============================================================
 
 from databricks.sdk import WorkspaceClient
@@ -971,7 +966,9 @@ for benchmark in BENCHMARKS:
     )
 
 if pre_version is None:
-    raise ValueError("Serialized space is missing version; refusing to patch because only benchmarks.questions may be mutated.")
+    raise ValueError(
+        "Serialized space is missing version; refusing to patch because only benchmarks.questions may be mutated."
+    )
 
 serialized.setdefault("benchmarks", {})["questions"] = questions
 serialized.setdefault("version", 2)
@@ -1013,14 +1010,26 @@ verify_questions = verify_serialized.get("benchmarks", {}).get("questions", [])
 # preserve submission order) while still catching missing/extra/duplicate questions.
 expected_question_text = sorted(benchmark["question"] for benchmark in BENCHMARKS)
 actual_question_text = sorted(
-    (question["question"][0] if isinstance(question.get("question"), list) else question.get("question"))
+    (
+        question["question"][0]
+        if isinstance(question.get("question"), list)
+        else question.get("question")
+    )
     for question in verify_questions
 )
 
-assert len(verify_questions) == 30, f"Expected 30 benchmark questions, found {len(verify_questions)}."
-assert actual_question_text == expected_question_text, "Round-trip benchmark questions do not match expected text (order-independent)."
-assert verify_serialized.get("data_sources") == pre_data_sources, "data_sources changed during patch."
-assert verify_serialized.get("instructions") == pre_instructions, "instructions changed during patch."
+assert (
+    len(verify_questions) == 30
+), f"Expected 30 benchmark questions, found {len(verify_questions)}."
+assert (
+    actual_question_text == expected_question_text
+), "Round-trip benchmark questions do not match expected text (order-independent)."
+assert (
+    verify_serialized.get("data_sources") == pre_data_sources
+), "data_sources changed during patch."
+assert (
+    verify_serialized.get("instructions") == pre_instructions
+), "instructions changed during patch."
 assert verify_serialized.get("version") == pre_version, "version changed during patch."
 
 print("Round-trip verification succeeded.")

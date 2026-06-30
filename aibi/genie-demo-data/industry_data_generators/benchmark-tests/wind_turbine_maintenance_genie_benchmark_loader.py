@@ -16,11 +16,6 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install databricks-sdk --upgrade -q
-# MAGIC %restart_python
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC ## 1. Configuration
 
@@ -29,9 +24,9 @@
 # ============================================================
 # CONFIGURATION — edit these three values, then Run All
 # ============================================================
-space_id = ""                # REQUIRED: target Genie Space ID (e.g. "01ef...")
-catalog  = "dhuang_catalog"  # Unity Catalog name
-schema   = "wind_turbine_maintenance"  # Schema / database name
+space_id = ""  # REQUIRED: target Genie Space ID (e.g. "01ef...")
+catalog = "dhuang_catalog"  # Unity Catalog name
+schema = "wind_turbine_maintenance"  # Schema / database name
 # ============================================================
 
 import json
@@ -758,7 +753,9 @@ def render_sql(benchmark):
 
 difficulty_counts = {}
 for benchmark in BENCHMARKS:
-    difficulty_counts[benchmark["difficulty"]] = difficulty_counts.get(benchmark["difficulty"], 0) + 1
+    difficulty_counts[benchmark["difficulty"]] = (
+        difficulty_counts.get(benchmark["difficulty"], 0) + 1
+    )
 print(f"Loaded {len(BENCHMARKS)} benchmarks: {difficulty_counts}")
 
 # COMMAND ----------
@@ -780,7 +777,9 @@ pre_instructions = deepcopy(serialized.get("instructions"))
 pre_version = deepcopy(serialized.get("version"))
 
 print(f"Fetched Genie Space: {resp.get('title', space_id)}")
-print(f"Existing benchmark question count: {len(serialized.get('benchmarks', {}).get('questions', []))}")
+print(
+    f"Existing benchmark question count: {len(serialized.get('benchmarks', {}).get('questions', []))}"
+)
 
 # COMMAND ----------
 
@@ -790,7 +789,6 @@ print(f"Existing benchmark question count: {len(serialized.get('benchmarks', {})
 # COMMAND ----------
 
 import uuid
-
 
 questions = []
 for benchmark in BENCHMARKS:
@@ -847,14 +845,26 @@ post_questions = post_serialized.get("benchmarks", {}).get("questions", [])
 # preserve submission order) while still catching missing/extra/duplicate questions.
 expected_questions = sorted(benchmark["question"] for benchmark in BENCHMARKS)
 actual_questions = sorted(
-    (question["question"][0] if isinstance(question.get("question"), list) else question.get("question"))
+    (
+        question["question"][0]
+        if isinstance(question.get("question"), list)
+        else question.get("question")
+    )
     for question in post_questions
 )
 
-assert len(post_questions) == 30, f"Expected 30 benchmark questions, found {len(post_questions)}"
-assert actual_questions == expected_questions, "Round-trip benchmark questions do not match expected questions (order-independent)."
-assert post_serialized.get("data_sources") == pre_data_sources, "data_sources changed unexpectedly."
-assert post_serialized.get("instructions") == pre_instructions, "instructions changed unexpectedly."
+assert (
+    len(post_questions) == 30
+), f"Expected 30 benchmark questions, found {len(post_questions)}"
+assert (
+    actual_questions == expected_questions
+), "Round-trip benchmark questions do not match expected questions (order-independent)."
+assert (
+    post_serialized.get("data_sources") == pre_data_sources
+), "data_sources changed unexpectedly."
+assert (
+    post_serialized.get("instructions") == pre_instructions
+), "instructions changed unexpectedly."
 assert post_serialized.get("version") == pre_version, "version changed unexpectedly."
 
 print("Round-trip verification succeeded.")

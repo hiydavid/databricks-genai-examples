@@ -21,11 +21,6 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install databricks-sdk --upgrade -q
-# MAGIC %restart_python
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC ## 1. Configuration
 
@@ -34,9 +29,9 @@
 # ============================================================
 # CONFIGURATION — edit these three values, then Run All
 # ============================================================
-space_id = ""                # REQUIRED: target Genie Space ID (e.g. "01ef...")
-catalog  = "dhuang_catalog"  # Unity Catalog name
-schema   = "hospital_readmission"  # Schema / database name
+space_id = ""  # REQUIRED: target Genie Space ID (e.g. "01ef...")
+catalog = "dhuang_catalog"  # Unity Catalog name
+schema = "hospital_readmission"  # Schema / database name
 # ============================================================
 
 if not space_id:
@@ -543,7 +538,9 @@ print(f"  existing benchmark questions    : {pre_benchmark_count}")
 print(f"  serialized version              : {pre_version}")
 ds_tables = (pre_data_sources or {}).get("tables")
 if isinstance(ds_tables, list):
-    print(f"  data_sources.tables             : {len(ds_tables)} table(s) (left untouched)")
+    print(
+        f"  data_sources.tables             : {len(ds_tables)} table(s) (left untouched)"
+    )
 
 # COMMAND ----------
 
@@ -599,7 +596,9 @@ serialized2 = json.loads(resp2["serialized_space"])
 post_questions = (serialized2.get("benchmarks") or {}).get("questions") or []
 
 # (a) exactly 30 benchmark questions landed
-assert len(post_questions) == 30, f"Expected 30 benchmark questions, found {len(post_questions)}"
+assert (
+    len(post_questions) == 30
+), f"Expected 30 benchmark questions, found {len(post_questions)}"
 
 # (b) the 30 question texts match what we loaded (order-independent)
 expected_texts = sorted(b["question"] for b in BENCHMARKS)
@@ -607,22 +606,30 @@ actual_texts = sorted(
     (q["question"][0] if isinstance(q.get("question"), list) else q.get("question"))
     for q in post_questions
 )
-assert actual_texts == expected_texts, "Benchmark question texts do not match what was loaded."
+assert (
+    actual_texts == expected_texts
+), "Benchmark question texts do not match what was loaded."
 
 # (c) data_sources / instructions unchanged vs the pre-image
-assert serialized2.get("data_sources") == pre_data_sources, "data_sources changed -- unexpected!"
-assert serialized2.get("instructions") == pre_instructions, "instructions changed -- unexpected!"
+assert (
+    serialized2.get("data_sources") == pre_data_sources
+), "data_sources changed -- unexpected!"
+assert (
+    serialized2.get("instructions") == pre_instructions
+), "instructions changed -- unexpected!"
 
 # (d) version unchanged if it pre-existed (we only setdefault it when absent)
 expected_version = pre_version if pre_version is not None else 2
-assert serialized2.get("version") == expected_version, (
-    f"version changed unexpectedly: {pre_version} -> {serialized2.get('version')}"
-)
+assert (
+    serialized2.get("version") == expected_version
+), f"version changed unexpectedly: {pre_version} -> {serialized2.get('version')}"
 
 print("=" * 70)
 print("ROUND-TRIP VERIFICATION PASSED")
 print("=" * 70)
-print(f"  benchmark questions loaded : {len(post_questions)} (was {pre_benchmark_count})")
+print(
+    f"  benchmark questions loaded : {len(post_questions)} (was {pre_benchmark_count})"
+)
 print(f"  question texts match        : True")
 print(f"  data_sources unchanged      : True")
 print(f"  instructions unchanged      : True")
