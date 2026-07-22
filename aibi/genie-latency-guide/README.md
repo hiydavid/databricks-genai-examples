@@ -117,21 +117,26 @@ Use the **Genie Conversation API** (now GA as of April 2026) to poll message sta
 
 `FETCHING_METADATA` → `FILTERING_CONTEXT` → `ASKING_AI` → `EXECUTING_QUERY` → `COMPLETED`
 
+For **Agent mode** (Beta), the [Agent mode API](https://docs.databricks.com/aws/en/genie-agents/api) exposes the equivalent signal as output-item transitions (`reasoning` → `function_call` → `function_call_output` → ... → report).
+
 The accompanying [genie-tracing](./genie-tracing.py) notebook can help here.
 
 ### How to Run the Tracing Notebook
 
 1. Import or open [genie-tracing.py](./genie-tracing.py) as a Databricks notebook.
 2. In the config cell, paste your Genie space ID into `GENIE_SPACE_ID`. This notebook intentionally does not read the space ID from environment variables.
-3. Adjust `QUESTION` and `EXPERIMENT` if needed.
-4. Run the notebook. On Databricks compute, `HOST` and `TOKEN` are auto-detected. For non-notebook execution, set `DATABRICKS_HOST` and `DATABRICKS_TOKEN` environment variables.
+3. Set `MODE` to `"chat"` (Conversation API) or `"agent"` (Agent mode API, Beta — requires the workspace preview to be enabled). The same space ID is used as the `agent_id`.
+4. Adjust `QUESTION` and `EXPERIMENT` if needed.
+5. Run the notebook. On Databricks compute, `HOST` and `TOKEN` are auto-detected. For non-notebook execution, set `DATABRICKS_HOST` and `DATABRICKS_TOKEN` environment variables.
 
 Notebook defaults:
 
 | Setting | Default |
 |---------|---------|
+| `MODE` | `"chat"` |
 | `POLL_INTERVAL_SECONDS` | `1.0` |
-| `TIMEOUT_SECONDS` | `300` |
+| `TIMEOUT_SECONDS` | `300` (chat mode) |
+| `AGENT_TIMEOUT_SECONDS` | `900` (agent mode) |
 | `LOG_FULL_RESPONSES` | `False` |
 
 Keep `LOG_FULL_RESPONSES = False` unless you are tracing against non-sensitive data. When enabled, full API payloads and sample result rows are written to MLflow traces.
@@ -172,7 +177,7 @@ Only `POST` requests (new questions) count toward these limits. Contact your Dat
 - **Prompt caching** — reduces generation latency for repeated prompt patterns
 - **Single-agent architecture** — consolidated from multi-agent, reducing orchestration overhead
 - **Faster "what" responses** — improved system prompting produces more concise answers for simple factual questions
-- Agent mode is **UI-only** during Public Preview — latency cannot be measured via the Conversation API yet
+- Agent mode latency can be measured programmatically via the [Agent mode API](https://docs.databricks.com/aws/en/genie-agents/api) (Beta) — set `MODE = "agent"` in the [tracing notebook](./genie-tracing.py)
 
 See: [Agent mode in Genie spaces](https://docs.databricks.com/aws/en/genie/agent-mode)
 
