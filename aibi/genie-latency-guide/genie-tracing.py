@@ -11,7 +11,7 @@
 # MAGIC
 # MAGIC ## Note on timing
 # MAGIC
-# MAGIC **Chat mode:** step durations (`+Xs`) are computed from server-side `last_updated_timestamp` values, so they reflect actual Genie processing time. **Agent mode (stream):** events are server-pushed, so `+Xs` is the true gap since the previous event (e.g., `function_call_output` added → done ≈ query execution time). **Agent mode (poll):** the items API exposes no per-item server timestamps and may surface items only once finalized, so step durations are coarse poll-observed deltas. In all modes the elapsed time (`t=`) is client-side; the poll interval defaults to 1 second. (GET polls do not count toward QPM limits.)
+# MAGIC **Chat mode:** step durations (`+Xs`) are computed from server-side `last_updated_timestamp` values, so they reflect actual Genie processing time. **Agent mode (stream):** events are server-pushed, so `+Xs` is the true gap since the previous meaningful item transition (e.g., `function_call_output` started → completed ≈ query execution time). Redundant `done` events for items that arrived completed are omitted from notebook output but retained as MLflow spans. **Agent mode (poll):** the items API exposes no per-item server timestamps and may surface items only once finalized, so step durations are coarse poll-observed deltas. In all modes the elapsed time (`t=`) is client-side; the poll interval defaults to 1 second. (GET polls do not count toward QPM limits.)
 # MAGIC
 # MAGIC ## Prerequisites
 # MAGIC
@@ -72,6 +72,13 @@ TERMINAL_STATUSES = {
 }
 # Agent mode: top-level `status` on the conversation items response
 AGENT_TERMINAL_STATUSES = {"completed", "failed"}
+AGENT_ITEM_TERMINAL_STATUSES = {
+    "completed",
+    "failed",
+    "incomplete",
+    "canceled",
+    "cancelled",
+}
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 FAIL_FAST_STATUS_CODES = {400, 401, 403, 404, 409}
 
@@ -455,7 +462,7 @@ def ask_genie_with_full_trace(
 # MAGIC
 # MAGIC ### Poll vs stream (`AGENT_TRANSPORT`)
 # MAGIC
-# MAGIC - **`"stream"` (default)** — holds the SSE stream open and traces each event as the server pushes it: `response.output_item.added` (item appears — a `function_call_output` arriving `in_progress` means the query started), `.updated` (content changed — e.g., results arrived), `.done` (item finalized). True sub-second transition timing, but keeps an HTTP connection open for the run's duration (server-side stream limit: 90 minutes).
+# MAGIC - **`"stream"` (default)** — holds the SSE stream open and traces each event as the server pushes it: `response.output_item.added` (item appears — a `function_call_output` arriving `in_progress` means the query started), `.updated` (content changed — e.g., results arrived), `.done` (item finalized). The notebook timeline collapses an immediate `done` when the same item already arrived finalized; the raw event remains in MLflow with `redundant_lifecycle_event = true`. True sub-second transition timing, but keeps an HTTP connection open for the run's duration (server-side stream limit: 90 minutes).
 # MAGIC - **`"poll"`** — reads only the first SSE event, then polls the items endpoint. More robust for very long runs or flaky networks, but items may surface only once finalized, so fast transitions get batched and query execution can hide inside a reasoning window.
 
 # COMMAND ----------
@@ -546,6 +553,20 @@ def _parse_function_call_arguments(item):
     except ValueError:
         return None, None
     return args.get("title"), args.get("sql")
+
+
+def _format_agent_item_transition(label, phase, status, item_duration=None):
+    """Format one meaningful agent item transition for notebook output."""
+    if phase == "added" and status == "in_progress":
+        state = "started"
+    elif status in AGENT_ITEM_TERMINAL_STATUSES:
+        state = status
+    else:
+        state = f"{phase}: {status}"
+
+    if item_duration is not None:
+        state += f" in {item_duration:.1f}s"
+    return f"{label} ({state})"
 
 
 def _populate_agent_result(items, result):
@@ -969,7 +990,10 @@ def ask_genie_agent_stream_with_full_trace(
 
             labels = {}  # item_id -> label like "reasoning_1"
             counters = {}  # item_type -> occurrence count
-            last_event_ts = None
+            item_states = {}  # item_id -> lifecycle bookkeeping
+            redundant_done_events = 0
+            last_event_ts = None  # previous raw SSE event (for trace attributes)
+            last_timeline_ts = None  # previous visible notebook transition
             final_status = None
             output_items = []
             error_info = None
@@ -983,11 +1007,13 @@ def ask_genie_agent_stream_with_full_trace(
                     if data is None:
                         continue  # unparseable event payload
                     event_count += 1
+
                     now = time.time()
                     elapsed = round(now - start, 2)
-                    delta = round(now - last_event_ts, 2) if last_event_ts else None
+                    event_delta = (
+                        round(now - last_event_ts, 2) if last_event_ts else None
+                    )
                     last_event_ts = now
-                    dur_str = f"+{delta:.1f}s" if delta is not None else ""
 
                     if event == "response.created":
                         robj = data.get("response") or {}
@@ -999,6 +1025,7 @@ def ask_genie_agent_stream_with_full_trace(
                             }
                         )
                         print(f"  [t={elapsed:5.1f}s        ] response_created")
+                        last_timeline_ts = now
 
                     elif event in (
                         "response.output_item.added",
@@ -1013,11 +1040,55 @@ def ask_genie_agent_stream_with_full_trace(
                         if iid not in labels:
                             counters[itype] = counters.get(itype, 0) + 1
                             labels[iid] = f"{itype}_{counters[itype]}"
+                            item_states[iid] = {
+                                "added_ts": now,
+                                "started_in_progress": phase == "added"
+                                and istatus == "in_progress",
+                                "terminal_status": None,
+                            }
                         label = labels[iid]
+                        st = item_states[iid]
 
-                        print(
-                            f"  [t={elapsed:5.1f}s {dur_str:>7s}] {label} ({phase}: {istatus})"
+                        # A finalized item is commonly emitted as both `added` and
+                        # `done` with the same status. Keep both events in MLflow,
+                        # but show that transition only once in notebook output.
+                        is_terminal = istatus in AGENT_ITEM_TERMINAL_STATUSES
+                        is_redundant_done = (
+                            phase == "done"
+                            and is_terminal
+                            and st["terminal_status"] == istatus
                         )
+                        if is_redundant_done:
+                            redundant_done_events += 1
+
+                        # True item duration is measurable only when the stream
+                        # exposed the item's in-progress start.
+                        item_duration = None
+                        if (
+                            is_terminal
+                            and st["terminal_status"] is None
+                            and st["started_in_progress"]
+                        ):
+                            item_duration = round(now - st["added_ts"], 2)
+                        if is_terminal:
+                            st["terminal_status"] = istatus
+
+                        timeline_delta = (
+                            round(now - last_timeline_ts, 2)
+                            if last_timeline_ts is not None
+                            else None
+                        )
+                        if not is_redundant_done:
+                            line = _format_agent_item_transition(
+                                label, phase, istatus, item_duration
+                            )
+                            dur_str = (
+                                f"+{timeline_delta:.1f}s"
+                                if timeline_delta is not None
+                                else ""
+                            )
+                            print(f"  [t={elapsed:5.1f}s {dur_str:>7s}] {line}")
+                            last_timeline_ts = now
 
                         span_name = (
                             f"state_{label}"
@@ -1039,9 +1110,14 @@ def ask_genie_agent_stream_with_full_trace(
                                 "item_status": istatus,
                                 "event_type": event,
                                 "sequence_number": data.get("sequence_number"),
+                                "redundant_lifecycle_event": is_redundant_done,
                             }
-                            if delta is not None:
-                                attrs["prev_event_delta_sec"] = delta
+                            if event_delta is not None:
+                                attrs["prev_event_delta_sec"] = event_delta
+                            if not is_redundant_done and timeline_delta is not None:
+                                attrs["prev_timeline_delta_sec"] = timeline_delta
+                            if item_duration is not None:
+                                attrs["item_duration_sec"] = item_duration
                             sql = None
                             if itype == "function_call":
                                 title, sql = _parse_function_call_arguments(item)
@@ -1068,14 +1144,36 @@ def ask_genie_agent_stream_with_full_trace(
                         robj = data.get("response") or {}
                         final_status = robj.get("status") or "completed"
                         output_items = robj.get("output") or []
+                        timeline_delta = (
+                            round(now - last_timeline_ts, 2)
+                            if last_timeline_ts is not None
+                            else None
+                        )
+                        dur_str = (
+                            f"+{timeline_delta:.1f}s"
+                            if timeline_delta is not None
+                            else ""
+                        )
                         print(f"  [t={elapsed:5.1f}s {dur_str:>7s}] response_completed")
+                        last_timeline_ts = now
 
                     elif event == "response.failed":
                         robj = data.get("response") or {}
                         final_status = "failed"
                         output_items = robj.get("output") or []
                         error_info = robj.get("error") or {}
+                        timeline_delta = (
+                            round(now - last_timeline_ts, 2)
+                            if last_timeline_ts is not None
+                            else None
+                        )
+                        dur_str = (
+                            f"+{timeline_delta:.1f}s"
+                            if timeline_delta is not None
+                            else ""
+                        )
                         print(f"  [t={elapsed:5.1f}s {dur_str:>7s}] response_failed")
+                        last_timeline_ts = now
             except requests.exceptions.ReadTimeout:
                 resp.close()
                 error = f"No SSE events for 300s (read timeout) after {round(time.time() - start, 1)}s elapsed"
@@ -1110,6 +1208,7 @@ def ask_genie_agent_stream_with_full_trace(
                 {
                     "final_status": final_status,
                     "event_count": event_count,
+                    "redundant_done_events": redundant_done_events,
                     "total_time": round(time.time() - start, 2),
                 }
             )
@@ -1221,14 +1320,15 @@ if __name__ == "__main__" or os.getenv("DATABRICKS_RUNTIME_VERSION"):
 # MAGIC ```
 # MAGIC genie_query
 # MAGIC ├── 1_stream_response
-# MAGIC │     ├── state_reasoning_1                    → added (in_progress): agent planning
-# MAGIC │     ├── state_reasoning_1_done               → planning done
+# MAGIC │     ├── state_reasoning_1                    → planning item (may arrive completed)
+# MAGIC │     ├── state_reasoning_1_done               → raw finalization event (flagged if redundant)
 # MAGIC │     ├── state_function_call_1                → SQL submitted (generated_sql attribute)
-# MAGIC │     ├── state_function_call_output_1         → query started (title only)
+# MAGIC │     ├── state_function_call_output_1         → query started
 # MAGIC │     ├── state_function_call_output_1_updated → results arrived
-# MAGIC │     ├── state_function_call_output_1_done    → query finalized
+# MAGIC │     ├── state_function_call_output_1_done    → query finalized (item_duration_sec)
 # MAGIC │     ├── ... reasoning / function_call / function_call_output repeat ...
-# MAGIC │     └── state_message_N_done                 → final assistant report
+# MAGIC │     ├── state_message_N                     → final assistant report (may arrive completed)
+# MAGIC │     └── state_message_N_done                → raw finalization event (flagged if redundant)
 # MAGIC │
 # MAGIC └── 2_extract_results
 # MAGIC       └── Outputs: num_sql_queries, num_tables, report_chars
