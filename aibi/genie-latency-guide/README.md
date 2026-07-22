@@ -125,7 +125,7 @@ The accompanying [genie-tracing](./genie-tracing.py) notebook can help here.
 
 1. Import or open [genie-tracing.py](./genie-tracing.py) as a Databricks notebook.
 2. In the config cell, paste your Genie space ID into `GENIE_SPACE_ID`. This notebook intentionally does not read the space ID from environment variables.
-3. Set `MODE` to `"chat"` (Conversation API) or `"agent"` (Agent mode API, Beta — requires the workspace preview to be enabled). The same space ID is used as the `agent_id`.
+3. Set `MODE` to `"chat"` (Conversation API) or `"agent"` (Agent mode API, Beta). The same space ID is used as the `agent_id`. Since the Agent mode API is in Beta, a workspace admin must first enable the **Genie Agent Mode API for Genie Agents** feature in the workspace **Previews** portal. For agent mode, `AGENT_TRANSPORT` selects `"stream"` (SSE, true server-pushed event timing — recommended for latency analysis) or `"poll"` (items endpoint; more robust for very long runs, but coarser).
 4. Adjust `QUESTION` and `EXPERIMENT` if needed.
 5. Run the notebook. On Databricks compute, `HOST` and `TOKEN` are auto-detected. For non-notebook execution, set `DATABRICKS_HOST` and `DATABRICKS_TOKEN` environment variables.
 
@@ -137,6 +137,7 @@ Notebook defaults:
 | `POLL_INTERVAL_SECONDS` | `1.0` |
 | `TIMEOUT_SECONDS` | `300` (chat mode) |
 | `AGENT_TIMEOUT_SECONDS` | `900` (agent mode) |
+| `AGENT_TRANSPORT` | `"stream"` (agent mode) |
 | `LOG_FULL_RESPONSES` | `False` |
 
 Keep `LOG_FULL_RESPONSES = False` unless you are tracing against non-sensitive data. When enabled, full API payloads and sample result rows are written to MLflow traces.
@@ -177,7 +178,7 @@ Only `POST` requests (new questions) count toward these limits. Contact your Dat
 - **Prompt caching** — reduces generation latency for repeated prompt patterns
 - **Single-agent architecture** — consolidated from multi-agent, reducing orchestration overhead
 - **Faster "what" responses** — improved system prompting produces more concise answers for simple factual questions
-- Agent mode latency can be measured programmatically via the [Agent mode API](https://docs.databricks.com/aws/en/genie-agents/api) (Beta) — set `MODE = "agent"` in the [tracing notebook](./genie-tracing.py)
+- Agent mode latency can be measured programmatically via the [Agent mode API](https://docs.databricks.com/aws/en/genie-agents/api) (Beta — a workspace admin must enable **Genie Agent Mode API for Genie Agents** in the workspace **Previews** portal first) — then set `MODE = "agent"` in the [tracing notebook](./genie-tracing.py)
 
 See: [Agent mode in Genie spaces](https://docs.databricks.com/aws/en/genie/agent-mode)
 
