@@ -1,7 +1,7 @@
 # Databricks notebook source
 
 # MAGIC %md
-# MAGIC # Horizon Bank — Genie Benchmark Loader
+# MAGIC # Bigly Bank — Genie Benchmark Loader
 # MAGIC
 # MAGIC Loads **30 benchmark Q&A pairs** (natural-language question + ground-truth
 # MAGIC Databricks SQL) into a target **Genie Space** by mutating **only** the
@@ -19,7 +19,7 @@
 # MAGIC (other than `setdefault`-ing `version` if it is somehow absent). Re-running is
 # MAGIC idempotent: the 30 benchmark questions are fully replaced (no duplicates).
 # MAGIC
-# MAGIC **Data:** `dhuang_catalog.horizon_bank` (6 tables: products, branches,
+# MAGIC **Data:** `dhuang_catalog.bigly_bank` (6 tables: products, branches,
 # MAGIC customers, accounts, transactions, service_requests).
 
 # COMMAND ----------
@@ -34,7 +34,7 @@
 # ============================================================
 space_id = ""  # REQUIRED: target Genie Space ID (e.g. "01ef...")
 catalog = "dhuang_catalog"  # Unity Catalog name
-schema = "horizon_bank"  # Schema / database name
+schema = "bigly_bank"  # Schema / database name
 # ============================================================
 
 if not space_id:
@@ -53,7 +53,7 @@ print(f"Data location      : {catalog}.{schema}")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 2. Benchmark questions (30) — grounded in `dhuang_catalog.horizon_bank`
+# MAGIC ## 2. Benchmark questions (30) — grounded in `dhuang_catalog.bigly_bank`
 # MAGIC
 # MAGIC Difficulty mix: **5 EASY / 15 MEDIUM / 10 HARD**. Every SQL references tables as
 # MAGIC `` `{catalog}`.`{schema}`.`<table>` `` and is rendered with

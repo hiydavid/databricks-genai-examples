@@ -1,9 +1,9 @@
 # Databricks notebook source
 
 # MAGIC %md
-# MAGIC # Horizon Bank — Synthetic Dataset Generator
+# MAGIC # Bigly Bank — Synthetic Dataset Generator
 # MAGIC
-# MAGIC Generates **6 Delta tables** for the Horizon Bank Genie demo space.
+# MAGIC Generates **6 Delta tables** for the Bigly Bank Genie demo space.
 # MAGIC
 # MAGIC | Table | Rows | Description |
 # MAGIC |---|---|---|
@@ -34,7 +34,7 @@
 # CONFIGURATION — Edit only this section before running
 # =============================================================================
 DEFAULT_CATALOG = "my_catalog"  # Unity Catalog name
-DEFAULT_SCHEMA = "horizon_bank"  # Schema / database name
+DEFAULT_SCHEMA = "bigly_bank"  # Schema / database name
 
 # Widgets let the bulk runner pass values while preserving standalone defaults.
 try:
@@ -161,7 +161,7 @@ products_data = [
     # ── DEPOSIT ──────────────────────────────────────────────────────────────
     {
         "product_id": "PROD-001",
-        "product_name": "Horizon Basic Checking",
+        "product_name": "Bigly Basic Checking",
         "product_category": "Deposit",
         "product_type": "Checking",
         "annual_fee_usd": 0.0,
@@ -173,7 +173,7 @@ products_data = [
     },
     {
         "product_id": "PROD-002",
-        "product_name": "Horizon Plus Checking",
+        "product_name": "Bigly Plus Checking",
         "product_category": "Deposit",
         "product_type": "Checking",
         "annual_fee_usd": 0.0,
@@ -185,7 +185,7 @@ products_data = [
     },
     {
         "product_id": "PROD-003",
-        "product_name": "Horizon Premier Checking",
+        "product_name": "Bigly Premier Checking",
         "product_category": "Deposit",
         "product_type": "Checking",
         "annual_fee_usd": 25.0,
@@ -197,7 +197,7 @@ products_data = [
     },
     {
         "product_id": "PROD-004",
-        "product_name": "Horizon Business Checking",
+        "product_name": "Bigly Business Checking",
         "product_category": "Deposit",
         "product_type": "Checking",
         "annual_fee_usd": 15.0,
@@ -209,7 +209,7 @@ products_data = [
     },
     {
         "product_id": "PROD-005",
-        "product_name": "Horizon Basic Savings",
+        "product_name": "Bigly Basic Savings",
         "product_category": "Deposit",
         "product_type": "Savings",
         "annual_fee_usd": 0.0,
@@ -221,7 +221,7 @@ products_data = [
     },
     {
         "product_id": "PROD-006",
-        "product_name": "Horizon High-Yield Savings",
+        "product_name": "Bigly High-Yield Savings",
         "product_category": "Deposit",
         "product_type": "Savings",
         "annual_fee_usd": 0.0,
@@ -233,7 +233,7 @@ products_data = [
     },
     {
         "product_id": "PROD-007",
-        "product_name": "Horizon Money Market",
+        "product_name": "Bigly Money Market",
         "product_category": "Deposit",
         "product_type": "Savings",
         "annual_fee_usd": 0.0,
@@ -245,7 +245,7 @@ products_data = [
     },
     {
         "product_id": "PROD-008",
-        "product_name": "Horizon 12-Month CD",
+        "product_name": "Bigly 12-Month CD",
         "product_category": "Deposit",
         "product_type": "Savings",
         "annual_fee_usd": 0.0,
@@ -257,7 +257,7 @@ products_data = [
     },
     {
         "product_id": "PROD-009",
-        "product_name": "Horizon Student Savings",
+        "product_name": "Bigly Student Savings",
         "product_category": "Deposit",
         "product_type": "Savings",
         "annual_fee_usd": 0.0,
@@ -270,7 +270,7 @@ products_data = [
     # ── CREDIT ───────────────────────────────────────────────────────────────
     {
         "product_id": "PROD-010",
-        "product_name": "Horizon Rewards Visa",
+        "product_name": "Bigly Rewards Visa",
         "product_category": "Credit",
         "product_type": "Credit Card",
         "annual_fee_usd": 0.0,
@@ -282,7 +282,7 @@ products_data = [
     },
     {
         "product_id": "PROD-011",
-        "product_name": "Horizon Platinum Card",
+        "product_name": "Bigly Platinum Card",
         "product_category": "Credit",
         "product_type": "Credit Card",
         "annual_fee_usd": 95.0,
@@ -294,7 +294,7 @@ products_data = [
     },
     {
         "product_id": "PROD-012",
-        "product_name": "Horizon Travel Rewards Card",
+        "product_name": "Bigly Travel Rewards Card",
         "product_category": "Credit",
         "product_type": "Credit Card",
         "annual_fee_usd": 195.0,
@@ -306,7 +306,7 @@ products_data = [
     },
     {
         "product_id": "PROD-013",
-        "product_name": "Horizon Business Credit Card",
+        "product_name": "Bigly Business Credit Card",
         "product_category": "Credit",
         "product_type": "Credit Card",
         "annual_fee_usd": 0.0,
@@ -319,7 +319,7 @@ products_data = [
     # ── LENDING ──────────────────────────────────────────────────────────────
     {
         "product_id": "PROD-014",
-        "product_name": "Horizon 30yr Fixed Mortgage",
+        "product_name": "Bigly 30yr Fixed Mortgage",
         "product_category": "Lending",
         "product_type": "Mortgage",
         "annual_fee_usd": 0.0,
@@ -331,7 +331,7 @@ products_data = [
     },
     {
         "product_id": "PROD-015",
-        "product_name": "Horizon 15yr Fixed Mortgage",
+        "product_name": "Bigly 15yr Fixed Mortgage",
         "product_category": "Lending",
         "product_type": "Mortgage",
         "annual_fee_usd": 0.0,
@@ -343,7 +343,7 @@ products_data = [
     },
     {
         "product_id": "PROD-016",
-        "product_name": "Horizon 5/1 ARM Mortgage",
+        "product_name": "Bigly 5/1 ARM Mortgage",
         "product_category": "Lending",
         "product_type": "Mortgage",
         "annual_fee_usd": 0.0,
@@ -355,7 +355,7 @@ products_data = [
     },
     {
         "product_id": "PROD-017",
-        "product_name": "Horizon Auto Loan 48-Month",
+        "product_name": "Bigly Auto Loan 48-Month",
         "product_category": "Lending",
         "product_type": "Auto Loan",
         "annual_fee_usd": 0.0,
@@ -367,7 +367,7 @@ products_data = [
     },
     {
         "product_id": "PROD-018",
-        "product_name": "Horizon Auto Loan 60-Month",
+        "product_name": "Bigly Auto Loan 60-Month",
         "product_category": "Lending",
         "product_type": "Auto Loan",
         "annual_fee_usd": 0.0,
@@ -379,7 +379,7 @@ products_data = [
     },
     {
         "product_id": "PROD-019",
-        "product_name": "Horizon Home Equity Line",
+        "product_name": "Bigly Home Equity Line",
         "product_category": "Lending",
         "product_type": "HELOC",
         "annual_fee_usd": 50.0,
@@ -391,7 +391,7 @@ products_data = [
     },
     {
         "product_id": "PROD-020",
-        "product_name": "Horizon Home Equity Loan",
+        "product_name": "Bigly Home Equity Loan",
         "product_category": "Lending",
         "product_type": "HELOC",
         "annual_fee_usd": 0.0,
@@ -1961,7 +1961,7 @@ spark.sql(
     f"ALTER TABLE {C}.products ALTER COLUMN product_id             COMMENT 'Primary key. Format: PROD-NNN'"
 )
 spark.sql(
-    f"ALTER TABLE {C}.products ALTER COLUMN product_name           COMMENT 'Full commercial name of the product (e.g., Horizon Rewards Visa)'"
+    f"ALTER TABLE {C}.products ALTER COLUMN product_name           COMMENT 'Full commercial name of the product (e.g., Bigly Rewards Visa)'"
 )
 spark.sql(
     f"ALTER TABLE {C}.products ALTER COLUMN product_category       COMMENT 'High-level category: Deposit, Credit, or Lending'"
@@ -2052,7 +2052,7 @@ spark.sql(
     f"ALTER TABLE {C}.customers ALTER COLUMN acquisition_channel COMMENT 'How the customer was acquired: Branch, Online, Mobile, or Referral'"
 )
 spark.sql(
-    f"ALTER TABLE {C}.customers ALTER COLUMN customer_since_date COMMENT 'Date the customer first opened a relationship with Horizon Bank'"
+    f"ALTER TABLE {C}.customers ALTER COLUMN customer_since_date COMMENT 'Date the customer first opened a relationship with Bigly Bank'"
 )
 spark.sql(
     f"ALTER TABLE {C}.customers ALTER COLUMN is_active           COMMENT 'True if the customer relationship is active (~94% of customers)'"
@@ -2201,10 +2201,10 @@ spark.sql(
 
 # --- Table comments ---
 spark.sql(
-    f"COMMENT ON TABLE {C}.products IS 'Product catalog for Horizon Bank. 20 rows covering Deposit, Credit, and Lending product types. Static reference dimension.'"
+    f"COMMENT ON TABLE {C}.products IS 'Product catalog for Bigly Bank. 20 rows covering Deposit, Credit, and Lending product types. Static reference dimension.'"
 )
 spark.sql(
-    f"COMMENT ON TABLE {C}.branches IS 'Branch dimension for Horizon Bank. 25 branches across 5 US regions. Southeast branches have ~20% higher average transaction values vs. national average.'"
+    f"COMMENT ON TABLE {C}.branches IS 'Branch dimension for Bigly Bank. 25 branches across 5 US regions. Southeast branches have ~20% higher average transaction values vs. national average.'"
 )
 spark.sql(
     f"COMMENT ON TABLE {C}.customers IS 'Customer dimension. 1,000 synthetic customers. Private Client tier (top 10%) holds 3x the average account balance and has 60% mortgage penetration.'"
