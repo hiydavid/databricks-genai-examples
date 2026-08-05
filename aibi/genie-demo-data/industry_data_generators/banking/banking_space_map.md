@@ -10,7 +10,8 @@ design decision changes.
 
 The implementation uses one user-supplied Unity Catalog and multiple schemas.
 Both `catalog` and `schema_prefix` are required notebook widgets; neither is
-hard-coded. Examples below use `bigly_bank` as the approved schema prefix.
+hard-coded. Examples below use `bigly_bank` as a recommended schema prefix, but
+the caller chooses both values at runtime.
 
 | Alias | Runtime schema | Ownership boundary |
 |---|---|---|
@@ -71,30 +72,19 @@ recreate or copy them.
 This structure keeps failures and changes isolated by domain without forcing a
 demo user to run nine notebooks manually.
 
-## What Can Be Served Today
+## Implementation Scope
 
-The current generator creates six source tables and three metric views. These
-objects in one legacy schema support three credible Genie spaces now.
+The multi-schema model below supersedes the former single-schema dataset.
+`generate_banking_data.py` remains the one-click entry point and orchestrates
+the domain notebooks without generating tables itself.
 
-| Genie space | Primary authority | Existing objects |
-|---|---|---|
-| Bigly Bank - Transactions & Deposits | Transaction volume, deposit flows, fees, channels, and regional trends | `mv_banking_transactions`, `transactions`, `accounts`, `customers`, `products`, `branches` |
-| Bigly Bank - Customer & Product Health | Customers, account ownership, balances, product penetration, dormancy, and delinquency | `mv_customer_health`, `accounts`, `customers`, `products`, `branches` |
-| Bigly Bank - Service Quality | Requests, complaints, resolution, escalation, satisfaction, and service channel | `mv_service_quality`, `service_requests`, `customers`, `branches` |
+Repeated CORE names in this map mean that multiple Genie spaces reference the
+same physical dimension. They do not represent copied `parties`, `products`,
+`branches`, `employees`, or calendar tables.
 
-Repeated names in this map mean that multiple Genie spaces reference the same
-physical Delta table. They do not represent duplicate copies of `customers`,
-`products`, or `branches`.
-
-Do not create separate Commercial Banking, Wealth Management, Cards, Lending,
-or Financial Crime spaces from the current tables. Those concepts are present
-only as segments, account types, or flags and do not yet have enough lifecycle
-data to support authoritative domain answers.
-
-The target multi-schema model supersedes this legacy layout. Preserve
-`generate_banking_data.py` as the entry point, but refactor it into the
-orchestrator. Update the benchmark loader to target the new domain spaces after
-their data and semantic objects pass validation.
+Domain-specific Genie benchmarks are intentionally outside this implementation.
+The existing benchmark loader remains unchanged until each Genie space is
+configured and benchmark coverage is requested separately.
 
 ## Target Shared Core
 
@@ -150,11 +140,13 @@ Cross-schema fact dependencies are intentionally limited:
 
 | Consumer | Upstream facts read | Purpose |
 |---|---|---|
+| OPERATIONS generator | `RETAIL.deposit_transactions` | Reconcile branch activity and fee revenue with originating retail ledger events |
 | RISK generator and `RISK.vw_financial_crime` | `RETAIL.deposit_transactions`, `RETAIL.card_transactions`, `COMMERCIAL.commercial_transactions` | Create and explain alerts from originating transactions |
-| FINANCE generator | RETAIL balance and loan snapshots, COMMERCIAL exposure and balance snapshots, WEALTH fee and AUM snapshots, OPERATIONS cost snapshots | Produce reconciled bank-level monthly financial aggregates |
+| FINANCE generator | RETAIL balance and loan snapshots, COMMERCIAL exposure and ledger activity, WEALTH fee and AUM snapshots, OPERATIONS cost snapshots, RISK fraud losses | Produce reconciled bank-level monthly financial aggregates |
 
 The downstream schema stores its own alerts, cases, or aggregates. It does not
-copy complete upstream transaction or dimension tables.
+copy complete upstream transaction or dimension tables. OPERATIONS aggregates
+retail activity into branch-month performance without copying the ledger.
 
 Finance & Treasury is optional for the first implementation. Add it when the
 demo needs CFO, asset-liability management, or enterprise profitability
@@ -188,7 +180,7 @@ for child tables derived from weighted ownership and lifecycle rules.
 | Widget | Requirement |
 |---|---|
 | `catalog` | Required Unity Catalog; fail fast when empty |
-| `schema_prefix` | Required schema prefix; use `bigly_bank` for this demo |
+| `schema_prefix` | Required user-supplied schema prefix; `bigly_bank` is recommended for this demo |
 | `seed` | Shared deterministic seed; initial value `42` |
 | `as_of_date` | Shared inclusive end date for lifecycle generation |
 | `notebook_base_path` | Optional parent path used by the orchestrator |
@@ -197,6 +189,18 @@ for child tables derived from weighted ownership and lifecycle rules.
 Every child notebook accepts the same core widgets even if it does not use all
 of them. Child notebooks return row counts and validation summaries to the
 orchestrator.
+
+## How to Run
+
+Prerequisites are a Unity Catalog-enabled workspace, permission to create
+schemas and managed tables in the chosen catalog, and Databricks Runtime 17.2+
+for metric-view YAML version 1.1.
+
+Open `generate_banking_data.py`, supply non-empty `catalog` and
+`schema_prefix` widget values, and run all cells. Set `enable_finance` to
+`true` only when the optional Finance & Treasury schema is wanted. The
+orchestrator runs the generators in dependency order, creates the semantic
+objects, and finishes with `validate_banking_data.py`.
 
 ## Space Boundaries
 
