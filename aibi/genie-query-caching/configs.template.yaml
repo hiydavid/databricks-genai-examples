@@ -1,9 +1,16 @@
 # Genie Query Caching Configuration
 # Copy this file to configs.yaml and fill in your values before running.
 
-# Unity Catalog
+# Cache storage location in Unity Catalog
 catalog: "your_catalog"                    # TODO
 schema: "genie_cache"                      # TODO
+
+# Data queried by the Genie space. If data_catalog is omitted, the cache catalog
+# is used. Bump cache_version whenever Genie instructions, table schemas, metric
+# views, or other semantic definitions change.
+# data_catalog: "your_data_catalog"
+data_schema: "horizon_bank"
+cache_version: "v1"
 
 # Genie Space
 genie_space_id: "your_genie_space_id"      # TODO - from Genie Space URL
@@ -15,8 +22,8 @@ lakebase:
   port: 5432
   database: "your_database"                # TODO
   secret_scope: "your_scope"               # TODO
-  secret_key_username: "lakebase_username"  # TODO
-  secret_key_password: "lakebase_password"  # TODO
+  secret_key_username: "lakebase_username" # TODO
+  secret_key_password: "lakebase_password" # TODO
 
 # Vector Search (Scenarios 2 & 3)
 vs_endpoint: "genie-cache-vs-endpoint"     # TODO
@@ -24,26 +31,34 @@ vs_endpoint: "genie-cache-vs-endpoint"     # TODO
 # Embedding model (Foundation Model API, used for Lakebase pgvector)
 embedding_model: "databricks-qwen3-embedding-0-6b"
 embedding_dimension: 1024
-# Optional: task-specific instruction for improved retrieval accuracy (1-5% boost).
-# Only used by models that support the instruction parameter (e.g., Qwen3).
 embedding_instruction: "Represent this question for finding semantically similar questions:"
+
+# SQL preview limit when cached SQL is re-executed on a hit
+result_row_limit: 100
+
+# Setup behavior. Keep false to exercise cold misses in the scenario notebooks.
+seed_demo_data: false
+
+# Optional MLflow tracing. Tracing is attempted only when this is true AND
+# MLFLOW_TRACKING_URI and MLFLOW_EXPERIMENT_ID are set in the environment.
+mlflow:
+  enable_tracing: false
+  debug: false
 
 # Retry / backoff for Genie API calls
 retry:
   max_attempts: 5
-  base_delay: 1.0      # seconds
+  base_delay: 1.0       # seconds
   max_delay: 60.0       # seconds
 
 # Cache similarity thresholds
 thresholds:
   lakebase_similarity: 0.92       # Scenario 1 - pgvector cosine similarity
-  lakebase_hybrid: 0.93           # Scenario 3 - L1 pgvector threshold (stricter)
-  vs_auto_execute: 0.90           # Scenarios 2 & 3 - auto-execute cached SQL
-  vs_confirm: 0.75                # Scenario 2 - return but flag for user confirmation
+  lakebase_hybrid: 0.93           # Scenario 3 - L1 pgvector threshold
+  vs_auto_execute: 0.90           # Scenarios 2 & 3 - execute cached SQL directly
+  vs_confirm: 0.75                # Scenario 2 - execute but flag for user confirmation
 
 # Demo questions (used across all scenario notebooks)
-# These match the seed data in 0_setup.py — the setup notebook pre-populates
-# the cache so the demo shows HITs on the first pass.
 demo_questions:
   - "What was total deposit volume in 2024?"
   - "Show monthly deposit trend from Jan 2023 to Dec 2025"

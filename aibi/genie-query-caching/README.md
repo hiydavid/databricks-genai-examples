@@ -1,16 +1,17 @@
 # Genie Query Caching
 
-> **WIP — This project is a work in progress and not ready for use.**
-
-Demonstrates three caching strategies for Databricks Genie API responses, reducing latency and API load by serving repeated or semantically similar questions from cache.
+Demonstrates three cache strategies for Databricks Genie responses. The cache
+stores generated SQL and metadata; on every cache hit the notebook re-executes
+the cached SQL under the current Databricks identity for freshness and access
+control.
 
 ## Scenarios
 
 | Scenario | Cache Layer | Key Benefit |
 |----------|-------------|-------------|
-| 1. Lakebase + pgvector | PostgreSQL with vector similarity | ACID writes, immediate read-after-write, scale-to-zero |
-| 2. Vector Search Index | Delta table + managed embeddings | Unity Catalog governance, hybrid semantic + BM25 search |
-| 3. Hybrid (Recommended) | L1: Lakebase session cache + L2: VS knowledge base | Fast session cache + durable cross-session knowledge base |
+| 1. Lakebase + pgvector | PostgreSQL with vector similarity | ACID writes and immediate read-after-write |
+| 2. Vector Search Index | Delta table + managed embeddings | Unity Catalog governance and hybrid semantic + BM25 search |
+| 3. Hybrid | L1 Lakebase session cache + L2 Vector Search knowledge base | Fast session cache plus validated cross-session reuse |
 
 ## Architecture
 
@@ -20,49 +21,56 @@ Demonstrates three caching strategies for Databricks Genie API responses, reduci
 
 ## Prerequisites
 
-- Databricks workspace with **Genie Spaces** enabled and at least one Genie Space configured
-- **Lakebase** instance with the pgvector extension (Scenarios 1 & 3)
-- A Databricks **secret scope** with Lakebase credentials
-- **Vector Search** endpoint (Scenarios 2 & 3)
-- **Unity Catalog** with a catalog/schema for cache tables
-- Run notebooks on **Serverless** compute or a cluster with network access to Lakebase
+- Databricks workspace with Genie Spaces enabled and at least one Genie Space configured
+- Horizon Bank demo data, or another schema compatible with your Genie space
+- Lakebase instance with the pgvector extension (Scenarios 1 and 3)
+- Databricks secret scope with Lakebase credentials
+- Vector Search endpoint permissions (Scenarios 2 and 3)
+- Unity Catalog catalog/schema for cache tables
+- Serverless compute or a cluster with network access to Lakebase
 
 ## Quick Start
 
-1. Copy `configs.template.yaml` → `configs.yaml` and fill in your values
-2. Run `0_setup.py` to create all infrastructure and seed demo data (5 Horizon Bank entries)
-3. Run any scenario notebook:
-   - `1_lakebase_pgvector_cache.py` — simplest, Lakebase-only
-   - `2_vector_search_cache.py` — Vector Search with confidence tiering
-   - `3_hybrid_cache.py` — recommended two-tier approach
+1. Copy `configs.template.yaml` to `configs.yaml` and fill in your values.
+2. Set `data_schema` and `cache_version`; set `data_catalog` if the data lives outside the cache catalog.
+3. Keep `seed_demo_data: false` if you want to exercise the cold miss path.
+4. Run `0_setup.py` to create the cache schema, Lakebase table, Vector Search endpoint, and indexes.
+5. Run a scenario notebook:
+   - `1_lakebase_pgvector_cache.py`
+   - `2_vector_search_cache.py`
+   - `3_hybrid_cache.py`
+
+Set `seed_demo_data: true` only when you want setup to pre-populate demo entries
+so the notebooks start with cache hits.
+
+## Cache Safety Model
+
+- Cache keys include the Genie space ID, configured data catalog/schema, and `cache_version`.
+- Bump `cache_version` whenever Genie instructions, table schemas, metric views, or other semantic definitions change.
+- Cache hits return cached SQL only after re-executing it with Spark SQL under the current Databricks identity.
+- Text-only Genie responses are not cached because they cannot be refreshed or permission-checked.
+- Scenario 3 uses `cache_scope=session` for L1 and `cache_scope=global` for validated L2 entries, so sessions do not overwrite each other.
 
 ## Notebooks
 
 | File | Purpose |
 |------|---------|
-| `0_setup.py` | Create catalog, schema, Lakebase tables with pgvector, Delta tables, VS endpoint/indexes, and seed demo data |
-| `1_lakebase_pgvector_cache.py` | Scenario 1: exact match + pgvector similarity (≥ 0.92) |
-| `2_vector_search_cache.py` | Scenario 2: hybrid semantic + BM25 with 3-tier confidence scoring |
-| `3_hybrid_cache.py` | Scenario 3: L1 Lakebase session cache + L2 VS knowledge base with promotion |
-| `utils.py` | Shared helpers: retry/backoff, Genie API wrapper, embeddings, Lakebase connectivity |
+| `0_setup.py` | Create v2 cache tables, Lakebase pgvector table, Vector Search endpoint/indexes, and optional seed data |
+| `1_lakebase_pgvector_cache.py` | Scenario 1: exact match + pgvector similarity |
+| `2_vector_search_cache.py` | Scenario 2: Vector Search with confidence tiering |
+| `3_hybrid_cache.py` | Scenario 3: session L1 + validated durable L2 |
+| `utils.py` | Shared helpers for config validation, cache IDs, Genie calls, SQL execution, tracing, and cache writes |
 
-## Configuration
+## Schema Changes
 
-See `configs.template.yaml` for all settings:
+This example uses a v2 cache schema. If setup finds old v1 tables, it fails with
+a reset/migration message instead of silently using incompatible tables. For a
+demo reset, drop the old Delta cache tables, delete the old Vector Search
+indexes, and drop the Lakebase `genie_cache` table, then rerun `0_setup.py`.
 
-- **Unity Catalog** — catalog and schema for cache tables
-- **Genie Space** — space ID and timeout
-- **Lakebase** — host, port, database, secret scope/keys
-- **Vector Search** — endpoint name, embedding model
-- **Retry/backoff** — max attempts, base/max delay (decorrelated jitter)
-- **Thresholds** — similarity thresholds for each cache layer
-- **Demo questions** — sample questions used across all notebooks
+## Optional MLflow Tracing
 
-## Key Design Decisions
-
-- **Retry strategy**: Decorrelated jitter (`delay = min(max_delay, uniform(base_delay, prev_delay * 3))`) — avoids thundering herd while providing fast initial retries
-- **Genie API approach**: Uses the [Databricks Python SDK](https://docs.databricks.com/aws/en/genie/conversation-api) (`start_conversation_and_wait`) rather than the REST API (requires manual polling) or [Managed MCP](https://docs.databricks.com/aws/en/generative-ai/mcp/managed-mcp) (designed for AI agent tool use, not programmatic caching where structured response parsing is required)
-- **Embedding model**: [`databricks-qwen3-embedding-0-6b`](https://www.databricks.com/blog/sota-embedding-model-agentic-workflows-now-public-preview) (1024 dimensions, configurable via Matryoshka) via Foundation Model API for Lakebase pgvector; managed embeddings for Vector Search. Supports optional `instruction` parameter for task-specific retrieval boost (1-5%)
-- **Lakebase connectivity**: `psycopg` (psycopg3) + `pgvector` Python package for native PostgreSQL vector search; credentials via Databricks Secrets
-- **Vector Search**: Delta Sync indexes with managed embeddings and `HYBRID` query type (semantic + BM25)
-- **Code structure**: Shared `utils.py` module imported by all notebooks; each notebook adds scenario-specific cache logic
+Set `mlflow.enable_tracing: true` and configure `MLFLOW_TRACKING_URI` plus
+`MLFLOW_EXPERIMENT_ID` to trace cache lookup, Genie calls, Vector Search lookup,
+SQL execution, and scenario orchestration. Without those environment variables,
+the tracing hooks are no-ops.

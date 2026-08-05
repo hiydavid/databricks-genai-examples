@@ -1,23 +1,23 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Scenario 3: Hybrid Cache — L1 Lakebase + L2 Vector Search (Recommended)
+# MAGIC # Scenario 3: Hybrid Cache — L1 Lakebase + L2 Vector Search
 # MAGIC
 # MAGIC ![Architecture](scenario3-hybrid.png)
 # MAGIC
-# MAGIC This notebook demonstrates the **recommended** two-tier caching architecture:
+# MAGIC This notebook demonstrates a two-tier cache:
 # MAGIC
-# MAGIC | Layer | Technology | Purpose | TTL |
-# MAGIC |-------|-----------|---------|-----|
-# MAGIC | **L1** | Lakebase + pgvector | Session cache — fast exact + vector match | Session lifetime |
-# MAGIC | **L2** | Vector Search + Delta | Knowledge base — validated, durable cache | 30+ weeks |
+# MAGIC | Layer | Technology | Purpose |
+# MAGIC |-------|-----------|---------|
+# MAGIC | L1 | Lakebase + pgvector | Session-scoped cache for the current workflow |
+# MAGIC | L2 | Vector Search + Delta | Validated cross-session SQL knowledge base |
 # MAGIC
 # MAGIC **Cache flow:**
-# MAGIC 1. **L1 check** — exact match + pgvector similarity (threshold ≥ 0.93) in Lakebase
-# MAGIC 2. **L1 HIT** → return cached response immediately
-# MAGIC 3. **L1 MISS → L2 check** — hybrid semantic + BM25 search (threshold ≥ 0.90)
-# MAGIC 4. **L2 HIT** → re-execute cached SQL for freshness, promote to L1
-# MAGIC 5. **L2 MISS** → Genie API (with retry + backoff) → write to L1
-# MAGIC 6. **Promotion** — entries promoted from L1 → L2 after validation (thumbs-up or hit_count ≥ 3)
+# MAGIC 1. Check L1 for a session-scoped exact/vector match.
+# MAGIC 2. On L1 hit, re-execute cached SQL.
+# MAGIC 3. On L1 miss, check validated L2 rows for the current cache context.
+# MAGIC 4. On L2 hit, re-execute cached SQL and promote it to L1.
+# MAGIC 5. On L2 miss, call Genie, execute generated SQL, and write it to L1.
+# MAGIC 6. Simulate validation by promoting selected L1 entries to L2.
 # MAGIC
 # MAGIC **Prerequisites:** Run `0_setup.py` first.
 
@@ -33,63 +33,76 @@
 
 # COMMAND ----------
 
-import json
 import time
 import uuid
 
 from databricks.vector_search.client import VectorSearchClient
 
 from utils import (
+    CacheLookupResult,
+    GLOBAL_SCOPE,
+    SESSION_SCOPE,
+    build_cache_context,
     call_genie_with_retry,
-    generate_id,
+    delta_cache_upsert,
+    delta_increment_hit_count,
+    execute_cached_sql_with_trace,
     get_lakebase_connection,
     lakebase_cache_lookup,
     lakebase_cache_write,
     load_config,
-    normalize_question,
+    print_sql_preview,
     print_summary_table,
     sync_vs_index_and_wait,
-    utcnow,
+    table_name,
+    trace_operation,
+    vector_search_filters,
 )
 
 config = load_config("./configs.yaml")
+context = build_cache_context(config)
 
-CATALOG = config["catalog"]
-SCHEMA = config["schema"]
 VS_ENDPOINT = config["vs_endpoint"]
-CACHE_KB_TABLE = f"{CATALOG}.{SCHEMA}.cache_knowledge_base"
-CACHE_KB_INDEX = f"{CATALOG}.{SCHEMA}.cache_knowledge_base_index"
+CACHE_KB_TABLE = table_name(config, "cache_knowledge_base")
+CACHE_KB_INDEX = f"{config['catalog']}.{config['schema']}.cache_knowledge_base_index"
+RESULT_ROW_LIMIT = int(config.get("result_row_limit", 100))
 
 thresholds = config.get("thresholds", {})
 L1_THRESHOLD = thresholds.get("lakebase_hybrid", 0.93)
 L2_THRESHOLD = thresholds.get("vs_auto_execute", 0.90)
 
-# Unique session ID for this notebook run — scopes L1 cache entries
 SESSION_ID = uuid.uuid4().hex[:8]
-
 vsc = VectorSearchClient(disable_notice=True)
 
 print(f"Session ID:         {SESSION_ID}")
+print(f"Cache context key:  {context.cache_context_key}")
 print(f"L1 threshold:       {L1_THRESHOLD} (Lakebase pgvector)")
 print(f"L2 threshold:       {L2_THRESHOLD} (Vector Search)")
+print(f"Result row limit:   {RESULT_ROW_LIMIT}")
 print(f"L2 Knowledge Base:  {CACHE_KB_INDEX}")
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## L1 — Lakebase Session Cache
-# MAGIC
-# MAGIC Uses shared `lakebase_cache_lookup` / `lakebase_cache_write` from `utils.py`
-# MAGIC with a `session_id` to scope entries to this notebook run.
 
 # COMMAND ----------
 
 
 def l1_clear_session(session_id: str = SESSION_ID):
-    """Delete all L1 cache entries for a specific session."""
+    """Delete all L1 cache entries for a specific session and context."""
     conn = get_lakebase_connection(config)
     with conn.cursor() as cur:
-        cur.execute("DELETE FROM genie_cache WHERE session_id = %s", (session_id,))
+        cur.execute(
+            """
+            DELETE FROM genie_cache
+            WHERE space_id = %s
+              AND cache_context_key = %s
+              AND cache_scope = %s
+              AND session_id = %s
+            """,
+            (context.space_id, context.cache_context_key, SESSION_SCOPE, session_id),
+        )
     conn.commit()
     print(f"  Cleared L1 cache for session {session_id}")
 
@@ -102,53 +115,51 @@ def l1_clear_session(session_id: str = SESSION_ID):
 # COMMAND ----------
 
 
-def l2_cache_lookup(question: str):
-    """L2 cache lookup: hybrid semantic + BM25 search on the knowledge base VS index."""
-    index = vsc.get_index(endpoint_name=VS_ENDPOINT, index_name=CACHE_KB_INDEX)
-
-    results = index.similarity_search(
-        query_text=question,
-        columns=["id", "question_text", "cached_sql", "cached_response"],
-        num_results=1,
-        query_type="HYBRID",
-    )
+def l2_cache_lookup(question: str) -> CacheLookupResult:
+    """Lookup a validated L2 cache entry for the current context."""
+    with trace_operation(config, "l2_vector_search_lookup", "RETRIEVER", {"question": question}):
+        index = vsc.get_index(endpoint_name=VS_ENDPOINT, index_name=CACHE_KB_INDEX)
+        results = index.similarity_search(
+            query_text=question,
+            columns=["id", "question_text", "generated_sql", "genie_response_text"],
+            filters=vector_search_filters(config, cache_scope=GLOBAL_SCOPE, validated_only=True),
+            num_results=1,
+            query_type="HYBRID",
+        )
 
     hits = results.get("result", {}).get("data_array", [])
     if not hits:
-        return None, None, None, 0.0
+        return CacheLookupResult(hit_type=None, score=0.0)
 
     row = hits[0]
     score = float(row[-1]) if row[-1] is not None else 0.0
-    cached_sql = row[2]
-    cached_response = row[3]
+    if score < L2_THRESHOLD:
+        return CacheLookupResult(hit_type=None, score=score)
 
-    if score >= L2_THRESHOLD:
-        return "hit", cached_sql, cached_response, score
+    return CacheLookupResult(
+        hit_type="l2",
+        tier="auto",
+        row_id=row[0],
+        question_text=row[1],
+        generated_sql=row[2],
+        genie_response_text=row[3],
+        score=score,
+    )
 
-    return None, None, None, score
 
-
-def promote_to_l2(question: str, sql: str, response_text: str, source: str = "auto"):
-    """Promote a validated entry from L1 to the L2 knowledge base (Delta table)."""
-    from pyspark.sql import Row
-
-    row_id = generate_id()
-    normalized = normalize_question(question)
-
-    new_row = Row(
-        id=row_id,
-        question_text=question,
-        question_normalized=normalized,
-        cached_sql=sql or "",
-        cached_response=response_text or "",
+def promote_to_l2(question: str, sql: str, response_text: str = "", source: str = "manual-validation"):
+    """Promote validated SQL into the durable L2 knowledge base."""
+    row_id = delta_cache_upsert(
+        spark,
+        CACHE_KB_TABLE,
+        config,
+        question=question,
+        sql=sql,
+        response_text=response_text or "",
+        cache_scope=GLOBAL_SCOPE,
         validated=True,
         validation_source=source,
-        created_at=utcnow(),
-        hit_count=0,
     )
-    df = spark.createDataFrame([new_row])
-    df.write.mode("append").saveAsTable(CACHE_KB_TABLE)
-
     print(f"  Promoted to L2 knowledge base (id={row_id}, source={source})")
     return row_id
 
@@ -162,67 +173,104 @@ def promote_to_l2(question: str, sql: str, response_text: str, source: str = "au
 
 
 def query_with_hybrid_cache(question: str, session_id: str = SESSION_ID):
-    """Execute the full hybrid cache flow: L1 → L2 → Genie API.
+    """Run L1 -> L2 -> Genie and always execute SQL for the final answer."""
+    with trace_operation(
+        config,
+        "query_with_hybrid_cache",
+        "CHAIN",
+        {"question": question, "session_id": session_id},
+    ):
+        start = time.time()
 
-    Returns a dict with: source, sql, response, score, latency_s
-    """
-    start = time.time()
-
-    # --- L1: Lakebase session cache ---
-    hit_type, sql, resp, score, embedding = lakebase_cache_lookup(
-        config, question, threshold=L1_THRESHOLD, session_id=session_id,
-    )
-    if hit_type:
-        return {
-            "source": f"L1-{hit_type}",
-            "sql": sql,
-            "response": resp,
-            "score": score,
-            "latency_s": time.time() - start,
-        }
-
-    # --- L2: Vector Search knowledge base ---
-    hit, sql, resp_text, score = l2_cache_lookup(question)
-    if hit:
-        # Promote L2 hit to L1 for session-level caching (reuse embedding from L1 lookup)
-        lakebase_cache_write(
-            config, question, sql, resp_text or "",
-            session_id=session_id, embedding=embedding,
+        l1 = lakebase_cache_lookup(
+            config,
+            question,
+            threshold=L1_THRESHOLD,
+            cache_scope=SESSION_SCOPE,
+            session_id=session_id,
         )
+        if l1.hit:
+            sql_result = execute_cached_sql_with_trace(
+                config, l1.generated_sql, row_limit=RESULT_ROW_LIMIT
+            )
+            return {
+                "source": f"L1-{l1.hit_type}",
+                "sql": l1.generated_sql,
+                "response": l1.genie_response_text,
+                "score": l1.score,
+                "sql_result": sql_result,
+                "latency_s": time.time() - start,
+            }
+
+        l2 = l2_cache_lookup(question)
+        if l2.hit:
+            delta_increment_hit_count(spark, CACHE_KB_TABLE, l2.row_id)
+            sql_result = execute_cached_sql_with_trace(
+                config, l2.generated_sql, row_limit=RESULT_ROW_LIMIT
+            )
+            lakebase_cache_write(
+                config,
+                question=question,
+                sql=l2.generated_sql,
+                response_text=l2.genie_response_text or "",
+                cache_scope=SESSION_SCOPE,
+                session_id=session_id,
+                embedding=l1.embedding,
+                validated=True,
+                validation_source="l2-hit",
+            )
+            return {
+                "source": "L2-hit",
+                "sql": l2.generated_sql,
+                "response": l2.genie_response_text,
+                "score": l2.score,
+                "sql_result": sql_result,
+                "latency_s": time.time() - start,
+            }
+
+        genie_result = call_genie_with_retry(config, question)
+        if not genie_result.cacheable:
+            return {
+                "source": "Genie-no-sql",
+                "sql": None,
+                "response": genie_result.response_text,
+                "score": 0.0,
+                "sql_result": None,
+                "latency_s": time.time() - start,
+            }
+
+        sql_result = execute_cached_sql_with_trace(
+            config, genie_result.generated_sql, row_limit=RESULT_ROW_LIMIT
+        )
+        lakebase_cache_write(
+            config,
+            question=question,
+            sql=genie_result.generated_sql,
+            response_text=genie_result.response_text or "",
+            cache_scope=SESSION_SCOPE,
+            session_id=session_id,
+            embedding=l1.embedding,
+            validated=False,
+            validation_source=None,
+        )
+
         return {
-            "source": "L2-hit",
-            "sql": sql,
-            "response": resp_text,
-            "score": score,
+            "source": "Genie",
+            "sql": genie_result.generated_sql,
+            "response": genie_result.response_text,
+            "score": 0.0,
+            "sql_result": sql_result,
             "latency_s": time.time() - start,
         }
-
-    # --- Genie API (with retry/backoff) ---
-    genie_result = call_genie_with_retry(config, question)
-    sql = genie_result.generated_sql or ""
-    text = genie_result.response_text or ""
-
-    # Write to L1 (reuse embedding from L1 lookup)
-    lakebase_cache_write(
-        config, question, sql, text,
-        session_id=session_id, embedding=embedding,
-    )
-
-    return {
-        "source": "Genie",
-        "sql": sql,
-        "response": text,
-        "score": 0.0,
-        "latency_s": time.time() - start,
-    }
 
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Pass 1 — Cold Start (L1 Miss, L2 Miss → Genie API)
+# MAGIC ## Pass 1 — Cold Start
 # MAGIC
-# MAGIC All questions hit the Genie API and get written to L1.
+# MAGIC With unseeded setup, this path misses L1/L2 and calls Genie. Seeded setup may
+# MAGIC hit L2 immediately.
 
 # COMMAND ----------
 
@@ -230,7 +278,7 @@ demo_questions = config.get("demo_questions", [
     "What is the total revenue for last quarter?",
 ])
 
-all_results = {}  # question -> {pass1, pass2, pass3, pass4}
+all_results = {}
 
 for question in demo_questions:
     print(f"\n{'=' * 60}")
@@ -239,16 +287,16 @@ for question in demo_questions:
     result = query_with_hybrid_cache(question)
     print(f"  Source: {result['source']} | Latency: {result['latency_s']:.1f}s")
     if result["sql"]:
-        print(f"  SQL: {result['sql'][:120]}...")
+        print(f"  SQL: {result['sql'][:160]}...")
+    if result["sql_result"]:
+        print_sql_preview(result["sql_result"])
 
     all_results[question] = {"pass1": result}
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Pass 2 — L1 Warm (Session Cache Hit)
-# MAGIC
-# MAGIC Same questions → all should return from L1 (Lakebase exact match).
+# MAGIC ## Pass 2 — L1 Warm
 
 # COMMAND ----------
 
@@ -258,6 +306,8 @@ for question in demo_questions:
 
     result = query_with_hybrid_cache(question)
     print(f"  Source: {result['source']} | Score: {result['score']:.3f} | Latency: {result['latency_s']:.3f}s")
+    if result["sql_result"]:
+        print_sql_preview(result["sql_result"])
 
     all_results[question]["pass2"] = result
 
@@ -266,17 +316,17 @@ for question in demo_questions:
 # MAGIC %md
 # MAGIC ## Promote to L2 — Simulate Validation
 # MAGIC
-# MAGIC In production, entries are promoted to L2 after user validation (thumbs-up) or
-# MAGIC repeated use (hit_count ≥ 3).  Here we simulate this by promoting all cached
-# MAGIC entries.
+# MAGIC Production systems should promote only after explicit user validation or a
+# MAGIC durable quality signal. This demo promotes the SQL produced in Pass 1.
 
 # COMMAND ----------
 
 for question in demo_questions:
     r = all_results[question]["pass1"]
-    resp = r["response"]
-    resp_str = resp if isinstance(resp, str) else json.dumps(resp) if resp else ""
-    promote_to_l2(question, r["sql"] or "", resp_str, source="manual-validation")
+    if r["sql"]:
+        promote_to_l2(question, r["sql"], r["response"] or "", source="manual-validation")
+    else:
+        print(f"  Skipping L2 promotion because no SQL was generated: {question[:60]}")
 
 print("\nSyncing L2 VS index...")
 sync_vs_index_and_wait(vsc, VS_ENDPOINT, CACHE_KB_INDEX)
@@ -285,29 +335,29 @@ sync_vs_index_and_wait(vsc, VS_ENDPOINT, CACHE_KB_INDEX)
 
 # MAGIC %md
 # MAGIC ## Clear L1 — Simulate New Session
-# MAGIC
-# MAGIC Delete the current session's L1 entries to simulate a fresh session.
-# MAGIC L2 entries persist.
 
 # COMMAND ----------
 
 l1_clear_session(SESSION_ID)
 
-# Verify L1 is empty for these questions
 for question in demo_questions:
-    hit_type, _, _, _, _ = lakebase_cache_lookup(
-        config, question, threshold=L1_THRESHOLD, session_id=SESSION_ID,
+    lookup = lakebase_cache_lookup(
+        config,
+        question,
+        threshold=L1_THRESHOLD,
+        cache_scope=SESSION_SCOPE,
+        session_id=SESSION_ID,
     )
-    status = "MISS" if hit_type is None else f"HIT ({hit_type})"
-    print(f"  L1 check: {status} — {question[:50]}")
+    status = "MISS" if not lookup.hit else f"HIT ({lookup.hit_type})"
+    print(f"  L1 check: {status} - {question[:50]}")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Pass 3 — L2 Warm (Knowledge Base Hit → Promote to L1)
+# MAGIC ## Pass 3 — L2 Warm
 # MAGIC
-# MAGIC L1 is empty, but L2 has the promoted entries.  Each L2 hit gets promoted
-# MAGIC back to L1 for the rest of the session.
+# MAGIC L1 is empty, but L2 has validated entries. Each L2 hit is executed and then
+# MAGIC promoted back into L1 for the current session.
 
 # COMMAND ----------
 
@@ -317,15 +367,15 @@ for question in demo_questions:
 
     result = query_with_hybrid_cache(question)
     print(f"  Source: {result['source']} | Score: {result['score']:.3f} | Latency: {result['latency_s']:.3f}s")
+    if result["sql_result"]:
+        print_sql_preview(result["sql_result"])
 
     all_results[question]["pass3"] = result
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Pass 4 — L1 Warm Again (Promoted from L2)
-# MAGIC
-# MAGIC The L2 hits were promoted to L1 in Pass 3.  Now they should hit L1 directly.
+# MAGIC ## Pass 4 — L1 Warm Again
 
 # COMMAND ----------
 
@@ -335,6 +385,8 @@ for question in demo_questions:
 
     result = query_with_hybrid_cache(question)
     print(f"  Source: {result['source']} | Score: {result['score']:.3f} | Latency: {result['latency_s']:.3f}s")
+    if result["sql_result"]:
+        print_sql_preview(result["sql_result"])
 
     all_results[question]["pass4"] = result
 
@@ -350,28 +402,21 @@ for question in demo_questions:
     r = all_results[question]
     summary_rows.append({
         "question": question[:40],
-        "pass1_genie_s": r["pass1"]["latency_s"],
+        "pass1_s": r["pass1"]["latency_s"],
         "pass2_L1_s": r["pass2"]["latency_s"],
         "pass3_L2_s": r.get("pass3", {}).get("latency_s", 0),
         "pass4_L1_s": r.get("pass4", {}).get("latency_s", 0),
     })
 
 print("\n" + "=" * 90)
-print("SCENARIO 3: Hybrid Cache (L1 Lakebase + L2 Vector Search) — Results")
+print("SCENARIO 3: Hybrid Cache (L1 Lakebase + L2 Vector Search) - Results")
 print("=" * 90)
 print_summary_table(
     summary_rows,
-    ["question", "pass1_genie_s", "pass2_L1_s", "pass3_L2_s", "pass4_L1_s"],
+    ["question", "pass1_s", "pass2_L1_s", "pass3_L2_s", "pass4_L1_s"],
 )
 print()
-print("Pass 1: Cold — Genie API (5-30s)")
-print("Pass 2: L1 warm — Lakebase exact match (~50-200ms)")
-print("Pass 3: L2 warm — VS hybrid search + promote to L1 (~0.5-2s)")
-print("Pass 4: L1 warm — promoted entries now in L1 (~50-200ms)")
-print()
-print("The hybrid approach gives you the best of both worlds:")
-print("  - L1 (Lakebase): Blazing fast session cache with ACID writes")
-print("  - L2 (Vector Search): Durable knowledge base that persists across sessions")
+print("The cache avoids Genie latency. Every hit still executes SQL for freshness and access control.")
 
 # COMMAND ----------
 
