@@ -1,204 +1,68 @@
-# Genie Space Migration with Databricks Asset Bundles
+# ⚠️ Deprecated: Genie Space Migration
 
-Migrate Databricks Genie Spaces between Azure workspaces using the Genie Management APIs.
+This example has been **deprecated** and is no longer maintained.
 
-Designed for regulatory-compliant environments requiring:
+## Recommended replacement
 
-- **No PAT tokens** - Service Principal authentication only
-- **Git-based deployment** - all configurations in version control
-- **Full audit trail** - git commits + CI/CD logs for change management
+Use the maintained, standalone reference implementation instead:
 
-`README.md` is the canonical runbook for migration workflow and command execution. Use [docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md) only for detailed service principal provisioning and workspace permission steps.
+> **[anhhchu/genie-agent-cicd](https://github.com/anhhchu/genie-agent-cicd)** —
+> Reference implementation for managing a Databricks Genie Agent and Unity Catalog
+> metric view as code using Databricks Asset Bundles (DABs).
 
-## Why This Pattern?
+**Blog post:** [anhcodes.dev/blog/genie-agent-cicd](https://anhcodes.dev/blog/genie-agent-cicd/)
 
-As of December 2025, Databricks Asset Bundles don't natively support Genie Spaces ([GitHub issue #3008](https://github.com/databricks/cli/issues/3008)). This pattern uses the public Genie Management APIs (CreateSpace, UpdateSpace, GetSpace) as a workaround.
+## Why the switch?
 
-## Cross-Workspace Migration Workflow
+This example was originally a **workaround**: at the time it was written,
+Databricks Asset Bundles did not natively support Genie Spaces
+([databricks/cli#3008](https://github.com/databricks/cli/issues/3008)). It worked
+around that gap by calling the Genie Management APIs (`get_space` /
+`create_space` / `update_space`) directly from notebook jobs to export and
+re-import Genie Space configurations as `serialized_space` JSON.
 
-```text
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│                                SOURCE WORKSPACE                                  │
-├──────────────────────────────────────────────────────────────────────────────────┤
-│  1. databricks bundle validate --target dev                                      │
-│  2. databricks bundle deploy --target dev                                        │
-│  3. databricks bundle run export_genie_space --target dev                        │
-│     → Writes JSON to /Workspace/Shared/genie_exports/<title>.json                │
-└──────────────────────────────────────────────────────────────────────────────────┘
-                                         │
-                                         ▼
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│                                LOCAL MACHINE                                     │
-├──────────────────────────────────────────────────────────────────────────────────┤
-│  4. databricks workspace export \                                                │
-│       /Workspace/Shared/genie_exports/<title>.json \                             │
-│       --file ./genie_spaces/<filename>.json                                      │
-│     (Edit JSON here if catalog/schema names differ between environments)         │
-│                                                                                  │
-│  5. git add genie_spaces/<filename>.json                                         │
-│  6. git commit -m "Export Genie Space: <title>"                                  │
-│  7. git push                                                                     │
-└──────────────────────────────────────────────────────────────────────────────────┘
-                                         │
-                                         ▼
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│                                TARGET WORKSPACE                                  │
-├──────────────────────────────────────────────────────────────────────────────────┤
-│  8. databricks bundle validate --target prod                                     │
-│  9. databricks bundle deploy --target prod \                                     │
-│       --var deploy_config_path=/Workspace/Shared/.bundle/.../genie_spaces/x.json │
-│     → Syncs files + sets job parameters                                          │
-│ 10. databricks bundle run deploy_genie_space --target prod                       │
-│     → Creates/updates Genie Space from synced JSON                               │
-└──────────────────────────────────────────────────────────────────────────────────┘
-```
+Native DABs support for Genie has since shipped. The replacement project uses the
+supported `databricks bundle generate genie-space` flow and provides a more
+complete pattern — managing both the **Genie Agent** *and* its backing
+**UC metric view** as code, with multi-environment promotion (`dev` → `prod`).
 
-## Setup
+| This example (deprecated)                                  | [genie-agent-cicd](https://github.com/anhhchu/genie-agent-cicd) (recommended) |
+|------------------------------------------------------------|-------------------------------------------------------------------------------|
+| Genie Spaces migrated via Genie Management APIs            | Genie Agent managed natively via DABs resource definitions                    |
+| `serialized_space` JSON exported/imported by hand          | `databricks bundle generate genie-space` + committed `*.geniespace.json`      |
+| Export + deploy jobs run as notebooks                      | Declarative `databricks bundle deploy` with `--target` per environment        |
+| No metric view management                                   | UC metric view managed as code (`src/metric-view.yaml`)                       |
+| Single export/deploy workflow                               | Full CI/CD reference with code review and reproducible deploys                 |
 
-### 1. Configure `databricks.yml`
+## Archived code
 
-```bash
-cp databricks.yml.template databricks.yml
-```
+The original implementation has been preserved under [`archive/`](./archive/) for
+historical reference. It is **not maintained** and may break against newer versions
+of the Databricks CLI / SDK.
 
-Key settings:
+- [`archive/README.md`](./archive/README.md) — original runbook and workflow diagrams
+- [`archive/scripts/`](./archive/scripts/) — `export_genie_space.py` / `deploy_genie_space.py` notebooks
+- [`archive/docs/SP_SETUP_GUIDE.md`](./archive/docs/SP_SETUP_GUIDE.md) — service principal provisioning and permissions
+- [`archive/databricks.yml.template`](./archive/databricks.yml.template) — bundle template
+- [`archive/genie_spaces/`](./archive/genie_spaces/) — sample exported JSON template
 
-```yaml
-variables:
-  source_space_id:
-    default: "<genie-space-id-to-export>"
+## Migration notes
 
-targets:
-  dev:  # Source workspace (for export)
-    workspace:
-      host: https://adb-<source-workspace-id>.<region>.azuredatabricks.net
-      root_path: /Shared/.bundle/${bundle.name}/${bundle.target}
-    variables:
-      run_as_service_principal: "<source-sp-application-id>"
+If you are currently using this example:
 
-  prod:  # Target workspace (for deploy)
-    workspace:
-      host: https://adb-<target-workspace-id>.<region>.azuredatabricks.net
-      root_path: /Shared/.bundle/${bundle.name}/${bundle.target}
-    variables:
-      run_as_service_principal: "<target-sp-application-id>"
-      target_warehouse_id: "<target-warehouse-id>"
-      target_parent_path: "/Workspace/Shared/genie"
-```
+1. Adopt [genie-agent-cicd](https://github.com/anhhchu/genie-agent-cicd) for new work.
+2. Import each existing Genie Space into the new bundle with the native generator:
 
-Each target uses its own Service Principal, allowing separate SPs scoped to each workspace:
+   ```bash
+   databricks bundle generate genie-space \
+     --existing-id <SPACE_ID> \
+     --key <your_space_name>
+   ```
 
-- **dev target**: SP with access to the source workspace (for export)
-- **prod target**: SP with access to the target workspace (for deploy)
+   This produces `src/<key>.geniespace.json` and `resources/<key>.genie_space.yml`,
+   which replace the hand-exported `serialized_space` JSON used here.
 
-### 2. Service Principal Setup (Both Workspaces)
-
-Supports both **Databricks managed SPs** and **Microsoft Entra ID SPs**. See [docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md) for detailed creation steps.
-
-1. **Add SP to workspace**: Admin Settings → Service principals → Add
-2. **Grant SP entitlements**: "Workspace access" and "Databricks SQL access"
-3. **Grant yourself "User" role on SP**: SP → Permissions → Grant access → Add yourself with "User" role
-   - Required to create jobs with `run_as` referencing this SP
-4. **Grant SP permissions**:
-   - Source: CAN EDIT on Genie Space (required for export)
-   - Target: CAN USE on SQL Warehouse (required for deploy)
-   - Target: CAN MANAGE on `target_parent_path` folder (required to create Genie Spaces)
-
-Where to find `source_space_id`: open the source Genie Space and copy the ID from the URL path after `/genie/`.
-Example: `https://adb-<source-workspace-id>.<region>.azuredatabricks.net/genie/<source-space-id>`
-
-## Command Reference
-
-### Export (Source Workspace)
-
-```bash
-# Validate and deploy bundle
-databricks bundle validate --target dev
-databricks bundle deploy --target dev
-
-# Run export job
-databricks bundle run export_genie_space --target dev
-
-# Download exported JSON to local repo
-databricks workspace export \
-    /Workspace/Shared/genie_exports/<title>.json \
-    --file ./genie_spaces/<filename>.json
-```
-
-> **Note:** If your target workspace uses different catalog/schema names, edit the JSON file before committing.
-
-### Deploy (Target Workspace)
-
-```bash
-# Commit the exported JSON
-git add genie_spaces/<filename>.json
-git commit -m "Export Genie Space"
-git push
-
-# Validate and deploy bundle (syncs JSON to workspace)
-# NOTE: --var must be on deploy, not run (base_parameters are set at deploy time)
-databricks bundle validate --target prod
-databricks bundle deploy --target prod \
-    --var deploy_config_path=/Workspace/Shared/.bundle/genie-migration/prod/files/genie_spaces/<filename>.json
-
-# Run deploy job (first time - creates new space)
-databricks bundle run deploy_genie_space --target prod
-
-# Run deploy job (subsequent - updates existing space)
-databricks bundle deploy --target prod \
-    --var deploy_config_path=/Workspace/Shared/.bundle/genie-migration/prod/files/genie_spaces/<filename>.json \
-    --var target_space_id=<existing-space-id>
-databricks bundle run deploy_genie_space --target prod
-```
-
-## Project Structure
-
-```text
-├── databricks.yml              # DAB bundle configuration
-├── databricks.yml.template     # Template for new setups
-├── scripts/
-│   ├── export_genie_space.py   # Export notebook
-│   └── deploy_genie_space.py   # Deploy notebook
-├── genie_spaces/               # Exported JSON configs (committed to git)
-│   └── <space_name>.json
-└── docs/
-    └── SETUP_GUIDE.md       # Supplemental SP provisioning and permission details
-```
-
-## How It Works
-
-### The `serialized_space` Field
-
-The Genie API's `get_space(include_serialized_space=True)` returns a JSON string containing:
-
-- `version` - Schema version
-- `config` - Sample questions, settings
-- `data_sources` - Tables available to the space
-- `instructions` - Context and rules for Genie
-
-This field is portable and passed directly to `create_space()` or `update_space()`.
-
-### Deployment Behavior
-
-| Scenario                          | Behavior                          |
-|-----------------------------------|-----------------------------------|
-| No `--var target_space_id`        | Creates new space, outputs new ID |
-| With `--var target_space_id=<id>` | Updates existing space            |
-
-**Note:** Target workspace gets a **different space_id** than source. Save the new ID for subsequent deployments.
-
-## Known Limitations
-
-| Limitation              | Impact                                                                       |
-|-------------------------|------------------------------------------------------------------------------|
-| No conversation history | Conversations are workspace-specific                                         |
-| Permissions separate    | Unity Catalog grants must be configured separately                           |
-| Table names unchanged   | `serialized_space` deployed as-is; edit JSON before commit if catalogs differ|
-| UC Functions not migrated | `serialized_space` includes references to SQL functions, not function definitions. In the target workspace, ensure referenced UC functions already exist and required permissions are granted. If source and target share a metastore and those functions are already accessible, recreation is not required. |
-
-## References
-
-- [Genie API Documentation](https://docs.databricks.com/aws/en/genie/conversation-api)
-- [DABs Authentication (Azure)](https://learn.microsoft.com/en-us/azure/databricks/dev-tools/bundles/authentication)
-- [Databricks Python SDK - Genie](https://databricks-sdk-py.readthedocs.io/en/stable/workspace/dashboards/genie.html)
-- [GitHub Issue #3008 - DABs Genie Support](https://github.com/databricks/cli/issues/3008)
+3. Recreate any custom service principal provisioning steps from
+   [`archive/docs/SP_SETUP_GUIDE.md`](./archive/docs/SP_SETUP_GUIDE.md) as needed —
+   the new bundle uses standard `databricks auth` / bundle targets instead of
+   per-job `run_as` service principals.
