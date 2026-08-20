@@ -191,13 +191,17 @@ The orchestrator exposes each of these as an editable `DEFAULT_*` constant in
 its Configuration cell; widget values and job parameters override the
 constants. Every child notebook accepts the same core widgets even if it does
 not use all of them. Child notebooks return row counts and validation
-summaries to the orchestrator.
+summaries to the orchestrator. Because `dbutils.notebook.run` reports child
+failures only as a generic `WorkflowException`, the orchestrator fetches the
+failed child's run output via the Databricks SDK and prints the real error
+before stopping at the first failure.
 
 ## How to Run
 
 Prerequisites are a Unity Catalog-enabled workspace, permission to create
 schemas and managed tables in the chosen catalog, and Databricks Runtime 17.2+
-for metric-view YAML version 1.1.
+or a serverless notebook (environment version 5+) for metric-view YAML
+version 1.1.
 
 Open `generate_banking_data.py`, set `DEFAULT_CATALOG` and
 `DEFAULT_SCHEMA_PREFIX` in its Configuration cell (or supply the `catalog` and
@@ -331,6 +335,10 @@ random patterns.
   events rather than assigning unrelated random flags.
 - Give high-volume fact tables enough rows for monthly and cohort trends; avoid
   a few events per account over a multi-year period.
+- Pin notebook-scoped library installs (for example `%pip install
+  faker==40.36.0`). Unpinned installs are not compatible with serverless
+  compute, and `%restart_python` must not run on serverless because it
+  reinitializes the notebook environment.
 - Create a curated `vw_` SQL view in the authoritative domain schema only when
   it simplifies joins; do not materialize duplicate dimension data in it.
 - Create one `mv_` metric view per Genie space with documented grain, measures,

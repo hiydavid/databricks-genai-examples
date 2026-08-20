@@ -4,12 +4,24 @@
 # MAGIC # Bigly Bank — Shared Core Data
 # MAGIC
 # MAGIC Generates the conformed dimensions used by every banking domain. Run this
-# MAGIC notebook before any domain generator.
+# MAGIC notebook before any domain generator. Installs one pinned dependency
+# MAGIC (`faker`); `pandas` already ships with Databricks runtimes.
 
 # COMMAND ----------
 
-# MAGIC %pip install faker pandas --quiet
-# MAGIC %restart_python
+# MAGIC %pip install faker==40.36.0 --quiet
+
+# COMMAND ----------
+
+# The install above is normally importable right away. On classic compute the
+# driver may need a Python restart to see a new package; on serverless a
+# restart would reinitialize the whole notebook environment, so restart only
+# when the import actually fails. restartPython() ends this cell and execution
+# continues with the next cell.
+try:
+    import faker  # noqa: F401
+except ImportError:
+    dbutils.library.restartPython()
 
 # COMMAND ----------
 
