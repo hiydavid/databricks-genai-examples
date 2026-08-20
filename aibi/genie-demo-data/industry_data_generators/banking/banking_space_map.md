@@ -9,7 +9,8 @@ design decision changes.
 ## Unity Catalog Layout
 
 The implementation uses one user-supplied Unity Catalog and multiple schemas.
-Both `catalog` and `schema_prefix` are required notebook widgets; neither is
+Both `catalog` and `schema_prefix` are user-supplied — set as defaults in the
+orchestrator's Configuration cell or as notebook widgets — and neither is
 hard-coded. Examples below use `bigly_bank` as a recommended schema prefix, but
 the caller chooses both values at runtime.
 
@@ -186,9 +187,11 @@ for child tables derived from weighted ownership and lifecycle rules.
 | `notebook_base_path` | Optional parent path used by the orchestrator |
 | `enable_finance` | Optional boolean controlling the FINANCE phase |
 
-Every child notebook accepts the same core widgets even if it does not use all
-of them. Child notebooks return row counts and validation summaries to the
-orchestrator.
+The orchestrator exposes each of these as an editable `DEFAULT_*` constant in
+its Configuration cell; widget values and job parameters override the
+constants. Every child notebook accepts the same core widgets even if it does
+not use all of them. Child notebooks return row counts and validation
+summaries to the orchestrator.
 
 ## How to Run
 
@@ -196,8 +199,9 @@ Prerequisites are a Unity Catalog-enabled workspace, permission to create
 schemas and managed tables in the chosen catalog, and Databricks Runtime 17.2+
 for metric-view YAML version 1.1.
 
-Open `generate_banking_data.py`, supply non-empty `catalog` and
-`schema_prefix` widget values, and run all cells. Set `enable_finance` to
+Open `generate_banking_data.py`, set `DEFAULT_CATALOG` and
+`DEFAULT_SCHEMA_PREFIX` in its Configuration cell (or supply the `catalog` and
+`schema_prefix` widget values), and run all cells. Set `enable_finance` to
 `true` only when the optional Finance & Treasury schema is wanted. The
 orchestrator runs the generators in dependency order, creates the semantic
 objects, and finishes with `validate_banking_data.py`.
