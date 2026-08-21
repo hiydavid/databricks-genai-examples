@@ -67,7 +67,6 @@ DEFAULT_CATALOG = ""  # REQUIRED: your Unity Catalog, e.g. "my_catalog"
 DEFAULT_SCHEMA_PREFIX = ""  # REQUIRED: schema prefix, e.g. "bigly_bank"
 DEFAULT_SEED = "42"  # deterministic seed shared by every child notebook
 DEFAULT_AS_OF_DATE = "2025-12-31"  # inclusive end date for generated history
-DEFAULT_NOTEBOOK_BASE_PATH = ""  # blank = child notebooks sit next to this one
 DEFAULT_ENABLE_FINANCE = "false"  # "true" adds the Finance & Treasury domain
 # =============================================================================
 
@@ -93,13 +92,13 @@ CATALOG = widget_value("catalog", DEFAULT_CATALOG, "Unity Catalog (required)")
 SCHEMA_PREFIX = widget_value(
     "schema_prefix", DEFAULT_SCHEMA_PREFIX, "Schema prefix (required)"
 )
-SEED = widget_value("seed", DEFAULT_SEED, "Deterministic seed")
-AS_OF_DATE = widget_value("as_of_date", DEFAULT_AS_OF_DATE, "Inclusive as-of date")
-NOTEBOOK_BASE_PATH = widget_value(
-    "notebook_base_path",
-    DEFAULT_NOTEBOOK_BASE_PATH,
-    "Optional workspace folder containing the child notebooks",
-).rstrip("/")
+# Convert to typed values here, once: every phase below relies on SEED
+# being an int and AS_OF_DATE being a date (the former child notebooks each
+# performed this conversion themselves).
+SEED = int(widget_value("seed", DEFAULT_SEED, "Deterministic seed"))
+AS_OF_DATE = date.fromisoformat(
+    widget_value("as_of_date", DEFAULT_AS_OF_DATE, "Inclusive as-of date")
+)
 ENABLE_FINANCE = (
     widget_value(
         "enable_finance",
@@ -126,9 +125,6 @@ if not SCHEMA_PREFIX:
     )
 if "`" in CATALOG or "`" in SCHEMA_PREFIX:
     raise ValueError("catalog and schema_prefix cannot contain backticks")
-
-int(SEED)  # fail fast on a non-numeric seed
-date.fromisoformat(AS_OF_DATE)  # fail fast on a malformed date
 
 print(
     f"catalog={CATALOG} schema_prefix={SCHEMA_PREFIX} seed={SEED} "

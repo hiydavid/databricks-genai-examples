@@ -183,7 +183,6 @@ for child tables derived from weighted ownership and lifecycle rules.
 | `schema_prefix` | Required user-supplied schema prefix; `bigly_bank` is recommended for this demo |
 | `seed` | Shared deterministic seed; initial value `42` |
 | `as_of_date` | Shared inclusive end date for lifecycle generation |
-| `notebook_base_path` | Retained for job compatibility; unused (no child notebooks) |
 | `enable_finance` | Optional boolean controlling the FINANCE phase |
 
 The notebook exposes each of these as an editable `DEFAULT_*` constant in its
