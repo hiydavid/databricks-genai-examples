@@ -49,7 +49,7 @@ generate_banking_data.py   # Single notebook: Configuration + 11 phases
   7  Service Operations    # OPERATIONS facts
   8  Fraud, AML & KYC      # RISK facts
   9  Finance & Treasury    # FINANCE facts
-  10 Semantic layer        # Domain vw_ and mv_ objects
+  10 Semantic layer        # Domain vw_ and mv_ objects (optional, enable_semantic_layer)
   11 Validation            # Cross-schema validation
 ```
 
@@ -60,7 +60,7 @@ Execution order is fixed:
 3. COMMERCIAL, WEALTH, and OPERATIONS
 4. RISK, after transaction-producing domains
 5. FINANCE, after all balance-producing domains
-6. Curated `vw_` views and `mv_` metric views
+6. Curated `vw_` views and `mv_` metric views, when enabled
 7. Cross-schema validation
 
 Each phase reads the shared CORE Delta dimensions and must never recreate or
@@ -182,6 +182,7 @@ for child tables derived from weighted ownership and lifecycle rules.
 | `schema_prefix` | Required user-supplied schema prefix; `bigly_bank` is recommended for this demo |
 | `seed` | Shared deterministic seed; initial value `42` |
 | `as_of_date` | Shared inclusive end date for lifecycle generation |
+| `enable_semantic_layer` | Optional boolean controlling the curated views and metric views |
 
 The notebook exposes each of these as an editable `DEFAULT_*` constant in its
 Configuration cell; widget values and job parameters override the constants.
@@ -199,8 +200,10 @@ version 1.1.
 
 Open `generate_banking_data.py`, set `DEFAULT_CATALOG` and
 `DEFAULT_SCHEMA_PREFIX` in its Configuration cell (or supply the `catalog` and
-`schema_prefix` widget values), and click Run All. Phases run in dependency
-order, create the semantic objects, and finish with validation.
+`schema_prefix` widget values), and click Run All. Set `enable_semantic_layer`
+to `false` to skip the curated views and metric views, for example on
+runtimes without metric-view support. Phases run in dependency order, create
+the semantic objects, and finish with validation.
 
 ## Running as a Databricks Job
 
@@ -208,9 +211,9 @@ The notebook accepts job parameters through its widgets. Run it directly as a
 single notebook task in a Databricks Job:
 
 - Create a **Notebook** task pointing at `generate_banking_data.py`.
-- Pass `catalog`, `schema_prefix`, `seed`, and `as_of_date` as base
-  parameters (or set the `DEFAULT_*` constants in the Configuration cell);
-  each maps to the notebook's widget values.
+- Pass `catalog`, `schema_prefix`, `seed`, `as_of_date`, and
+  `enable_semantic_layer` as base parameters (or set the `DEFAULT_*` constants
+  in the Configuration cell); each maps to the notebook's widget values.
 - Schedule it on classic job compute (DBR 17.2+) or serverless job compute
   (environment version 5). Serverless includes `faker` as an environment
   dependency; on classic compute the notebook's pinned `%pip` cell installs
