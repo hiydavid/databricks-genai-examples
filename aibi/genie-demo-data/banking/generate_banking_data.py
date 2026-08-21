@@ -178,7 +178,11 @@ def stable_fraction(*columns):
     )
 
 def choose(values, selector):
-    return F.element_at(F.array(*[F.lit(v) for v in values]), selector + F.lit(1))
+    # element_at requires an INT index (Spark 4.0 removed the implicit
+    # BIGINT -> INT downcast; pmod/xxhash64 selectors are BIGINT).
+    return F.element_at(
+        F.array(*[F.lit(v) for v in values]), (selector + F.lit(1)).cast("int")
+    )
 
 @F.pandas_udf("string")
 def synthetic_party_name(ids: pd.Series, party_types: pd.Series) -> pd.Series:
@@ -965,7 +969,11 @@ def stable_fraction(*columns):
     )
 
 def choose(values, selector):
-    return F.element_at(F.array(*[F.lit(v) for v in values]), selector + F.lit(1))
+    # element_at requires an INT index (Spark 4.0 removed the implicit
+    # BIGINT -> INT downcast; pmod/xxhash64 selectors are BIGINT).
+    return F.element_at(
+        F.array(*[F.lit(v) for v in values]), (selector + F.lit(1)).cast("int")
+    )
 
 def write_table(df, table_name, comment):
     full_name = f"{RETAIL}.`{table_name}`"
@@ -2053,7 +2061,11 @@ def stable_fraction(*columns):
     )
 
 def choose(values, selector):
-    return F.element_at(F.array(*[F.lit(v) for v in values]), selector + F.lit(1))
+    # element_at requires an INT index (Spark 4.0 removed the implicit
+    # BIGINT -> INT downcast; pmod/xxhash64 selectors are BIGINT).
+    return F.element_at(
+        F.array(*[F.lit(v) for v in values]), (selector + F.lit(1)).cast("int")
+    )
 
 def write_table(df, table_name, comment):
     full_name = f"{WEALTH}.`{table_name}`"
@@ -2319,7 +2331,11 @@ def stable_fraction(*columns):
     )
 
 def choose(values, selector):
-    return F.element_at(F.array(*[F.lit(v) for v in values]), selector + F.lit(1))
+    # element_at requires an INT index (Spark 4.0 removed the implicit
+    # BIGINT -> INT downcast; pmod/xxhash64 selectors are BIGINT).
+    return F.element_at(
+        F.array(*[F.lit(v) for v in values]), (selector + F.lit(1)).cast("int")
+    )
 
 def write_table(df, table_name, comment):
     full_name = f"{OPERATIONS}.`{table_name}`"
