@@ -12,6 +12,10 @@
 # MAGIC parameters passed by a job or parent notebook — override those defaults;
 # MAGIC clear a widget to fall back to its default.
 # MAGIC
+# MAGIC **Prefer a proper job?** `databricks.yml` in this folder deploys the same
+# MAGIC fixed order as a serverless multi-task Job with per-task output and run
+# MAGIC history — see the banking space map's "Running as a Databricks Job" section.
+# MAGIC
 # MAGIC **Compute:** runs on classic clusters (DBR 17.2+) and serverless notebooks
 # MAGIC (environment version 5+). Library installs are pinned and restart-free so
 # MAGIC the same notebooks work on both.
@@ -135,31 +139,52 @@ def report_child_failure(phase_name, path, exc, started_at_ms):
     actual cause is visible without hunting through the Jobs UI.
     """
     print(f"\n=== FAILED: {phase_name} ({path}) ===")
-    first_line = str(exc).splitlines()[:1]
-    if first_line:
-        print(f"dbutils.notebook.run raised: {first_line[0]}")
+    # Print the FULL exception including the Java cause chain — the first line
+    # alone ("An error occurred while calling NotebookRun") carries no signal.
+    exc_text = str(exc)
+    print(f"dbutils.notebook.run raised:\n{exc_text}")
     found_details = False
     try:
         from databricks.sdk import WorkspaceClient
 
         w = WorkspaceClient()
-        # The failed child is the most recent FAILED run started after this
-        # phase began (with a small slack for clock skew).
-        for run in w.jobs.list_runs(limit=25):
-            started = getattr(run, "start_time", None)
-            if started is None or started < started_at_ms - 60_000:
-                continue
-            state = getattr(run, "state", None)
-            result_state = getattr(state, "result_state", None) if state else None
-            result_state = getattr(result_state, "value", result_state)
-            if result_state != "FAILED":
-                continue
+        # The failed child is a FAILED one-off run started after this phase
+        # began. The run's terminal state can lag the raised exception, so
+        # retry briefly before giving up.
+        failed_run = None
+        for _ in range(6):
+            for run in w.jobs.list_runs(limit=25):
+                started = getattr(run, "start_time", None)
+                if started is None or started < started_at_ms - 60_000:
+                    continue
+                state = getattr(run, "state", None)
+                result_state = getattr(state, "result_state", None) if state else None
+                result_state = getattr(result_state, "value", result_state)
+                if result_state == "FAILED":
+                    failed_run = run
+                    break
+            if failed_run is not None:
+                break
+            time.sleep(5)
+        if failed_run is None:
+            # Diagnostic aid: show what the API does return so we can tell a
+            # missing run (launch failure) from a state we did not expect.
+            recent = []
+            for run in w.jobs.list_runs(limit=5):
+                state = getattr(run, "state", None)
+                recent.append(
+                    f"    {getattr(run, 'run_name', '?')} — "
+                    f"result_state={getattr(state, 'result_state', None)}"
+                )
+            print("No FAILED run found via the API. Most recent runs:")
+            print("\n".join(recent) if recent else "    (none visible)")
+        else:
             print(
-                f"Failed child run: {getattr(run, 'run_name', path)} "
-                f"({run.run_page_url})"
+                f"Failed child run: {getattr(failed_run, 'run_name', path)} "
+                f"({failed_run.run_page_url})"
             )
             try:
-                output = w.jobs.get_run_output(run.run_id)
+                output = w.jobs.get_run_output(failed_run.run_id)
             except Exception:
                 output = None
             error_text = getattr(output, "error", None) if output else None
@@ -173,7 +198,6 @@ def report_child_failure(phase_name, path, exc, started_at_ms):
                     if text:
                         print(f"Child {field}:\n{text}")
                         found_details = True
-            break
     except Exception as lookup_error:
         print(f"(Automatic run-output lookup unavailable: {lookup_error})")
     if not found_details:

@@ -5,6 +5,10 @@
 # MAGIC
 # MAGIC Generates reconciled monthly profitability, funds-transfer pricing,
 # MAGIC provisions, liquidity, and general-ledger summaries in FINANCE.
+# MAGIC
+# MAGIC This is the optional final domain. When the `enable_finance` widget is
+# MAGIC `false` the notebook exits immediately without writing anything, so a
+# MAGIC job can always include it as a task and control it with one parameter.
 
 # COMMAND ----------
 
@@ -30,6 +34,20 @@ try:
     dbutils.widgets.text("as_of_date", "2025-12-31", "Inclusive as-of date")
 except Exception:
     pass
+try:
+    # Default true so running this notebook standalone generates the domain;
+    # jobs and the orchestrator pass the shared setting explicitly.
+    dbutils.widgets.dropdown(
+        "enable_finance", "true", ["true", "false"], "Generate this domain"
+    )
+except Exception:
+    pass
+
+ENABLE_FINANCE = dbutils.widgets.get("enable_finance").strip().lower() == "true"
+
+if not ENABLE_FINANCE:
+    print("enable_finance is false — skipping Finance and Treasury generation.")
+    dbutils.notebook.exit(json.dumps({"skipped": True, "reason": "enable_finance is false"}))
 
 CATALOG = dbutils.widgets.get("catalog").strip()
 SCHEMA_PREFIX = dbutils.widgets.get("schema_prefix").strip()

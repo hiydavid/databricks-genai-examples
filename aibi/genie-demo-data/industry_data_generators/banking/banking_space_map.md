@@ -210,6 +210,31 @@ Open `generate_banking_data.py`, set `DEFAULT_CATALOG` and
 orchestrator runs the generators in dependency order, creates the semantic
 objects, and finishes with `validate_banking_data.py`.
 
+## Running as a Databricks Job (Asset Bundle)
+
+The notebook orchestrator chains children with `dbutils.notebook.run`, which
+launches each child as an ephemeral job and masks child errors behind a
+generic `WorkflowException`. For a robust run — per-task output, retries, and
+run history — deploy the same fixed order as a serverless multi-task Job
+using `databricks.yml` in this folder:
+
+```bash
+databricks auth login                       # once, for the target workspace
+cd industry_data_generators/banking
+databricks bundle deploy -t dev \
+  --var catalog=my_catalog \
+  --var schema_prefix=bigly_bank            # add --var enable_finance=true for FINANCE
+databricks bundle run banking_data_generation -t dev
+```
+
+Job parameters (`catalog`, `schema_prefix`, `seed`, `as_of_date`,
+`enable_finance`) are pushed to every notebook task as widget values and can
+be overridden per run in the Run Now dialog. Tasks run on serverless job
+compute (environment version 5) with `faker` installed as an environment
+dependency, so no notebook-level `%pip` is needed on that path. The optional
+Finance & Treasury task is always present but exits cleanly without writing
+when `enable_finance=false`, so downstream tasks are unaffected.
+
 ## Space Boundaries
 
 ### Retail Deposits & Payments
