@@ -1149,7 +1149,7 @@ card_transaction_base = (
         F.when(
             (F.col("u_date") < 0.22) & (F.lit(AS_OF_DATE) >= F.lit(date(2025, 11, 1))),
             F.least("lifecycle_end", F.greatest("lifecycle_start", "holiday_date")),
-        ).otherwise("ordinary_date"),
+        ).otherwise(F.col("ordinary_date")),
     )
     .withColumn(
         "transaction_timestamp",
