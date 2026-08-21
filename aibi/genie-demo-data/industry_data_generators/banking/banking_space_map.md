@@ -31,31 +31,27 @@ Genie spaces backed by different subsets of the same RETAIL schema.
 
 ## Generator Organization Decision
 
-Use Databricks source notebooks: one shared-dimension generator plus separate
-fact generators by business domain. Keep one thin orchestration notebook to
-preserve the current one-click experience. The separation boundary is the fact
-lifecycle, not every table and not every Genie space.
+Use one Databricks source notebook with one cell group per business domain. A
+single Configuration cell at the top sets the shared `catalog`,
+`schema_prefix`, `seed`, and `as_of_date`; every phase below reads those
+globals. The separation boundary is the fact lifecycle, not every table and
+not every Genie space.
 
 ```text
-generate_banking_data.py                  # Orchestrator; writes no domain data
-generate_banking_core_data.py             # CORE
-generate_banking_deposits_data.py         # RETAIL deposit/payment facts
-generate_banking_cards_data.py            # RETAIL card facts
-generate_banking_consumer_lending_data.py # RETAIL lending facts
-generate_banking_commercial_data.py       # COMMERCIAL
-generate_banking_wealth_data.py           # WEALTH
-generate_banking_service_ops_data.py      # OPERATIONS
-generate_banking_financial_crime_data.py  # RISK; depends on transaction facts
-generate_banking_finance_data.py          # FINANCE; optional final domain
-generate_banking_semantic_layer.py        # Domain vw_ and mv_ objects
-validate_banking_data.py                  # Cross-schema validation
+generate_banking_data.py   # Single notebook: Configuration + 11 phases
+  Configuration            # catalog, schema_prefix, seed, as_of_date, enable_finance
+  1  Shared Core           # parties, relationships, products, branches, employees, calendar
+  2  Retail Deposits       # deposit/payment facts
+  3  Credit Cards          # card facts
+  4  Consumer Lending      # lending facts
+  5  Commercial Banking    # COMMERCIAL facts
+  6  Wealth Management     # WEALTH facts
+  7  Service Operations    # OPERATIONS facts
+  8  Fraud, AML & KYC      # RISK facts
+  9  Finance & Treasury    # FINANCE facts (optional, enable_finance)
+  10 Semantic layer        # Domain vw_ and mv_ objects
+  11 Validation            # Cross-schema validation
 ```
-
-The run-all notebook passes the same `catalog`, `schema_prefix`, `seed`, and
-`as_of_date` to every child. It may also accept `notebook_base_path` for
-workspace imports. Each child creates its target schema if it does not exist,
-uses fully qualified object names, and can run independently after its upstream
-tables exist.
 
 Execution order is fixed:
 
@@ -67,17 +63,20 @@ Execution order is fixed:
 6. Curated `vw_` views and `mv_` metric views
 7. Cross-schema validation
 
-Each fact generator reads the shared CORE Delta dimensions and must never
-recreate or copy them.
+Each phase reads the shared CORE Delta dimensions and must never recreate or
+copy them.
 
-This structure keeps failures and changes isolated by domain without forcing a
-demo user to run nine notebooks manually.
+One notebook also fixes the debugging experience: the previous layout ran each
+domain as a child notebook via `dbutils.notebook.run`, which wraps every
+failure in a generic `WorkflowException` and hides the real traceback in a
+separate run. Here a failing cell stops Run All with the full traceback
+inline.
 
 ## Implementation Scope
 
 The multi-schema model below supersedes the former single-schema dataset.
-`generate_banking_data.py` remains the one-click entry point and orchestrates
-the domain notebooks without generating tables itself.
+`generate_banking_data.py` is the one-click entry point and generates every
+table itself, phase by phase.
 
 Repeated CORE names in this map mean that multiple Genie spaces reference the
 same physical dimension. They do not represent copied `parties`, `products`,
@@ -184,17 +183,15 @@ for child tables derived from weighted ownership and lifecycle rules.
 | `schema_prefix` | Required user-supplied schema prefix; `bigly_bank` is recommended for this demo |
 | `seed` | Shared deterministic seed; initial value `42` |
 | `as_of_date` | Shared inclusive end date for lifecycle generation |
-| `notebook_base_path` | Optional parent path used by the orchestrator |
+| `notebook_base_path` | Retained for job compatibility; unused (no child notebooks) |
 | `enable_finance` | Optional boolean controlling the FINANCE phase |
 
-The orchestrator exposes each of these as an editable `DEFAULT_*` constant in
-its Configuration cell; widget values and job parameters override the
-constants. Every child notebook accepts the same core widgets even if it does
-not use all of them. Child notebooks return row counts and validation
-summaries to the orchestrator. Because `dbutils.notebook.run` reports child
-failures only as a generic `WorkflowException`, the orchestrator fetches the
-failed child's run output via the Databricks SDK and prints the real error
-before stopping at the first failure.
+The notebook exposes each of these as an editable `DEFAULT_*` constant in its
+Configuration cell; widget values and job parameters override the constants.
+Each phase records a summary dict in the shared `results` object, which the
+final cell prints and returns as the notebook exit value. Failures surface as
+normal cell tracebacks — there are no child notebooks and no wrapper
+exceptions.
 
 ## How to Run
 
@@ -205,35 +202,26 @@ version 1.1.
 
 Open `generate_banking_data.py`, set `DEFAULT_CATALOG` and
 `DEFAULT_SCHEMA_PREFIX` in its Configuration cell (or supply the `catalog` and
-`schema_prefix` widget values), and run all cells. Set `enable_finance` to
-`true` only when the optional Finance & Treasury schema is wanted. The
-orchestrator runs the generators in dependency order, creates the semantic
-objects, and finishes with `validate_banking_data.py`.
+`schema_prefix` widget values), and click Run All. Set `enable_finance` to
+`true` only when the optional Finance & Treasury schema is wanted. Phases run
+in dependency order, create the semantic objects, and finish with validation.
 
-## Running as a Databricks Job (Asset Bundle)
+## Running as a Databricks Job
 
-The notebook orchestrator chains children with `dbutils.notebook.run`, which
-launches each child as an ephemeral job and masks child errors behind a
-generic `WorkflowException`. For a robust run — per-task output, retries, and
-run history — deploy the same fixed order as a serverless multi-task Job
-using `databricks.yml` in this folder:
+The notebook accepts job parameters through its widgets. Run it directly as a
+single notebook task in a Databricks Job:
 
-```bash
-databricks auth login                       # once, for the target workspace
-cd industry_data_generators/banking
-databricks bundle deploy -t dev \
-  --var catalog=my_catalog \
-  --var schema_prefix=bigly_bank            # add --var enable_finance=true for FINANCE
-databricks bundle run banking_data_generation -t dev
-```
+- Create a **Notebook** task pointing at `generate_banking_data.py`.
+- Pass `catalog`, `schema_prefix`, `seed`, `as_of_date`, and
+  `enable_finance` as base parameters (or set the `DEFAULT_*` constants in
+  the Configuration cell); each maps to the notebook's widget values.
+- Schedule it on classic job compute (DBR 17.2+) or serverless job compute
+  (environment version 5). Serverless includes `faker` as an environment
+  dependency; on classic compute the notebook's pinned `%pip` cell installs
+  it.
 
-Job parameters (`catalog`, `schema_prefix`, `seed`, `as_of_date`,
-`enable_finance`) are pushed to every notebook task as widget values and can
-be overridden per run in the Run Now dialog. Tasks run on serverless job
-compute (environment version 5) with `faker` installed as an environment
-dependency, so no notebook-level `%pip` is needed on that path. The optional
-Finance & Treasury task is always present but exits cleanly without writing
-when `enable_finance=false`, so downstream tasks are unaffected.
+A failing cell fails the task with the real traceback in the task logs — no
+child-run lookup required.
 
 ## Space Boundaries
 
