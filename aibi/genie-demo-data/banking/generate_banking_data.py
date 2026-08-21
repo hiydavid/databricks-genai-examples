@@ -15,7 +15,7 @@
 # MAGIC 6. **Wealth Management** — accounts, portfolios, securities, holdings, trades, fees, goals
 # MAGIC 7. **Service & Branch Operations** — incidents, interactions, requests, complaints, staffing
 # MAGIC 8. **Fraud, AML & KYC** — alerts, cases, actions, KYC reviews, losses
-# MAGIC 9. **Finance & Treasury** (optional) — FTP, provisions, profitability, ledger, liquidity
+# MAGIC 9. **Finance & Treasury** — FTP, provisions, profitability, ledger, liquidity
 # MAGIC 10. **Semantic layer** — curated `vw_` views and governed `mv_` metric views
 # MAGIC 11. **Validation** — object existence, keys, lifecycles, reconciliations, story checks
 # MAGIC
@@ -67,7 +67,6 @@ DEFAULT_CATALOG = ""  # REQUIRED: your Unity Catalog, e.g. "my_catalog"
 DEFAULT_SCHEMA_PREFIX = ""  # REQUIRED: schema prefix, e.g. "bigly_bank"
 DEFAULT_SEED = "42"  # deterministic seed shared by every child notebook
 DEFAULT_AS_OF_DATE = "2025-12-31"  # inclusive end date for generated history
-DEFAULT_ENABLE_FINANCE = "false"  # "true" adds the Finance & Treasury domain
 # =============================================================================
 
 def widget_value(name, default, label, choices=None):
@@ -99,15 +98,6 @@ SEED = int(widget_value("seed", DEFAULT_SEED, "Deterministic seed"))
 AS_OF_DATE = date.fromisoformat(
     widget_value("as_of_date", DEFAULT_AS_OF_DATE, "Inclusive as-of date")
 )
-ENABLE_FINANCE = (
-    widget_value(
-        "enable_finance",
-        DEFAULT_ENABLE_FINANCE,
-        "Generate the optional Finance and Treasury domain",
-        ["true", "false"],
-    ).lower()
-    == "true"
-)
 
 # Per-phase summaries, filled as each section completes (replaces the old
 # dbutils.notebook.exit values of the former child notebooks).
@@ -128,7 +118,7 @@ if "`" in CATALOG or "`" in SCHEMA_PREFIX:
 
 print(
     f"catalog={CATALOG} schema_prefix={SCHEMA_PREFIX} seed={SEED} "
-    f"as_of_date={AS_OF_DATE} enable_finance={ENABLE_FINANCE}"
+    f"as_of_date={AS_OF_DATE}"
 )
 # COMMAND ----------
 
@@ -2810,17 +2800,14 @@ results["financial_crime"] =         {
 # MAGIC
 # MAGIC Generates reconciled monthly profitability, funds-transfer pricing,
 # MAGIC provisions, liquidity, and general-ledger summaries in FINANCE.
-# MAGIC
-# MAGIC This is the optional final domain. The Configuration cell's
-# MAGIC `enable_finance` setting controls whether it runs.
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Finance and Treasury (optional — controlled by the enable_finance setting)
+# MAGIC ## Finance and Treasury
 # MAGIC
-# MAGIC When enabled, this cell generates funds-transfer pricing, credit-loss
-# MAGIC provisions, product profitability, general-ledger summaries, and liquidity
-# MAGIC snapshots in FINANCE. When disabled it records a skipped summary.
+# MAGIC This cell generates funds-transfer pricing, credit-loss provisions,
+# MAGIC product profitability, general-ledger summaries, and liquidity snapshots
+# MAGIC in FINANCE.
 # COMMAND ----------
 
 from datetime import date
@@ -2858,267 +2845,263 @@ def write_table(df, table_name, comment):
     print(f"Wrote {full_name}")
 # COMMAND ----------
 
-if ENABLE_FINANCE:
 
-    products = spark.table(f"{CORE}.`products`")
-    months = spark.table(f"{CORE}.`bank_calendar`").select("month_start").distinct()
+products = spark.table(f"{CORE}.`products`")
+months = spark.table(f"{CORE}.`bank_calendar`").select("month_start").distinct()
 
-    funds_transfer_pricing = (
-        products.crossJoin(months)
-        .withColumn(
-            "benchmark_rate_pct",
-            F.round(
-                F.when(F.year("month_start") == 2023, 4.25)
-                .when(F.year("month_start") == 2024, 5.10)
-                .otherwise(4.35)
-                + (F.month("month_start") - 1) * 0.015,
-                3,
-            ),
-        )
-        .withColumn(
-            "liquidity_spread_pct",
-            F.when(F.col("product_category") == "Deposit", -0.65)
-            .when(F.col("product_category").isin("Consumer Lending", "Commercial Lending"), 0.85)
-            .otherwise(0.20),
-        )
-        .withColumn("transfer_rate_pct", F.round(F.col("benchmark_rate_pct") + F.col("liquidity_spread_pct"), 3))
-        .withColumn("effective_date", F.col("month_start"))
-        .withColumn("ftp_record_id", F.concat(F.lit("FTP-"), F.regexp_replace("product_id", "PRD-", ""), F.lit("-"), F.date_format("month_start", "yyyyMM")))
-        .select("ftp_record_id", "effective_date", "month_start", "product_id", "business_line", "product_category", "benchmark_rate_pct", "liquidity_spread_pct", "transfer_rate_pct")
+funds_transfer_pricing = (
+    products.crossJoin(months)
+    .withColumn(
+        "benchmark_rate_pct",
+        F.round(
+            F.when(F.year("month_start") == 2023, 4.25)
+            .when(F.year("month_start") == 2024, 5.10)
+            .otherwise(4.35)
+            + (F.month("month_start") - 1) * 0.015,
+            3,
+        ),
     )
-
-    write_table(funds_transfer_pricing, "funds_transfer_pricing", "Monthly product-level benchmark and funds-transfer pricing rates.")
-
-    consumer_provisions = (
-        spark.table(f"{RETAIL}.`delinquency_snapshots`")
-        .withColumn(
-            "provision_rate_pct",
-            F.when(F.col("days_past_due") >= 90, 45.0)
-            .when(F.col("days_past_due") >= 60, 20.0)
-            .when(F.col("days_past_due") >= 30, 8.0)
-            .otherwise(0.8),
-        )
-        .withColumn("provision_amount_usd", F.round(F.col("outstanding_principal_usd") * F.col("provision_rate_pct") / 100.0, 2))
-        .select("month_start", "product_id", F.lit("Consumer Lending").alias("portfolio"), "outstanding_principal_usd", "provision_rate_pct", "provision_amount_usd", "region")
+    .withColumn(
+        "liquidity_spread_pct",
+        F.when(F.col("product_category") == "Deposit", -0.65)
+        .when(F.col("product_category").isin("Consumer Lending", "Commercial Lending"), 0.85)
+        .otherwise(0.20),
     )
+    .withColumn("transfer_rate_pct", F.round(F.col("benchmark_rate_pct") + F.col("liquidity_spread_pct"), 3))
+    .withColumn("effective_date", F.col("month_start"))
+    .withColumn("ftp_record_id", F.concat(F.lit("FTP-"), F.regexp_replace("product_id", "PRD-", ""), F.lit("-"), F.date_format("month_start", "yyyyMM")))
+    .select("ftp_record_id", "effective_date", "month_start", "product_id", "business_line", "product_category", "benchmark_rate_pct", "liquidity_spread_pct", "transfer_rate_pct")
+)
 
-    commercial_provisions = (
-        spark.table(f"{COMMERCIAL}.`covenant_snapshots`")
-        .join(spark.table(f"{COMMERCIAL}.`credit_facilities`").select("facility_id", "product_id", "outstanding_amount_usd"), "facility_id")
-        .withColumn("provision_rate_pct", F.when(F.col("is_in_breach"), 12.0).otherwise(1.5))
-        .withColumn("provision_amount_usd", F.round(F.col("outstanding_amount_usd") * F.col("provision_rate_pct") / 100.0, 2))
-        .select("month_start", "product_id", F.lit("Commercial Banking").alias("portfolio"), F.col("outstanding_amount_usd").alias("outstanding_principal_usd"), "provision_rate_pct", "provision_amount_usd", "region")
+write_table(funds_transfer_pricing, "funds_transfer_pricing", "Monthly product-level benchmark and funds-transfer pricing rates.")
+
+consumer_provisions = (
+    spark.table(f"{RETAIL}.`delinquency_snapshots`")
+    .withColumn(
+        "provision_rate_pct",
+        F.when(F.col("days_past_due") >= 90, 45.0)
+        .when(F.col("days_past_due") >= 60, 20.0)
+        .when(F.col("days_past_due") >= 30, 8.0)
+        .otherwise(0.8),
     )
+    .withColumn("provision_amount_usd", F.round(F.col("outstanding_principal_usd") * F.col("provision_rate_pct") / 100.0, 2))
+    .select("month_start", "product_id", F.lit("Consumer Lending").alias("portfolio"), "outstanding_principal_usd", "provision_rate_pct", "provision_amount_usd", "region")
+)
 
-    credit_loss_provisions = (
-        consumer_provisions.unionByName(commercial_provisions)
-        .groupBy("month_start", "product_id", "portfolio", "region")
-        .agg(
-            F.sum("outstanding_principal_usd").alias("exposure_usd"),
-            F.sum("provision_amount_usd").alias("provision_amount_usd"),
-        )
-        .withColumn("effective_provision_rate_pct", F.round(F.col("provision_amount_usd") * 100.0 / F.col("exposure_usd"), 3))
-        .withColumn("provision_id", F.concat(F.lit("PRV-"), F.regexp_replace("product_id", "PRD-", ""), F.lit("-"), F.regexp_replace("region", " ", ""), F.lit("-"), F.date_format("month_start", "yyyyMM")))
-        .select("provision_id", "month_start", "product_id", "portfolio", "region", "exposure_usd", "provision_amount_usd", "effective_provision_rate_pct")
+commercial_provisions = (
+    spark.table(f"{COMMERCIAL}.`covenant_snapshots`")
+    .join(spark.table(f"{COMMERCIAL}.`credit_facilities`").select("facility_id", "product_id", "outstanding_amount_usd"), "facility_id")
+    .withColumn("provision_rate_pct", F.when(F.col("is_in_breach"), 12.0).otherwise(1.5))
+    .withColumn("provision_amount_usd", F.round(F.col("outstanding_amount_usd") * F.col("provision_rate_pct") / 100.0, 2))
+    .select("month_start", "product_id", F.lit("Commercial Banking").alias("portfolio"), F.col("outstanding_amount_usd").alias("outstanding_principal_usd"), "provision_rate_pct", "provision_amount_usd", "region")
+)
+
+credit_loss_provisions = (
+    consumer_provisions.unionByName(commercial_provisions)
+    .groupBy("month_start", "product_id", "portfolio", "region")
+    .agg(
+        F.sum("outstanding_principal_usd").alias("exposure_usd"),
+        F.sum("provision_amount_usd").alias("provision_amount_usd"),
     )
+    .withColumn("effective_provision_rate_pct", F.round(F.col("provision_amount_usd") * 100.0 / F.col("exposure_usd"), 3))
+    .withColumn("provision_id", F.concat(F.lit("PRV-"), F.regexp_replace("product_id", "PRD-", ""), F.lit("-"), F.regexp_replace("region", " ", ""), F.lit("-"), F.date_format("month_start", "yyyyMM")))
+    .select("provision_id", "month_start", "product_id", "portfolio", "region", "exposure_usd", "provision_amount_usd", "effective_provision_rate_pct")
+)
 
-    write_table(credit_loss_provisions, "credit_loss_provisions", "Monthly expected-credit-loss provisions from consumer delinquency and commercial covenant risk.")
+write_table(credit_loss_provisions, "credit_loss_provisions", "Monthly expected-credit-loss provisions from consumer delinquency and commercial covenant risk.")
 
-    deposit_profitability = (
-        spark.table(f"{RETAIL}.`deposit_balance_snapshots`")
-        .groupBy("month_start", "product_id")
-        .agg(
-            F.sum("average_balance_usd").alias("average_balance_usd"),
-            F.sum("fee_revenue_usd").alias("fee_revenue_usd"),
-            F.countDistinct("account_id").alias("account_count"),
-        )
-        .withColumn("interest_revenue_usd", F.col("average_balance_usd") * 0.0025)
-        .withColumn("direct_cost_usd", F.col("account_count") * 3.5)
-        .withColumn("credit_loss_usd", F.lit(0.0))
+deposit_profitability = (
+    spark.table(f"{RETAIL}.`deposit_balance_snapshots`")
+    .groupBy("month_start", "product_id")
+    .agg(
+        F.sum("average_balance_usd").alias("average_balance_usd"),
+        F.sum("fee_revenue_usd").alias("fee_revenue_usd"),
+        F.countDistinct("account_id").alias("account_count"),
     )
+    .withColumn("interest_revenue_usd", F.col("average_balance_usd") * 0.0025)
+    .withColumn("direct_cost_usd", F.col("account_count") * 3.5)
+    .withColumn("credit_loss_usd", F.lit(0.0))
+)
 
-    card_profitability = (
-        spark.table(f"{RETAIL}.`card_statements`")
-        .groupBy("month_start", "product_id")
-        .agg(
-            F.sum("statement_balance_usd").alias("average_balance_usd"),
-            F.sum("fees_usd").alias("fee_revenue_usd"),
-            F.countDistinct("account_id").alias("account_count"),
-        )
-        .withColumn("interest_revenue_usd", F.col("average_balance_usd") * 0.015)
-        .withColumn("direct_cost_usd", F.col("account_count") * 5.0)
-        .withColumn("credit_loss_usd", F.col("average_balance_usd") * 0.006)
+card_profitability = (
+    spark.table(f"{RETAIL}.`card_statements`")
+    .groupBy("month_start", "product_id")
+    .agg(
+        F.sum("statement_balance_usd").alias("average_balance_usd"),
+        F.sum("fees_usd").alias("fee_revenue_usd"),
+        F.countDistinct("account_id").alias("account_count"),
     )
+    .withColumn("interest_revenue_usd", F.col("average_balance_usd") * 0.015)
+    .withColumn("direct_cost_usd", F.col("account_count") * 5.0)
+    .withColumn("credit_loss_usd", F.col("average_balance_usd") * 0.006)
+)
 
-    loan_profitability = (
-        spark.table(f"{RETAIL}.`delinquency_snapshots`")
-        .groupBy("month_start", "product_id")
-        .agg(
-            F.sum("outstanding_principal_usd").alias("average_balance_usd"),
-            F.countDistinct("loan_id").alias("account_count"),
-        )
-        .withColumn("fee_revenue_usd", F.lit(0.0))
-        .withColumn("interest_revenue_usd", F.col("average_balance_usd") * 0.0065)
-        .withColumn("direct_cost_usd", F.col("account_count") * 8.0)
-        .withColumn("credit_loss_usd", F.col("average_balance_usd") * 0.0015)
+loan_profitability = (
+    spark.table(f"{RETAIL}.`delinquency_snapshots`")
+    .groupBy("month_start", "product_id")
+    .agg(
+        F.sum("outstanding_principal_usd").alias("average_balance_usd"),
+        F.countDistinct("loan_id").alias("account_count"),
     )
+    .withColumn("fee_revenue_usd", F.lit(0.0))
+    .withColumn("interest_revenue_usd", F.col("average_balance_usd") * 0.0065)
+    .withColumn("direct_cost_usd", F.col("account_count") * 8.0)
+    .withColumn("credit_loss_usd", F.col("average_balance_usd") * 0.0015)
+)
 
-    wealth_profitability = (
-        spark.table(f"{WEALTH}.`advisory_fees`")
-        .join(spark.table(f"{WEALTH}.`wealth_accounts`").select("wealth_account_id", "product_id"), "wealth_account_id")
-        .groupBy("month_start", "product_id")
-        .agg(
-            F.sum("assets_under_management_usd").alias("average_balance_usd"),
-            F.sum("fee_amount_usd").alias("fee_revenue_usd"),
-            F.countDistinct("wealth_account_id").alias("account_count"),
-        )
-        .withColumn("interest_revenue_usd", F.lit(0.0))
-        .withColumn("direct_cost_usd", F.col("account_count") * 18.0)
-        .withColumn("credit_loss_usd", F.lit(0.0))
+wealth_profitability = (
+    spark.table(f"{WEALTH}.`advisory_fees`")
+    .join(spark.table(f"{WEALTH}.`wealth_accounts`").select("wealth_account_id", "product_id"), "wealth_account_id")
+    .groupBy("month_start", "product_id")
+    .agg(
+        F.sum("assets_under_management_usd").alias("average_balance_usd"),
+        F.sum("fee_amount_usd").alias("fee_revenue_usd"),
+        F.countDistinct("wealth_account_id").alias("account_count"),
     )
+    .withColumn("interest_revenue_usd", F.lit(0.0))
+    .withColumn("direct_cost_usd", F.col("account_count") * 18.0)
+    .withColumn("credit_loss_usd", F.lit(0.0))
+)
 
-    commercial_loan_profitability = (
-        spark.table(f"{COMMERCIAL}.`commercial_loans`")
-        .crossJoin(months)
-        .filter(F.col("month_start") >= F.trunc("origination_date", "month"))
-        .filter(F.col("month_start") <= F.trunc(F.least(F.lit(AS_OF_DATE), "maturity_date"), "month"))
-        .groupBy("month_start", "product_id")
-        .agg(
-            F.sum("outstanding_principal_usd").alias("average_balance_usd"),
-            F.countDistinct("loan_id").alias("account_count"),
-        )
-        .withColumn("fee_revenue_usd", F.lit(0.0))
-        .withColumn("interest_revenue_usd", F.col("average_balance_usd") * 0.0068)
-        .withColumn("direct_cost_usd", F.col("account_count") * 30.0)
-        .withColumn("credit_loss_usd", F.col("average_balance_usd") * 0.0020)
+commercial_loan_profitability = (
+    spark.table(f"{COMMERCIAL}.`commercial_loans`")
+    .crossJoin(months)
+    .filter(F.col("month_start") >= F.trunc("origination_date", "month"))
+    .filter(F.col("month_start") <= F.trunc(F.least(F.lit(AS_OF_DATE), "maturity_date"), "month"))
+    .groupBy("month_start", "product_id")
+    .agg(
+        F.sum("outstanding_principal_usd").alias("average_balance_usd"),
+        F.countDistinct("loan_id").alias("account_count"),
     )
+    .withColumn("fee_revenue_usd", F.lit(0.0))
+    .withColumn("interest_revenue_usd", F.col("average_balance_usd") * 0.0068)
+    .withColumn("direct_cost_usd", F.col("account_count") * 30.0)
+    .withColumn("credit_loss_usd", F.col("average_balance_usd") * 0.0020)
+)
 
-    profitability_inputs = (
-        deposit_profitability.unionByName(card_profitability)
-        .unionByName(loan_profitability)
-        .unionByName(wealth_profitability)
-        .unionByName(commercial_loan_profitability)
+profitability_inputs = (
+    deposit_profitability.unionByName(card_profitability)
+    .unionByName(loan_profitability)
+    .unionByName(wealth_profitability)
+    .unionByName(commercial_loan_profitability)
+)
+
+product_profitability_monthly = (
+    profitability_inputs.groupBy("month_start", "product_id")
+    .agg(
+        F.sum("average_balance_usd").alias("average_balance_usd"),
+        F.sum("fee_revenue_usd").alias("fee_revenue_usd"),
+        F.sum("interest_revenue_usd").alias("interest_revenue_usd"),
+        F.sum("direct_cost_usd").alias("direct_cost_usd"),
+        F.sum("credit_loss_usd").alias("credit_loss_usd"),
+        F.sum("account_count").alias("account_count"),
     )
+    .join(products.select("product_id", "product_name", "business_line", "product_category"), "product_id")
+    .withColumn("total_revenue_usd", F.round(F.col("fee_revenue_usd") + F.col("interest_revenue_usd"), 2))
+    .withColumn("net_income_usd", F.round(F.col("total_revenue_usd") - F.col("direct_cost_usd") - F.col("credit_loss_usd"), 2))
+    .withColumn("profitability_id", F.concat(F.lit("PFT-"), F.regexp_replace("product_id", "PRD-", ""), F.lit("-"), F.date_format("month_start", "yyyyMM")))
+    .select("profitability_id", "month_start", "product_id", "product_name", "business_line", "product_category", "account_count", "average_balance_usd", "fee_revenue_usd", "interest_revenue_usd", "total_revenue_usd", "direct_cost_usd", "credit_loss_usd", "net_income_usd")
+)
 
-    product_profitability_monthly = (
-        profitability_inputs.groupBy("month_start", "product_id")
-        .agg(
-            F.sum("average_balance_usd").alias("average_balance_usd"),
-            F.sum("fee_revenue_usd").alias("fee_revenue_usd"),
-            F.sum("interest_revenue_usd").alias("interest_revenue_usd"),
-            F.sum("direct_cost_usd").alias("direct_cost_usd"),
-            F.sum("credit_loss_usd").alias("credit_loss_usd"),
-            F.sum("account_count").alias("account_count"),
-        )
-        .join(products.select("product_id", "product_name", "business_line", "product_category"), "product_id")
-        .withColumn("total_revenue_usd", F.round(F.col("fee_revenue_usd") + F.col("interest_revenue_usd"), 2))
-        .withColumn("net_income_usd", F.round(F.col("total_revenue_usd") - F.col("direct_cost_usd") - F.col("credit_loss_usd"), 2))
-        .withColumn("profitability_id", F.concat(F.lit("PFT-"), F.regexp_replace("product_id", "PRD-", ""), F.lit("-"), F.date_format("month_start", "yyyyMM")))
-        .select("profitability_id", "month_start", "product_id", "product_name", "business_line", "product_category", "account_count", "average_balance_usd", "fee_revenue_usd", "interest_revenue_usd", "total_revenue_usd", "direct_cost_usd", "credit_loss_usd", "net_income_usd")
+write_table(product_profitability_monthly, "product_profitability_monthly", "Monthly product profitability with revenue, direct cost, credit loss, and net income.")
+
+product_ledger_entries = (
+    spark.table(f"{FINANCE}.`product_profitability_monthly`")
+    .groupBy("month_start", "business_line")
+    .agg(
+        F.sum("interest_revenue_usd").alias("interest_income_usd"),
+        F.sum("fee_revenue_usd").alias("fee_income_usd"),
+        F.sum("direct_cost_usd").alias("operating_expense_usd"),
+        F.sum("credit_loss_usd").alias("credit_loss_expense_usd"),
     )
-
-    write_table(product_profitability_monthly, "product_profitability_monthly", "Monthly product profitability with revenue, direct cost, credit loss, and net income.")
-
-    product_ledger_entries = (
-        spark.table(f"{FINANCE}.`product_profitability_monthly`")
-        .groupBy("month_start", "business_line")
-        .agg(
-            F.sum("interest_revenue_usd").alias("interest_income_usd"),
-            F.sum("fee_revenue_usd").alias("fee_income_usd"),
-            F.sum("direct_cost_usd").alias("operating_expense_usd"),
-            F.sum("credit_loss_usd").alias("credit_loss_expense_usd"),
-        )
-        .select(
-            "month_start",
-            "business_line",
-            F.explode(
-                F.array(
-                    F.struct(F.lit("Interest Income").alias("account_name"), F.col("interest_income_usd").alias("amount_usd")),
-                    F.struct(F.lit("Fee Income").alias("account_name"), F.col("fee_income_usd").alias("amount_usd")),
-                    F.struct(F.lit("Operating Expense").alias("account_name"), (-F.col("operating_expense_usd")).alias("amount_usd")),
-                    F.struct(F.lit("Credit Loss Expense").alias("account_name"), (-F.col("credit_loss_expense_usd")).alias("amount_usd")),
-                )
-            ).alias("entry"),
-        )
-        .select("month_start", "business_line", F.col("entry.account_name").alias("account_name"), F.col("entry.amount_usd").alias("amount_usd"))
+    .select(
+        "month_start",
+        "business_line",
+        F.explode(
+            F.array(
+                F.struct(F.lit("Interest Income").alias("account_name"), F.col("interest_income_usd").alias("amount_usd")),
+                F.struct(F.lit("Fee Income").alias("account_name"), F.col("fee_income_usd").alias("amount_usd")),
+                F.struct(F.lit("Operating Expense").alias("account_name"), (-F.col("operating_expense_usd")).alias("amount_usd")),
+                F.struct(F.lit("Credit Loss Expense").alias("account_name"), (-F.col("credit_loss_expense_usd")).alias("amount_usd")),
+            )
+        ).alias("entry"),
     )
+    .select("month_start", "business_line", F.col("entry.account_name").alias("account_name"), F.col("entry.amount_usd").alias("amount_usd"))
+)
 
-    branch_cost_entries = (
-        spark.table(f"{OPERATIONS}.`branch_monthly_performance`")
-        .groupBy("month_start")
-        .agg((-F.sum("total_operating_cost_usd")).alias("amount_usd"))
-        .withColumn("business_line", F.lit("Enterprise Operations"))
-        .withColumn("account_name", F.lit("Branch Operating Expense"))
-        .select("month_start", "business_line", "account_name", "amount_usd")
+branch_cost_entries = (
+    spark.table(f"{OPERATIONS}.`branch_monthly_performance`")
+    .groupBy("month_start")
+    .agg((-F.sum("total_operating_cost_usd")).alias("amount_usd"))
+    .withColumn("business_line", F.lit("Enterprise Operations"))
+    .withColumn("account_name", F.lit("Branch Operating Expense"))
+    .select("month_start", "business_line", "account_name", "amount_usd")
+)
+
+fraud_loss_entries = (
+    spark.table(f"{RISK}.`fraud_loss_events`")
+    .withColumn("month_start", F.trunc("loss_date", "month"))
+    .groupBy("month_start")
+    .agg((-F.sum("net_loss_usd")).alias("amount_usd"))
+    .withColumn("business_line", F.lit("Retail"))
+    .withColumn("account_name", F.lit("Fraud Loss Expense"))
+    .select("month_start", "business_line", "account_name", "amount_usd")
+)
+
+general_ledger_monthly = (
+    product_ledger_entries.unionByName(branch_cost_entries)
+    .unionByName(fraud_loss_entries)
+    .withColumn("ledger_entry_id", F.concat(F.lit("GL-"), F.regexp_replace("business_line", " ", ""), F.lit("-"), F.regexp_replace("account_name", " ", ""), F.lit("-"), F.date_format("month_start", "yyyyMM")))
+    .select("ledger_entry_id", "month_start", "business_line", "account_name", "amount_usd")
+)
+
+write_table(general_ledger_monthly, "general_ledger_monthly", "Monthly synthetic general-ledger summaries by business line and account.")
+
+retail_liquidity = spark.table(f"{RETAIL}.`deposit_balance_snapshots`").groupBy("month_start").agg(F.sum("ending_balance_usd").alias("retail_deposits_usd"))
+
+commercial_monthly_flow = (
+    spark.table(f"{COMMERCIAL}.`commercial_transactions`")
+    .withColumn("month_start", F.trunc("transaction_date", "month"))
+    .groupBy("month_start", "account_id")
+    .agg(F.sum("signed_amount_usd").alias("net_flow_usd"))
+)
+commercial_balance_window = (
+    Window.partitionBy("account_id")
+    .orderBy("month_start")
+    .rowsBetween(Window.unboundedPreceding, Window.currentRow)
+)
+commercial_liquidity = (
+    spark.table(f"{COMMERCIAL}.`commercial_deposit_accounts`")
+    .crossJoin(months)
+    .filter(F.col("month_start") >= F.trunc("open_date", "month"))
+    .join(commercial_monthly_flow, ["account_id", "month_start"], "left")
+    .fillna({"net_flow_usd": 0.0})
+    .withColumn(
+        "ending_balance_usd",
+        F.col("opening_balance_usd") + F.sum("net_flow_usd").over(commercial_balance_window),
     )
+    .groupBy("month_start")
+    .agg(F.sum("ending_balance_usd").alias("commercial_deposits_usd"))
+)
 
-    fraud_loss_entries = (
-        spark.table(f"{RISK}.`fraud_loss_events`")
-        .withColumn("month_start", F.trunc("loss_date", "month"))
-        .groupBy("month_start")
-        .agg((-F.sum("net_loss_usd")).alias("amount_usd"))
-        .withColumn("business_line", F.lit("Retail"))
-        .withColumn("account_name", F.lit("Fraud Loss Expense"))
-        .select("month_start", "business_line", "account_name", "amount_usd")
-    )
+liquidity_snapshots = (
+    months.join(retail_liquidity, "month_start", "left")
+    .join(commercial_liquidity, "month_start", "left")
+    .fillna({"retail_deposits_usd": 0.0, "commercial_deposits_usd": 0.0})
+    .withColumn("total_deposits_usd", F.col("retail_deposits_usd") + F.col("commercial_deposits_usd"))
+    .withColumn("cash_and_equivalents_usd", F.round(F.col("total_deposits_usd") * 0.18, 2))
+    .withColumn("high_quality_liquid_assets_usd", F.round(F.col("total_deposits_usd") * 0.27, 2))
+    .withColumn("thirty_day_net_outflow_usd", F.round(F.col("total_deposits_usd") * 0.32, 2))
+    .withColumn("liquidity_coverage_ratio_pct", F.round((F.col("cash_and_equivalents_usd") + F.col("high_quality_liquid_assets_usd")) * 100.0 / F.col("thirty_day_net_outflow_usd"), 1))
+    .withColumn("snapshot_date", F.last_day("month_start"))
+    .withColumn("liquidity_snapshot_id", F.concat(F.lit("LIQ-"), F.date_format("month_start", "yyyyMM")))
+    .select("liquidity_snapshot_id", "snapshot_date", "month_start", "retail_deposits_usd", "commercial_deposits_usd", "total_deposits_usd", "cash_and_equivalents_usd", "high_quality_liquid_assets_usd", "thirty_day_net_outflow_usd", "liquidity_coverage_ratio_pct")
+)
 
-    general_ledger_monthly = (
-        product_ledger_entries.unionByName(branch_cost_entries)
-        .unionByName(fraud_loss_entries)
-        .withColumn("ledger_entry_id", F.concat(F.lit("GL-"), F.regexp_replace("business_line", " ", ""), F.lit("-"), F.regexp_replace("account_name", " ", ""), F.lit("-"), F.date_format("month_start", "yyyyMM")))
-        .select("ledger_entry_id", "month_start", "business_line", "account_name", "amount_usd")
-    )
+write_table(liquidity_snapshots, "liquidity_snapshots", "Monthly deposit concentration and liquidity coverage measures.")
 
-    write_table(general_ledger_monthly, "general_ledger_monthly", "Monthly synthetic general-ledger summaries by business line and account.")
-
-    retail_liquidity = spark.table(f"{RETAIL}.`deposit_balance_snapshots`").groupBy("month_start").agg(F.sum("ending_balance_usd").alias("retail_deposits_usd"))
-
-    commercial_monthly_flow = (
-        spark.table(f"{COMMERCIAL}.`commercial_transactions`")
-        .withColumn("month_start", F.trunc("transaction_date", "month"))
-        .groupBy("month_start", "account_id")
-        .agg(F.sum("signed_amount_usd").alias("net_flow_usd"))
-    )
-    commercial_balance_window = (
-        Window.partitionBy("account_id")
-        .orderBy("month_start")
-        .rowsBetween(Window.unboundedPreceding, Window.currentRow)
-    )
-    commercial_liquidity = (
-        spark.table(f"{COMMERCIAL}.`commercial_deposit_accounts`")
-        .crossJoin(months)
-        .filter(F.col("month_start") >= F.trunc("open_date", "month"))
-        .join(commercial_monthly_flow, ["account_id", "month_start"], "left")
-        .fillna({"net_flow_usd": 0.0})
-        .withColumn(
-            "ending_balance_usd",
-            F.col("opening_balance_usd") + F.sum("net_flow_usd").over(commercial_balance_window),
-        )
-        .groupBy("month_start")
-        .agg(F.sum("ending_balance_usd").alias("commercial_deposits_usd"))
-    )
-
-    liquidity_snapshots = (
-        months.join(retail_liquidity, "month_start", "left")
-        .join(commercial_liquidity, "month_start", "left")
-        .fillna({"retail_deposits_usd": 0.0, "commercial_deposits_usd": 0.0})
-        .withColumn("total_deposits_usd", F.col("retail_deposits_usd") + F.col("commercial_deposits_usd"))
-        .withColumn("cash_and_equivalents_usd", F.round(F.col("total_deposits_usd") * 0.18, 2))
-        .withColumn("high_quality_liquid_assets_usd", F.round(F.col("total_deposits_usd") * 0.27, 2))
-        .withColumn("thirty_day_net_outflow_usd", F.round(F.col("total_deposits_usd") * 0.32, 2))
-        .withColumn("liquidity_coverage_ratio_pct", F.round((F.col("cash_and_equivalents_usd") + F.col("high_quality_liquid_assets_usd")) * 100.0 / F.col("thirty_day_net_outflow_usd"), 1))
-        .withColumn("snapshot_date", F.last_day("month_start"))
-        .withColumn("liquidity_snapshot_id", F.concat(F.lit("LIQ-"), F.date_format("month_start", "yyyyMM")))
-        .select("liquidity_snapshot_id", "snapshot_date", "month_start", "retail_deposits_usd", "commercial_deposits_usd", "total_deposits_usd", "cash_and_equivalents_usd", "high_quality_liquid_assets_usd", "thirty_day_net_outflow_usd", "liquidity_coverage_ratio_pct")
-    )
-
-    write_table(liquidity_snapshots, "liquidity_snapshots", "Monthly deposit concentration and liquidity coverage measures.")
-
-    print(f"Finance generation complete: {CATALOG}.{FINANCE_SCHEMA}")
-    results["finance_treasury"] = {"schema": f"{CATALOG}.{FINANCE_SCHEMA}", "status": "complete"}
-else:
-    print("enable_finance is false — skipping Finance and Treasury generation.")
-    results["finance_treasury"] = {"skipped": True, "reason": "enable_finance is false"}
+print(f"Finance generation complete: {CATALOG}.{FINANCE_SCHEMA}")
+results["finance_treasury"] = {"schema": f"{CATALOG}.{FINANCE_SCHEMA}", "status": "complete"}
 # COMMAND ----------
 
 # MAGIC %md
@@ -3156,8 +3139,7 @@ for schema_name in [
     RISK_SCHEMA,
 ]:
     spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{CATALOG}`.`{schema_name}`")
-if ENABLE_FINANCE:
-    spark.sql(f"CREATE SCHEMA IF NOT EXISTS {FINANCE}")
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {FINANCE}")
 # COMMAND ----------
 
 # MAGIC %md
@@ -3505,36 +3487,35 @@ curated_views = {
     """,
 }
 
-if ENABLE_FINANCE:
-    curated_views[f"{FINANCE}.`vw_bank_finance`"] = f"""
-        WITH provision AS (
-          SELECT month_start, product_id, SUM(provision_amount_usd) AS provision_amount_usd
-          FROM {FINANCE}.`credit_loss_provisions`
-          GROUP BY month_start, product_id
-        )
-        SELECT
-          p.month_start,
-          p.product_id,
-          p.product_name,
-          p.business_line,
-          p.product_category,
-          p.account_count,
-          p.average_balance_usd,
-          p.fee_revenue_usd,
-          p.interest_revenue_usd,
-          p.total_revenue_usd,
-          p.direct_cost_usd,
-          p.credit_loss_usd,
-          p.net_income_usd,
-          f.benchmark_rate_pct,
-          f.transfer_rate_pct,
-          COALESCE(v.provision_amount_usd, 0.0) AS provision_amount_usd
-        FROM {FINANCE}.`product_profitability_monthly` p
-        LEFT JOIN {FINANCE}.`funds_transfer_pricing` f
-          ON p.product_id = f.product_id AND p.month_start = f.month_start
-        LEFT JOIN provision v
-          ON p.product_id = v.product_id AND p.month_start = v.month_start
-    """
+curated_views[f"{FINANCE}.`vw_bank_finance`"] = f"""
+    WITH provision AS (
+      SELECT month_start, product_id, SUM(provision_amount_usd) AS provision_amount_usd
+      FROM {FINANCE}.`credit_loss_provisions`
+      GROUP BY month_start, product_id
+    )
+    SELECT
+      p.month_start,
+      p.product_id,
+      p.product_name,
+      p.business_line,
+      p.product_category,
+      p.account_count,
+      p.average_balance_usd,
+      p.fee_revenue_usd,
+      p.interest_revenue_usd,
+      p.total_revenue_usd,
+      p.direct_cost_usd,
+      p.credit_loss_usd,
+      p.net_income_usd,
+      f.benchmark_rate_pct,
+      f.transfer_rate_pct,
+      COALESCE(v.provision_amount_usd, 0.0) AS provision_amount_usd
+    FROM {FINANCE}.`product_profitability_monthly` p
+    LEFT JOIN {FINANCE}.`funds_transfer_pricing` f
+      ON p.product_id = f.product_id AND p.month_start = f.month_start
+    LEFT JOIN provision v
+      ON p.product_id = v.product_id AND p.month_start = v.month_start
+"""
 
 for view_name, select_sql in curated_views.items():
     spark.sql(f"CREATE OR REPLACE VIEW {view_name} AS {select_sql}")
@@ -3785,8 +3766,7 @@ measures:
 """,
 }
 
-if ENABLE_FINANCE:
-    metric_views[(FINANCE, "mv_bank_finance")] = f"""
+metric_views[(FINANCE, "mv_bank_finance")] = f"""
 version: 1.1
 source: '{FINANCE}.`vw_bank_finance`'
 comment: "Product profitability, pricing, provisions, and bank-level financial performance"
@@ -3828,7 +3808,6 @@ for (schema_ref, metric_view_name), yaml_body in metric_views.items():
 results["semantic_layer"] =         {
             "curated_views": len(curated_views),
             "metric_views": len(metric_views),
-            "finance_enabled": ENABLE_FINANCE,
         }
 # COMMAND ----------
 
@@ -3936,16 +3915,15 @@ primary_keys = {
     ("risk", "fraud_loss_events"): ["loss_event_id"],
 }
 
-if ENABLE_FINANCE:
-    primary_keys.update(
-        {
-            ("finance", "funds_transfer_pricing"): ["ftp_record_id"],
-            ("finance", "credit_loss_provisions"): ["provision_id"],
-            ("finance", "product_profitability_monthly"): ["profitability_id"],
-            ("finance", "general_ledger_monthly"): ["ledger_entry_id"],
-            ("finance", "liquidity_snapshots"): ["liquidity_snapshot_id"],
-        }
-    )
+primary_keys.update(
+    {
+        ("finance", "funds_transfer_pricing"): ["ftp_record_id"],
+        ("finance", "credit_loss_provisions"): ["provision_id"],
+        ("finance", "product_profitability_monthly"): ["profitability_id"],
+        ("finance", "general_ledger_monthly"): ["ledger_entry_id"],
+        ("finance", "liquidity_snapshots"): ["liquidity_snapshot_id"],
+    }
+)
 
 semantic_objects = {
     ("retail", "vw_retail_deposits"),
@@ -3963,13 +3941,12 @@ semantic_objects = {
     ("risk", "vw_financial_crime"),
     ("risk", "mv_financial_crime"),
 }
-if ENABLE_FINANCE:
-    semantic_objects.update(
-        {
-            ("finance", "vw_bank_finance"),
-            ("finance", "mv_bank_finance"),
-        }
-    )
+semantic_objects.update(
+    {
+        ("finance", "vw_bank_finance"),
+        ("finance", "mv_bank_finance"),
+    }
+)
 
 missing_objects = []
 for schema_alias, name in list(primary_keys) + sorted(semantic_objects):
@@ -4076,14 +4053,13 @@ foreign_keys = [
     ("fraud_loss_case", "risk", "fraud_loss_events", ["fraud_case_id"], "risk", "fraud_cases", ["fraud_case_id"]),
 ]
 
-if ENABLE_FINANCE:
-    foreign_keys.extend(
-        [
-            ("ftp_product", "finance", "funds_transfer_pricing", ["product_id"], "core", "products", ["product_id"]),
-            ("provision_product", "finance", "credit_loss_provisions", ["product_id"], "core", "products", ["product_id"]),
-            ("profitability_product", "finance", "product_profitability_monthly", ["product_id"], "core", "products", ["product_id"]),
-        ]
-    )
+foreign_keys.extend(
+    [
+        ("ftp_product", "finance", "funds_transfer_pricing", ["product_id"], "core", "products", ["product_id"]),
+        ("provision_product", "finance", "credit_loss_provisions", ["product_id"], "core", "products", ["product_id"]),
+        ("profitability_product", "finance", "product_profitability_monthly", ["product_id"], "core", "products", ["product_id"]),
+    ]
+)
 
 for (
     check_name,
@@ -4269,38 +4245,37 @@ card_reconciliation_mismatches = (
 )
 record_zero("reconciliation", "card_statement_balances", card_reconciliation_mismatches, "Cumulative net charges less payments equals statement balance")
 
-if ENABLE_FINANCE:
-    profitability_mismatches = (
-        table("finance", "product_profitability_monthly")
-        .filter(
-            (F.abs(F.col("total_revenue_usd") - F.col("fee_revenue_usd") - F.col("interest_revenue_usd")) > 0.02)
-            | (
-                F.abs(
-                    F.col("net_income_usd")
-                    - F.col("total_revenue_usd")
-                    + F.col("direct_cost_usd")
-                    + F.col("credit_loss_usd")
-                )
-                > 0.02
-            )
-        )
-        .count()
-    )
-    record_zero("reconciliation", "finance_product_profitability", profitability_mismatches, "Revenue and net income reconcile to their components")
-
-    liquidity_mismatches = (
-        table("finance", "liquidity_snapshots")
-        .filter(
+profitability_mismatches = (
+    table("finance", "product_profitability_monthly")
+    .filter(
+        (F.abs(F.col("total_revenue_usd") - F.col("fee_revenue_usd") - F.col("interest_revenue_usd")) > 0.02)
+        | (
             F.abs(
-                F.col("total_deposits_usd")
-                - F.col("retail_deposits_usd")
-                - F.col("commercial_deposits_usd")
+                F.col("net_income_usd")
+                - F.col("total_revenue_usd")
+                + F.col("direct_cost_usd")
+                + F.col("credit_loss_usd")
             )
             > 0.02
         )
-        .count()
     )
-    record_zero("reconciliation", "finance_liquidity", liquidity_mismatches, "Retail plus commercial deposits equals total deposits")
+    .count()
+)
+record_zero("reconciliation", "finance_product_profitability", profitability_mismatches, "Revenue and net income reconcile to their components")
+
+liquidity_mismatches = (
+    table("finance", "liquidity_snapshots")
+    .filter(
+        F.abs(
+            F.col("total_deposits_usd")
+            - F.col("retail_deposits_usd")
+            - F.col("commercial_deposits_usd")
+        )
+        > 0.02
+    )
+    .count()
+)
+record_zero("reconciliation", "finance_liquidity", liquidity_mismatches, "Retail plus commercial deposits equals total deposits")
 # COMMAND ----------
 
 # MAGIC %md
@@ -4380,7 +4355,6 @@ summary = {
     "checks": len(checks),
     "tables": len(primary_keys),
     "semantic_objects": len(semantic_objects),
-    "finance_enabled": ENABLE_FINANCE,
     "row_counts": table_row_counts,
 }
 print(json.dumps(summary, indent=2, sort_keys=True))
@@ -4396,7 +4370,6 @@ print(
         {
             "catalog": CATALOG,
             "schema_prefix": SCHEMA_PREFIX,
-            "finance_enabled": ENABLE_FINANCE,
             "phases": results,
         },
         indent=2,
@@ -4408,7 +4381,6 @@ dbutils.notebook.exit(
         {
             "catalog": CATALOG,
             "schema_prefix": SCHEMA_PREFIX,
-            "finance_enabled": ENABLE_FINANCE,
             "phases": results,
         }
     )

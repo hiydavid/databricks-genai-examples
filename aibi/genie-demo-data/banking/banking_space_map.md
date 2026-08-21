@@ -39,7 +39,7 @@ not every Genie space.
 
 ```text
 generate_banking_data.py   # Single notebook: Configuration + 11 phases
-  Configuration            # catalog, schema_prefix, seed, as_of_date, enable_finance
+  Configuration            # catalog, schema_prefix, seed, as_of_date
   1  Shared Core           # parties, relationships, products, branches, employees, calendar
   2  Retail Deposits       # deposit/payment facts
   3  Credit Cards          # card facts
@@ -48,7 +48,7 @@ generate_banking_data.py   # Single notebook: Configuration + 11 phases
   6  Wealth Management     # WEALTH facts
   7  Service Operations    # OPERATIONS facts
   8  Fraud, AML & KYC      # RISK facts
-  9  Finance & Treasury    # FINANCE facts (optional, enable_finance)
+  9  Finance & Treasury    # FINANCE facts
   10 Semantic layer        # Domain vw_ and mv_ objects
   11 Validation            # Cross-schema validation
 ```
@@ -59,7 +59,7 @@ Execution order is fixed:
 2. RETAIL deposits, cards, and consumer lending
 3. COMMERCIAL, WEALTH, and OPERATIONS
 4. RISK, after transaction-producing domains
-5. FINANCE, after all balance-producing domains, when enabled
+5. FINANCE, after all balance-producing domains
 6. Curated `vw_` views and `mv_` metric views
 7. Cross-schema validation
 
@@ -148,9 +148,8 @@ The downstream schema stores its own alerts, cases, or aggregates. It does not
 copy complete upstream transaction or dimension tables. OPERATIONS aggregates
 retail activity into branch-month performance without copying the ledger.
 
-Finance & Treasury is optional for the first implementation. Add it when the
-demo needs CFO, asset-liability management, or enterprise profitability
-questions rather than customer and product operations.
+Finance & Treasury generates bank-level financial aggregates from all
+balance-producing domains and runs as a standard phase of the notebook.
 
 ## Initial Scale and Grain
 
@@ -183,7 +182,6 @@ for child tables derived from weighted ownership and lifecycle rules.
 | `schema_prefix` | Required user-supplied schema prefix; `bigly_bank` is recommended for this demo |
 | `seed` | Shared deterministic seed; initial value `42` |
 | `as_of_date` | Shared inclusive end date for lifecycle generation |
-| `enable_finance` | Optional boolean controlling the FINANCE phase |
 
 The notebook exposes each of these as an editable `DEFAULT_*` constant in its
 Configuration cell; widget values and job parameters override the constants.
@@ -201,9 +199,8 @@ version 1.1.
 
 Open `generate_banking_data.py`, set `DEFAULT_CATALOG` and
 `DEFAULT_SCHEMA_PREFIX` in its Configuration cell (or supply the `catalog` and
-`schema_prefix` widget values), and click Run All. Set `enable_finance` to
-`true` only when the optional Finance & Treasury schema is wanted. Phases run
-in dependency order, create the semantic objects, and finish with validation.
+`schema_prefix` widget values), and click Run All. Phases run in dependency
+order, create the semantic objects, and finish with validation.
 
 ## Running as a Databricks Job
 
@@ -211,9 +208,9 @@ The notebook accepts job parameters through its widgets. Run it directly as a
 single notebook task in a Databricks Job:
 
 - Create a **Notebook** task pointing at `generate_banking_data.py`.
-- Pass `catalog`, `schema_prefix`, `seed`, `as_of_date`, and
-  `enable_finance` as base parameters (or set the `DEFAULT_*` constants in
-  the Configuration cell); each maps to the notebook's widget values.
+- Pass `catalog`, `schema_prefix`, `seed`, and `as_of_date` as base
+  parameters (or set the `DEFAULT_*` constants in the Configuration cell);
+  each maps to the notebook's widget values.
 - Schedule it on classic job compute (DBR 17.2+) or serverless job compute
   (environment version 5). Serverless includes `faker` as an environment
   dependency; on classic compute the notebook's pinned `%pip` cell installs
