@@ -18,3 +18,5 @@ typings/
 .pi
 .worktrees/
 .polly/
+.codex/
+.pi/
