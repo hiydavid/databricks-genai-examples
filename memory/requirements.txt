@@ -1,0 +1,4 @@
+# Preinstalled on Databricks Runtime 15.4+; listed for local tooling/tests.
+# The notebooks run as-is on a cluster — no %pip install needed.
+databricks-sdk>=0.38
+mlflow>=2.19
