@@ -24,7 +24,7 @@ Each task writes a row to `<catalog>.<schema>.gso_prototype_artifacts` keyed by 
 
 | Task | Type | What it does |
 |------|------|--------------|
-| `intake_and_snapshot` | Notebook | Fetches the Genie Space config (`w.genie.get_space`), computes a config hash, and writes `run_manifest` + `space_config_snapshot` artifacts. |
+| `intake_and_snapshot` | Notebook | Fetches the Genie Space config (`w.genie.get_space`) and writes `run_manifest` + `space_config_snapshot` artifacts. |
 | `benchmark_qc` | Genie Code | Loads benchmarks from `<catalog>.<schema>.genie_benchmarks_<domain>`, validates each (SQL executes, question is unambiguous, question↔SQL aligned), repairs what it can (up to `benchmark_repair_max_tries` passes), excludes the rest, and checks the corpus has ≥15 valid benchmarks. |
 | `eval_baseline` | Notebook | For each benchmark, starts a Genie conversation, polls for completion, extracts the generated SQL from message attachments, and compares it (normalized exact match) against the gold SQL. Persists per-question results and overall accuracy. |
 | `optimize` | Genie Code | Iterative loop (up to `max_rounds`), each round has four phases: ANALYZE (classify failures by root cause), RECOMMEND (specific changes + expected impact), ACT (apply levers), RE-EVALUATE (rerun benchmarks). Stops early when accuracy ≥ `target_accuracy`. Changes stack — never reverted between rounds. |

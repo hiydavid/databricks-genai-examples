@@ -44,7 +44,6 @@ print(f"  warehouse_id:{warehouse_id or '(empty)'}")
 
 # DBTITLE 1,Fetch Genie Space config
 import json
-import hashlib
 from datetime import datetime
 from databricks.sdk import WorkspaceClient
 
@@ -53,7 +52,6 @@ w = WorkspaceClient()
 space_config = None
 space_config_json = "{}"
 num_tables = 0
-config_hash = "n/a"
 
 if space_id:
     print(f"\nFetching Genie Space config for space_id={space_id} ...")
@@ -68,10 +66,8 @@ if space_id:
         }
         num_tables = len(space_config["table_identifiers"])
         space_config_json = json.dumps(space_config, default=str)
-        config_hash = hashlib.md5(space_config_json.encode()).hexdigest()[:12]
         print(f"  ✓ Space title: {space_config['title']}")
         print(f"  ✓ Tables found: {num_tables}")
-        print(f"  ✓ Config hash: {config_hash}")
     except Exception as e:
         print(f"  ⚠ Failed to fetch space config: {e}")
         space_config_json = json.dumps({"error": str(e)})
@@ -140,7 +136,6 @@ print("[TASK INTAKE] Summary")
 print("=" * 60)
 print(f"  Space ID:      {space_id or '(dry run)'}")
 print(f"  Tables found:  {num_tables}")
-print(f"  Config hash:   {config_hash}")
 print(f"  Artifacts:     {'written to Delta' if (catalog and schema) else 'skipped (dry run)'}")
 print("=" * 60)
 
