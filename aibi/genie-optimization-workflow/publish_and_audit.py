@@ -118,6 +118,44 @@ print("\n" + "═" * 60)
 
 # COMMAND ----------
 
+# DBTITLE 1,Capture post-optimization space config snapshot
+# Mirror of the intake task's snapshot: captures the Genie Space config after the
+# optimize task has finished mutating it, giving the run a before/after audit trail.
+# Note: UC-level changes the optimizer may have made (table/column comments) are
+# not part of get_space output and are therefore not captured here.
+
+if catalog and schema and space_id:
+    try:
+        from databricks.sdk import WorkspaceClient
+
+        w = WorkspaceClient()
+        print(f"\nCapturing post-optimization snapshot for space_id={space_id} ...")
+        space = w.genie.get_space(space_id)
+        post_config = {
+            "space_id": space_id,
+            "title": getattr(space, "title", None),
+            "description": getattr(space, "description", None),
+            "table_identifiers": [str(t) for t in (getattr(space, "table_identifiers", None) or [])],
+            "instructions": getattr(space, "instructions", None),
+        }
+        safe_config = json.dumps(post_config, default=str).replace("'", "''")
+        spark.sql(f"""
+            INSERT INTO {artifacts_table}
+            VALUES (
+                '{run_id}',
+                'space_config_post_opt',
+                '{safe_config}',
+                current_timestamp()
+            )
+        """)
+        print(f"  ✓ Wrote space_config_post_opt artifact to {artifacts_table}")
+    except Exception as e:
+        print(f"  ⚠ Failed to capture post-optimization snapshot: {e}")
+else:
+    print("\n  ⏭ Skipping post-optimization snapshot (dry run or no space_id)")
+
+# COMMAND ----------
+
 # DBTITLE 1,Write final run status to Delta
 if catalog and schema:
     final_status = {
