@@ -1,0 +1,137 @@
+# Genie Space Optimization (GSO) Workflow
+
+A prototype workflow that automatically improves the accuracy of a [Databricks Genie Space](https://docs.databricks.com/aws/en/genie/) by running a closed-loop pipeline: snapshot the space, validate the benchmark set, measure baseline accuracy, apply optimization "levers," and re-evaluate until a target accuracy is reached (or rounds are exhausted).
+
+The pipeline is a 5-task Databricks job that mixes standard notebook tasks with **Genie Code automations** (agentic tasks driven by natural-language prompts). All run state is passed between tasks through a Delta artifacts table.
+
+## Pipeline
+
+```
+intake_and_snapshot   (notebook)      → fetch space config, write run manifest + snapshot
+        ↓
+benchmark_qc          (Genie Code)    → validate / repair the benchmark question set
+        ↓
+eval_baseline         (notebook)      → run benchmarks against the space, measure accuracy
+        ↓
+optimize              (Genie Code)    → analyze failures, apply levers, re-evaluate in a loop
+        ↓
+publish_and_audit     (notebook)      → compile audit report, write final run summary
+```
+
+Each task writes a row to `<catalog>.<schema>.gso_prototype_artifacts` keyed by `run_id`, which is how downstream tasks (including the Genie Code prompts) read the prior task's output.
+
+### Tasks
+
+| Task | Type | What it does |
+|------|------|--------------|
+| `intake_and_snapshot` | Notebook | Fetches the Genie Space config (`w.genie.get_space`), computes a config hash, and writes `run_manifest` + `space_config_snapshot` artifacts. |
+| `benchmark_qc` | Genie Code | Loads benchmarks from `<catalog>.<schema>.genie_benchmarks_<domain>`, validates each (SQL executes, question is unambiguous, question↔SQL aligned), repairs what it can (up to `benchmark_repair_max_tries` passes), excludes the rest, and checks the corpus has ≥15 valid benchmarks. |
+| `eval_baseline` | Notebook | For each benchmark, starts a Genie conversation, polls for completion, extracts the generated SQL from message attachments, and compares it (normalized exact match) against the gold SQL. Persists per-question results and overall accuracy. |
+| `optimize` | Genie Code | Iterative loop (up to `max_rounds`), each round has four phases: ANALYZE (classify failures by root cause), RECOMMEND (specific changes + expected impact), ACT (apply levers), RE-EVALUATE (rerun benchmarks). Stops early when accuracy ≥ `target_accuracy`. Changes stack — never reverted between rounds. |
+| `publish_and_audit` | Notebook | Reads all artifacts for the run, prints an audit report (QC stats, baseline vs. final accuracy, per-round changes, target met?), and writes the `run_summary` artifact. |
+
+### Optimization levers
+
+The `optimize` prompt can act through four levers (selectable via the `levers` job parameter):
+
+1. **Space instructions** — append general guidance to the Genie Space
+2. **Table descriptions** — `COMMENT ON TABLE ...`
+3. **Column descriptions** — `ALTER TABLE ... ALTER COLUMN ... COMMENT ...`
+4. **Example SQL / certified questions** — curated question→SQL pairs
+
+## Repository layout
+
+```
+genie-optimization-workflow/
+├── deploy.py                 # Creates the Genie Code automations + 5-task job
+├── intake_and_snapshot.py    # Databricks notebook source (task 1)
+├── eval_baseline.py          # Databricks notebook source (task 3)
+├── publish_and_audit.py      # Databricks notebook source (task 5)
+└── prompts/
+    ├── benchmark_qc.md       # Prompt for the benchmark_qc Genie Code automation
+    └── optimize.md           # Prompt for the optimize Genie Code automation
+```
+
+The `.py` files are Databricks notebook sources — upload them to the workspace as notebooks (the `%magic` and `# COMMAND ----------` markers are the Databricks format). The Genie Code tasks (`benchmark_qc`, `optimize`) have no notebook; their logic lives entirely in the prompt `.md` files, which `deploy.py` registers as Genie Code automations.
+
+## Deployment
+
+### Prerequisites
+
+- Python with `databricks-sdk` installed
+- `DATABRICKS_HOST` / `DATABRICKS_TOKEN` (or another SDK auth method) pointing at the target workspace
+- A benchmark table `<catalog>.<schema>.genie_benchmarks_<domain>` with columns `question` and `expected_sql` (optionally `expected_result`)
+- A SQL warehouse ID for validating benchmark SQL
+
+### Steps
+
+1. Upload the notebooks to a workspace directory (as notebooks, not raw files):
+
+   ```bash
+   databricks workspace import-dir ./genie-optimization-workflow \
+       /Workspace/Users/you@company.com/gso-prototype
+   ```
+
+   (or upload the three `.py` files individually via the workspace UI as notebooks)
+
+2. Deploy the automations and job:
+
+   ```bash
+   python deploy.py \
+       --notebook-root /Workspace/Users/you@company.com/gso-prototype \
+       --prompts-dir ./prompts
+   ```
+
+   With no arguments, `--notebook-root` defaults to `/Workspace/Users/<you>/gso-prototype`.
+
+   `deploy.py` creates two Genie Code automations (via the internal scheduled-insights API) and one job named `gso-prototype-v2`, wiring the automation `configuration_id`s into the job's `genie_task` entries.
+
+3. Run the job:
+
+   ```bash
+   databricks jobs run-now <job_id> --json '{
+     "job_parameters": {
+       "space_id": "<genie-space-id>",
+       "catalog": "<catalog>",
+       "schema": "<schema>",
+       "warehouse_id": "<warehouse-id>"
+     }
+   }'
+   ```
+
+## Job parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `run_id` | `""` | Run identifier; empty = ad-hoc (tasks use whatever the widget holds) |
+| `space_id` | `""` | Target Genie Space. Empty → dry run (tasks skip API/Delta work) |
+| `domain` | `default` | Benchmark table suffix: `genie_benchmarks_<domain>` |
+| `catalog` / `schema` | `""` | Unity Catalog location for benchmarks + artifacts |
+| `apply_mode` | `genie_config` | How the optimizer applies changes |
+| `levers` | `[1,2,3,4,5,6]` | Which optimization levers the optimizer may use |
+| `max_rounds` | `3` | Max optimization iterations |
+| `target_accuracy` | `0.90` | Stop when accuracy reaches this |
+| `benchmark_policy` | `repair_allowed` | Whether QC may repair broken benchmarks |
+| `benchmark_repair_max_tries` | `3` | Repair attempts per benchmark |
+| `warehouse_id` | `""` | SQL warehouse for validating benchmark SQL |
+| `llm_model` | `databricks-claude-sonnet-4-6` | Model for Genie Code tasks |
+| `triggered_by` | `""` | Free-form provenance field |
+
+## Artifacts table
+
+All tasks read/write `<catalog>.<schema>.gso_prototype_artifacts`:
+
+| Column | Description |
+|--------|-------------|
+| `run_id` | Groups all rows from one pipeline run |
+| `artifact_type` | `run_manifest`, `space_config_snapshot`, `benchmark_qc`, `baseline_eval`, `optimization_result`, `run_summary` |
+| `payload` | JSON string with the artifact contents |
+| `created_at` | Timestamp |
+
+## Prototype limitations
+
+- **Exact-match SQL comparison**: `eval_baseline` normalizes whitespace/case and compares strings; semantically equivalent SQL that differs textually counts as a miss (semantic comparison is a TODO in the code).
+- **String-interpolated SQL**: notebooks build `INSERT`/`SELECT` statements via f-strings rather than parameterized queries — fine for a prototype with internal parameters, but not safe against arbitrary input.
+- **Prompt-defined tasks**: the Genie Code tasks execute whatever the LLM decides from the prompt; there is no hard guarantee on artifact shape beyond what the prompt asks for.
+- **Internal API**: `deploy.py` uses the `/api/2.0/alerts-internal/scheduled-insights` endpoint for Genie Code automations, which is internal and may change.
+- **Dry-run support**: every notebook degrades gracefully when `space_id` / `catalog` / `schema` are empty, so the DAG can run end-to-end without touching a real space.
