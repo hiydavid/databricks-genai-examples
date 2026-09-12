@@ -43,7 +43,7 @@ The `optimize` prompt can act through four levers (selectable via the `levers` j
 
 ```
 genie-optimization-workflow/
-├── deploy.py                 # Creates the Genie Code automations + 5-task job
+├── deploy.py                 # Databricks notebook source (creates the automations + 5-task job)
 ├── intake_and_snapshot.py    # Databricks notebook source (task 1)
 ├── eval_baseline.py          # Databricks notebook source (task 3)
 ├── publish_and_audit.py      # Databricks notebook source (task 5)
@@ -52,7 +52,7 @@ genie-optimization-workflow/
     └── optimize.md           # Prompt for the optimize Genie Code automation
 ```
 
-The `.py` files are Databricks notebook sources — upload them to the workspace as notebooks (the `%magic` and `# COMMAND ----------` markers are the Databricks format). The Genie Code tasks (`benchmark_qc`, `optimize`) have no notebook; their logic lives entirely in the prompt `.md` files, which `deploy.py` registers as Genie Code automations.
+All `.py` files are Databricks notebook sources — upload them to the workspace as notebooks (the `%magic` and `# COMMAND ----------` markers are the Databricks format). The Genie Code tasks (`benchmark_qc`, `optimize`) have no notebook; their logic lives entirely in the prompt `.md` files, which `deploy` registers as Genie Code automations.
 
 ## Deployment
 
@@ -65,26 +65,25 @@ The `.py` files are Databricks notebook sources — upload them to the workspace
 
 ### Steps
 
-1. Upload the notebooks to a workspace directory (as notebooks, not raw files):
+1. Upload the notebooks to a workspace directory (as notebooks, not raw files). Include the `prompts/` folder — the prompt `.md` files become plain Workspace files that the deploy notebook reads directly:
 
    ```bash
    databricks workspace import-dir ./genie-optimization-workflow \
        /Workspace/Users/you@company.com/gso-prototype
    ```
 
-   (or upload the three `.py` files individually via the workspace UI as notebooks)
+   (or upload the `.py` files individually via the workspace UI as notebooks)
 
-2. Deploy the automations and job:
+2. Deploy the automations and job: open the `deploy` notebook in the target workspace and click *Run all*. It authenticates with the notebook's own context — no token needed.
 
-   ```bash
-   python deploy.py \
-       --notebook-root /Workspace/Users/you@company.com/gso-prototype \
-       --prompts-dir ./prompts
-   ```
+   Optional parameters (widgets at the top of the notebook):
 
-   With no arguments, `--notebook-root` defaults to `/Workspace/Users/<you>/gso-prototype`.
+   | Widget | Default | Description |
+   |--------|---------|-------------|
+   | `notebook_root` | `<your home>/gso-prototype` | Workspace path holding the task notebooks |
+   | `prompts_dir` | `<notebook_root>/prompts` | Workspace path holding the prompt `.md` files |
 
-   `deploy.py` creates two Genie Code automations (via the internal scheduled-insights API) and one job named `gso-prototype-v2`, wiring the automation `configuration_id`s into the job's `genie_task` entries.
+   `deploy` creates two Genie Code automations (via the internal scheduled-insights API) and one job named `gso-prototype-v2`, wiring the automation `configuration_id`s into the job's `genie_task` entries.
 
 3. Run the job:
 
@@ -133,5 +132,5 @@ All tasks read/write `<catalog>.<schema>.gso_prototype_artifacts`:
 - **Exact-match SQL comparison**: `eval_baseline` normalizes whitespace/case and compares strings; semantically equivalent SQL that differs textually counts as a miss (semantic comparison is a TODO in the code).
 - **String-interpolated SQL**: notebooks build `INSERT`/`SELECT` statements via f-strings rather than parameterized queries — fine for a prototype with internal parameters, but not safe against arbitrary input.
 - **Prompt-defined tasks**: the Genie Code tasks execute whatever the LLM decides from the prompt; there is no hard guarantee on artifact shape beyond what the prompt asks for.
-- **Internal API**: `deploy.py` uses the `/api/2.0/alerts-internal/scheduled-insights` endpoint for Genie Code automations, which is internal and may change.
+- **Internal API**: the `deploy` notebook uses the `/api/2.0/alerts-internal/scheduled-insights` endpoint for Genie Code automations, which is internal and may change.
 - **Dry-run support**: every notebook degrades gracefully when `space_id` / `catalog` / `schema` are empty, so the DAG can run end-to-end without touching a real space.

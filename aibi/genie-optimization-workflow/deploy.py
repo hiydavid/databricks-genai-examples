@@ -1,47 +1,55 @@
-"""deploy.py — Deploy the GSO Prototype v2 DAG to any Databricks workspace.
+# Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
+# DBTITLE 1,Deploy GSO Prototype v2
+# MAGIC %md
+# MAGIC # Deploy — GSO Prototype
+# MAGIC
+# MAGIC One-time deployment notebook. Creates the two Genie Code automations (from the prompt `.md` files in `prompts/`) and the 5-task job `gso-prototype-v2` in the current workspace.
+# MAGIC
+# MAGIC **Prerequisites**
+# MAGIC - The task notebooks and `prompts/*.md` are already uploaded to the workspace (e.g. via `databricks workspace import-dir ./genie-optimization-workflow /Workspace/Users/you@company.com/gso-prototype`). Workspace `.md` files are plain Workspace files and can be read directly with `open()` on DBR 14.2+.
+# MAGIC - Run this notebook in the target workspace. The SDK authenticates with the notebook's own context — no token needed.
 
-Usage:
-    # Set DATABRICKS_HOST and DATABRICKS_TOKEN for the target workspace, then:
-    python deploy.py \
-        --notebook-root /Workspace/Users/you@company.com/gso-prototype \
-        --prompts-dir ./prompts
+# COMMAND ----------
 
-    # Or with defaults (auto-detects current user home):
-    python deploy.py
-
-Prerequisites:
-    - `databricks-sdk` installed (`pip install databricks-sdk`)
-    - Notebooks and prompt files already uploaded to the target workspace
-      under <notebook-root>/. Use `databricks workspace import-dir` to upload:
-
-        databricks workspace import-dir ./gso-prototype /Workspace/Users/you@company.com/gso-prototype
-
-What this script does:
-    1. Reads prompt files (prompts/benchmark_qc.md, prompts/optimize.md)
-    2. Creates Genie Code automations in the target workspace
-    3. Creates the 5-task job wired to the automations + notebooks
-"""
-
-import argparse
+# DBTITLE 1,Parameters
 import json
-import os
-import sys
 from pathlib import Path
 
 from databricks.sdk import WorkspaceClient
 
+# -- Parameters --
+# Workspace directory holding the task notebooks + prompts/ (default: your home + /gso-prototype)
+dbutils.widgets.text("notebook_root", "")
+# Directory holding the prompt .md files (default: <notebook_root>/prompts)
+dbutils.widgets.text("prompts_dir", "")
 
-def get_user_id(w: WorkspaceClient) -> str:
-    """Get the numeric user ID of the authenticated user."""
-    return str(w.current_user.me().id)
+notebook_root = dbutils.widgets.get("notebook_root").strip()
+prompts_dir = dbutils.widgets.get("prompts_dir").strip()
 
+w = WorkspaceClient()
+uid = str(w.current_user.me().id)
 
-def get_user_home(w: WorkspaceClient) -> str:
-    """Get the workspace home path for the authenticated user."""
+if not notebook_root:
     email = w.current_user.me().user_name
-    return f"/Workspace/Users/{email}"
+    notebook_root = f"/Workspace/Users/{email}/gso-prototype"
+if not prompts_dir:
+    prompts_dir = f"{notebook_root}/prompts"
 
+print("=" * 60)
+print("[DEPLOY] GSO Prototype v2")
+print("=" * 60)
+print(f"  Target workspace: {w.config.host}")
+print(f"  User ID:          {uid}")
+print(f"  Notebook root:    {notebook_root}")
+print(f"  Prompts dir:      {prompts_dir}")
 
+# COMMAND ----------
+
+# DBTITLE 1,Helpers
 def create_automation(w: WorkspaceClient, uid: str, prompt: str, name: str) -> str:
     """Create a Genie Code automation (no schedule) and return its configuration_id."""
     resp = w.api_client.do(
@@ -153,76 +161,48 @@ def create_job(
         ],
     }
 
-    resp = w.api_client.do("POST", "/api/2.1/jobs/create", body=job_def)
-    return resp
+    return w.api_client.do("POST", "/api/2.1/jobs/create", body=job_def)
 
+# COMMAND ----------
 
-def main():
-    parser = argparse.ArgumentParser(description="Deploy GSO Prototype v2 DAG")
-    parser.add_argument(
-        "--notebook-root",
-        default=None,
-        help="Workspace path where notebooks live (default: auto-detect from current user)",
-    )
-    parser.add_argument(
-        "--prompts-dir",
-        default="prompts",
-        help="Local directory containing prompt .md files (default: ./prompts)",
-    )
-    args = parser.parse_args()
+# DBTITLE 1,Step 1 — Create Genie Code automations
+# Read the prompt files from the workspace (uploaded together with the notebooks).
+benchmark_qc_prompt_path = Path(f"{prompts_dir}/benchmark_qc.md")
+optimize_prompt_path = Path(f"{prompts_dir}/optimize.md")
 
-    w = WorkspaceClient()
-    uid = get_user_id(w)
-    notebook_root = args.notebook_root or f"{get_user_home(w)}/gso-prototype"
-    prompts_dir = Path(args.prompts_dir)
+for p in (benchmark_qc_prompt_path, optimize_prompt_path):
+    if not p.exists():
+        raise FileNotFoundError(
+            f"Prompt file not found: {p}. "
+            "Upload the prompts/ directory to the workspace first (see the README)."
+        )
 
-    print(f"Deploying GSO Prototype v2")
-    print(f"  Target workspace: {w.config.host}")
-    print(f"  User ID:          {uid}")
-    print(f"  Notebook root:    {notebook_root}")
-    print(f"  Prompts dir:      {prompts_dir}")
-    print()
+print("Step 1: Creating Genie Code automations...")
+benchmark_qc_config_id = create_automation(
+    w, uid, benchmark_qc_prompt_path.read_text(), "benchmark_qc"
+)
+optimize_config_id = create_automation(
+    w, uid, optimize_prompt_path.read_text(), "optimize"
+)
 
-    # --- Step 1: Create Genie Code automations ---
-    print("Step 1: Creating Genie Code automations...")
+# COMMAND ----------
 
-    benchmark_qc_prompt_path = prompts_dir / "benchmark_qc.md"
-    optimize_prompt_path = prompts_dir / "optimize.md"
+# DBTITLE 1,Step 2 — Create the job
+print("Step 2: Creating job...")
+resp = create_job(w, notebook_root, benchmark_qc_config_id, optimize_config_id)
+job_id = resp.get("job_id")
+print(f"  \u2713 Created job: {job_id}")
+print(f"  URL: {w.config.host}/jobs/{job_id}")
 
-    if not benchmark_qc_prompt_path.exists():
-        print(f"  \u2717 Prompt file not found: {benchmark_qc_prompt_path}")
-        sys.exit(1)
-    if not optimize_prompt_path.exists():
-        print(f"  \u2717 Prompt file not found: {optimize_prompt_path}")
-        sys.exit(1)
+# COMMAND ----------
 
-    benchmark_qc_config_id = create_automation(
-        w, uid, benchmark_qc_prompt_path.read_text(), "benchmark_qc"
-    )
-    optimize_config_id = create_automation(
-        w, uid, optimize_prompt_path.read_text(), "optimize"
-    )
-    print()
-
-    # --- Step 2: Create the job ---
-    print("Step 2: Creating job...")
-    resp = create_job(w, notebook_root, benchmark_qc_config_id, optimize_config_id)
-    job_id = resp.get("job_id")
-    print(f"  \u2713 Created job: {job_id}")
-    print(f"  URL: {w.config.host}/jobs/{job_id}")
-    print()
-
-    # --- Summary ---
-    print("=" * 60)
-    print("Deployment complete!")
-    print("=" * 60)
-    print(f"  Job ID:                  {job_id}")
-    print(f"  benchmark_qc automation: {benchmark_qc_config_id}")
-    print(f"  optimize automation:     {optimize_config_id}")
-    print()
-    print("To run:")
-    print(f"  databricks jobs run-now {job_id} --json '{{"job_parameters": {{"space_id": "<your-space-id>", "catalog": "<catalog>", "schema": "<schema>"}}}}'")
-
-
-if __name__ == "__main__":
-    main()
+# DBTITLE 1,Summary
+print("=" * 60)
+print("Deployment complete!")
+print("=" * 60)
+print(f"  Job ID:                  {job_id}")
+print(f"  benchmark_qc automation: {benchmark_qc_config_id}")
+print(f"  optimize automation:     {optimize_config_id}")
+print()
+print("To run:")
+print(f"  databricks jobs run-now {job_id} --json '{{\"job_parameters\": {{\"space_id\": \"<your-space-id>\", \"catalog\": \"<catalog>\", \"schema\": \"<schema>\"}}}}'")
