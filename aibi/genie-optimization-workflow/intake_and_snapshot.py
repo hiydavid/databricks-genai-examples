@@ -1,0 +1,149 @@
+# Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
+# DBTITLE 1,Intake and Snapshot Prototype
+# MAGIC %md
+# MAGIC # Intake & Snapshot — GSO Prototype
+# MAGIC
+# MAGIC Simplified prototype of the `intake_and_snapshot` task. Fetches Genie Space config via SDK, writes run manifest and config snapshot to a Delta artifacts table.
+
+# COMMAND ----------
+
+# DBTITLE 1,Parameters
+# -- Parameters --
+dbutils.widgets.text("run_id", "")
+dbutils.widgets.text("space_id", "")
+dbutils.widgets.text("domain", "default")
+dbutils.widgets.text("catalog", "")
+dbutils.widgets.text("schema", "")
+dbutils.widgets.text("apply_mode", "genie_config")
+dbutils.widgets.text("warehouse_id", "")
+
+run_id = dbutils.widgets.get("run_id").strip()
+space_id = dbutils.widgets.get("space_id").strip()
+domain = dbutils.widgets.get("domain").strip() or "default"
+catalog = dbutils.widgets.get("catalog").strip()
+schema = dbutils.widgets.get("schema").strip()
+apply_mode = dbutils.widgets.get("apply_mode").strip() or "genie_config"
+warehouse_id = dbutils.widgets.get("warehouse_id").strip()
+
+print("=" * 60)
+print("[TASK INTAKE] Intake & Snapshot — Prototype")
+print("=" * 60)
+print(f"  run_id:      {run_id or '(empty — dry run)'}")
+print(f"  space_id:    {space_id or '(empty — will skip API call)'}")
+print(f"  domain:      {domain}")
+print(f"  catalog:     {catalog or '(empty)'}")
+print(f"  schema:      {schema or '(empty)'}")
+print(f"  apply_mode:  {apply_mode}")
+print(f"  warehouse_id:{warehouse_id or '(empty)'}")
+
+# COMMAND ----------
+
+# DBTITLE 1,Fetch Genie Space config
+import json
+import hashlib
+from datetime import datetime
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+
+space_config = None
+space_config_json = "{}"
+num_tables = 0
+config_hash = "n/a"
+
+if space_id:
+    print(f"\nFetching Genie Space config for space_id={space_id} ...")
+    try:
+        space = w.genie.get_space(space_id)
+        space_config = {
+            "space_id": space_id,
+            "title": getattr(space, "title", None),
+            "description": getattr(space, "description", None),
+            "table_identifiers": [str(t) for t in (getattr(space, "table_identifiers", None) or [])],
+            "instructions": getattr(space, "instructions", None),
+        }
+        num_tables = len(space_config["table_identifiers"])
+        space_config_json = json.dumps(space_config, default=str)
+        config_hash = hashlib.md5(space_config_json.encode()).hexdigest()[:12]
+        print(f"  ✓ Space title: {space_config['title']}")
+        print(f"  ✓ Tables found: {num_tables}")
+        print(f"  ✓ Config hash: {config_hash}")
+    except Exception as e:
+        print(f"  ⚠ Failed to fetch space config: {e}")
+        space_config_json = json.dumps({"error": str(e)})
+else:
+    print("\n  ⏭ No space_id provided — skipping Genie API call (dry run)")
+    space_config_json = json.dumps({"dry_run": True})
+
+# COMMAND ----------
+
+# DBTITLE 1,Write artifacts to Delta
+if catalog and schema:
+    artifacts_table = f"`{catalog}`.`{schema}`.gso_prototype_artifacts"
+
+    # Create table if not exists
+    spark.sql(f"""
+        CREATE TABLE IF NOT EXISTS {artifacts_table} (
+            run_id STRING,
+            artifact_type STRING,
+            payload STRING,
+            created_at TIMESTAMP
+        ) USING DELTA
+    """)
+
+    # Build the run manifest payload
+    run_manifest = json.dumps({
+        "run_id": run_id,
+        "space_id": space_id,
+        "domain": domain,
+        "catalog": catalog,
+        "schema": schema,
+        "apply_mode": apply_mode,
+    })
+
+    # Insert run_manifest artifact
+    spark.sql(f"""
+        INSERT INTO {artifacts_table}
+        VALUES (
+            '{run_id}',
+            'run_manifest',
+            '{run_manifest.replace("'", "''")  }',
+            current_timestamp()
+        )
+    """)
+    print(f"\n  ✓ Wrote run_manifest artifact to {artifacts_table}")
+
+    # Insert space_config_snapshot artifact
+    safe_config = space_config_json.replace("'", "''")
+    spark.sql(f"""
+        INSERT INTO {artifacts_table}
+        VALUES (
+            '{run_id}',
+            'space_config_snapshot',
+            '{safe_config}',
+            current_timestamp()
+        )
+    """)
+    print(f"  ✓ Wrote space_config_snapshot artifact to {artifacts_table}")
+else:
+    print("\n  ⏭ No catalog/schema provided — skipping Delta writes (dry run)")
+
+# COMMAND ----------
+
+# DBTITLE 1,Summary and exit
+print("\n" + "=" * 60)
+print("[TASK INTAKE] Summary")
+print("=" * 60)
+print(f"  Space ID:      {space_id or '(dry run)'}")
+print(f"  Tables found:  {num_tables}")
+print(f"  Config hash:   {config_hash}")
+print(f"  Artifacts:     {'written to Delta' if (catalog and schema) else 'skipped (dry run)'}")
+print("=" * 60)
+
+exit_payload = json.dumps({"status": "SUCCESS", "run_id": run_id})
+print(f"\nExiting with: {exit_payload}")
+dbutils.notebook.exit(exit_payload)
