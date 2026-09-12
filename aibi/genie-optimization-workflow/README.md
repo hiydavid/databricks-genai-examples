@@ -25,7 +25,7 @@ Each task writes a row to `<catalog>.<schema>.gso_prototype_artifacts` keyed by 
 | Task | Type | What it does |
 |------|------|--------------|
 | `intake_and_snapshot` | Notebook | Fetches the Genie Space config (`w.genie.get_space`) and writes `run_manifest` + `space_config_snapshot` artifacts. |
-| `benchmark_qc` | Genie Code | Loads benchmarks from `<catalog>.<schema>.genie_benchmarks`, validates each (SQL executes, question is unambiguous, question↔SQL aligned), repairs what it can (up to `benchmark_repair_max_tries` passes), excludes the rest, and checks the corpus has ≥15 valid benchmarks. |
+| `benchmark_qc` | Genie Code | Reviews the benchmark table (question clarity, gold SQL validity, question↔SQL alignment) using its own Genie benchmarking knowledge. Repairs benchmarks in place (up to `benchmark_repair_max_tries` passes, gated by `benchmark_policy`), skips what it cannot fix, and writes a `benchmark_qc` artifact with counts, repair rationale, and whether ≥15 valid benchmarks remain. |
 | `eval_baseline` | Notebook | For each benchmark, starts a Genie conversation, polls for completion, extracts the generated SQL from message attachments, and compares it (normalized exact match) against the gold SQL. Persists per-question results and overall accuracy. |
 | `optimize` | Genie Code | Iterative loop (up to `max_rounds`), each round has four phases: ANALYZE (classify failures by root cause), RECOMMEND (specific changes + expected impact), ACT (apply levers), RE-EVALUATE (rerun benchmarks). Stops early when accuracy ≥ `target_accuracy`. Changes stack — never reverted between rounds. |
 | `publish_and_audit` | Notebook | Reads all artifacts for the run, captures the post-optimization space config snapshot (`space_config_post_opt`), prints an audit report (QC stats, baseline vs. final accuracy, per-round changes, target met?), and writes the `run_summary` artifact. |
@@ -60,7 +60,7 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
 
 - Python with `databricks-sdk` installed
 - `DATABRICKS_HOST` / `DATABRICKS_TOKEN` (or another SDK auth method) pointing at the target workspace
-- A benchmark table `<catalog>.<schema>.genie_benchmarks` with columns `question` and `expected_sql` (optionally `expected_result`)
+- A benchmark table with columns `question` and `expected_sql` (optionally `expected_result`); pass its full name as the `benchmark_table` job parameter
 - A SQL warehouse ID for validating benchmark SQL
 
 ### Steps
@@ -105,6 +105,7 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
 | `run_id` | `""` | Run identifier; empty = ad-hoc (tasks use whatever the widget holds) |
 | `space_id` | `""` | Target Genie Space. Empty → dry run (tasks skip API/Delta work) |
 | `catalog` / `schema` | `""` | Unity Catalog location for benchmarks + artifacts |
+| `benchmark_table` | `""` | Full name of the benchmark table for this run (e.g. `<catalog>.<schema>.genie_benchmarks`). Empty → benchmark_qc is a dry run |
 | `levers` | `[1,2,3,4,5,6]` | Which optimization levers the optimizer may use |
 | `max_rounds` | `3` | Max optimization iterations |
 | `target_accuracy` | `0.90` | Stop when accuracy reaches this |
