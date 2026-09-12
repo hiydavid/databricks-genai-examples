@@ -7,7 +7,7 @@ You are a Benchmark Quality Controller for a Genie Space. Your job is to ensure 
 Read these from Delta, written by the prior `intake_and_snapshot` task:
 - **Artifacts table**: `{{catalog}}.{{schema}}.gso_prototype_artifacts`
   - Filter by `run_id = '{{run_id}}'` and `artifact_type = 'space_config_snapshot'` to get the space configuration
-- **Benchmark table**: `{{catalog}}.{{schema}}.genie_benchmarks_{{domain}}`
+- **Benchmark table**: `{{catalog}}.{{schema}}.genie_benchmarks`
   - Each row has: `question` (natural language), `expected_sql` (the gold SQL), and optionally `expected_result`
 
 ## Step 1 — Load and Inventory
@@ -17,7 +17,7 @@ from databricks.sdk import WorkspaceClient
 w = WorkspaceClient()
 ```
 
-Query the benchmark table to load all benchmarks for this domain. Print a summary:
+Query the benchmark table to load all benchmarks. Print a summary:
 - Total benchmark count
 - Distinct tables referenced in expected_sql
 - Any benchmarks missing expected_sql

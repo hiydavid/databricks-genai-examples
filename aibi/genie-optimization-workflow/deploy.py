@@ -82,10 +82,8 @@ def create_job(
         "parameters": [
             {"name": "run_id", "default": ""},
             {"name": "space_id", "default": ""},
-            {"name": "domain", "default": "default"},
             {"name": "catalog", "default": ""},
             {"name": "schema", "default": ""},
-            {"name": "apply_mode", "default": "genie_config"},
             {"name": "levers", "default": "[1,2,3,4,5,6]"},
             {"name": "max_rounds", "default": "3"},
             {"name": "target_accuracy", "default": "0.90"},
@@ -112,7 +110,6 @@ def create_job(
                     "parameters": {
                         "run_id": "{{job.parameters.run_id}}",
                         "space_id": "{{job.parameters.space_id}}",
-                        "domain": "{{job.parameters.domain}}",
                         "catalog": "{{job.parameters.catalog}}",
                         "schema": "{{job.parameters.schema}}",
                         "benchmark_policy": "{{job.parameters.benchmark_policy}}",
@@ -138,13 +135,11 @@ def create_job(
                     "parameters": {
                         "run_id": "{{job.parameters.run_id}}",
                         "space_id": "{{job.parameters.space_id}}",
-                        "domain": "{{job.parameters.domain}}",
                         "catalog": "{{job.parameters.catalog}}",
                         "schema": "{{job.parameters.schema}}",
                         "target_accuracy": "{{job.parameters.target_accuracy}}",
                         "max_rounds": "{{job.parameters.max_rounds}}",
                         "levers": "{{job.parameters.levers}}",
-                        "apply_mode": "{{job.parameters.apply_mode}}",
                         "warehouse_id": "{{job.parameters.warehouse_id}}",
                     },
                 },

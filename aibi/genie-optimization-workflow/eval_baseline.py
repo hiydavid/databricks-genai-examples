@@ -15,14 +15,12 @@ from databricks.sdk import WorkspaceClient
 
 dbutils.widgets.text("run_id", "")
 dbutils.widgets.text("space_id", "")
-dbutils.widgets.text("domain", "default")
 dbutils.widgets.text("catalog", "")
 dbutils.widgets.text("schema", "")
 dbutils.widgets.text("warehouse_id", "")
 
 run_id = dbutils.widgets.get("run_id").strip()
 space_id = dbutils.widgets.get("space_id").strip()
-domain = dbutils.widgets.get("domain").strip() or "default"
 catalog = dbutils.widgets.get("catalog").strip()
 schema = dbutils.widgets.get("schema").strip()
 warehouse_id = dbutils.widgets.get("warehouse_id").strip()
@@ -32,7 +30,6 @@ print("[TASK EVAL_BASELINE] Baseline Evaluation — Prototype")
 print("=" * 60)
 print(f"  run_id:       {run_id or '(empty — dry run)'}")
 print(f"  space_id:     {space_id or '(empty)'}")
-print(f"  domain:       {domain}")
 print(f"  catalog:      {catalog or '(empty)'}")
 print(f"  schema:       {schema or '(empty)'}")
 print(f"  warehouse_id: {warehouse_id or '(empty)'}")
@@ -43,7 +40,7 @@ print(f"  warehouse_id: {warehouse_id or '(empty)'}")
 benchmarks = []
 
 if catalog and schema:
-    benchmarks_table = f"`{catalog}`.`{schema}`.genie_benchmarks_{domain}"
+    benchmarks_table = f"`{catalog}`.`{schema}`.genie_benchmarks"
     print(f"\nLoading benchmarks from {benchmarks_table} ...")
     try:
         benchmarks_df = spark.sql(f"SELECT * FROM {benchmarks_table}")

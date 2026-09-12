@@ -15,18 +15,12 @@
 # -- Parameters --
 dbutils.widgets.text("run_id", "")
 dbutils.widgets.text("space_id", "")
-dbutils.widgets.text("domain", "default")
-dbutils.widgets.text("catalog", "")
-dbutils.widgets.text("schema", "")
-dbutils.widgets.text("apply_mode", "genie_config")
 dbutils.widgets.text("warehouse_id", "")
 
 run_id = dbutils.widgets.get("run_id").strip()
 space_id = dbutils.widgets.get("space_id").strip()
-domain = dbutils.widgets.get("domain").strip() or "default"
 catalog = dbutils.widgets.get("catalog").strip()
 schema = dbutils.widgets.get("schema").strip()
-apply_mode = dbutils.widgets.get("apply_mode").strip() or "genie_config"
 warehouse_id = dbutils.widgets.get("warehouse_id").strip()
 
 print("=" * 60)
@@ -34,10 +28,8 @@ print("[TASK INTAKE] Intake & Snapshot — Prototype")
 print("=" * 60)
 print(f"  run_id:      {run_id or '(empty — dry run)'}")
 print(f"  space_id:    {space_id or '(empty — will skip API call)'}")
-print(f"  domain:      {domain}")
 print(f"  catalog:     {catalog or '(empty)'}")
 print(f"  schema:      {schema or '(empty)'}")
-print(f"  apply_mode:  {apply_mode}")
 print(f"  warehouse_id:{warehouse_id or '(empty)'}")
 
 # COMMAND ----------
@@ -95,10 +87,8 @@ if catalog and schema:
     run_manifest = json.dumps({
         "run_id": run_id,
         "space_id": space_id,
-        "domain": domain,
         "catalog": catalog,
         "schema": schema,
-        "apply_mode": apply_mode,
     })
 
     # Insert run_manifest artifact

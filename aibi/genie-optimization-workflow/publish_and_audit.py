@@ -13,7 +13,6 @@ from datetime import datetime
 
 dbutils.widgets.text("run_id", "")
 dbutils.widgets.text("space_id", "")
-dbutils.widgets.text("domain", "default")
 dbutils.widgets.text("catalog", "")
 dbutils.widgets.text("schema", "")
 dbutils.widgets.text("target_accuracy", "0.90")
@@ -21,7 +20,6 @@ dbutils.widgets.text("max_rounds", "3")
 
 run_id = dbutils.widgets.get("run_id").strip()
 space_id = dbutils.widgets.get("space_id").strip()
-domain = dbutils.widgets.get("domain").strip() or "default"
 catalog = dbutils.widgets.get("catalog").strip()
 schema = dbutils.widgets.get("schema").strip()
 target_accuracy = float(dbutils.widgets.get("target_accuracy") or "0.90")
@@ -73,8 +71,6 @@ manifest = artifacts.get("run_manifest", {})
 print(f"\n📋 Run Manifest")
 print(f"  Run ID:     {manifest.get('run_id', run_id)}")
 print(f"  Space ID:   {manifest.get('space_id', space_id)}")
-print(f"  Domain:     {manifest.get('domain', domain)}")
-print(f"  Apply mode: {manifest.get('apply_mode', 'n/a')}")
 
 # --- Benchmark QC ---
 qc = artifacts.get("benchmark_qc", {})
@@ -161,7 +157,6 @@ if catalog and schema:
     final_status = {
         "run_id": run_id,
         "space_id": space_id,
-        "domain": domain,
         "baseline_accuracy": baseline_accuracy,
         "final_accuracy": final_accuracy,
         "target_accuracy": target_accuracy,
