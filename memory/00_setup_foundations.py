@@ -39,6 +39,9 @@ ORDERS_TABLE = f"{CATALOG}.{SCHEMA}.support_orders"
 # Pay-per-token Foundation Model APIs endpoint (OpenAI-compatible chat completions).
 MODEL_ENDPOINT = dbutils.widgets.get("model_endpoint")
 
+# Ensure the schema exists before anything references it (memory store, orders table).
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{SCHEMA}")
+
 print(f"memory store: {MEMORY_STORE_NAME}")
 print(f"orders table:  {ORDERS_TABLE}")
 print(f"model endpoint: {MODEL_ENDPOINT}")
@@ -93,7 +96,7 @@ def ensure_memory_store(full_name: str) -> dict:
                 "name": name,
                 "catalog_name": catalog,
                 "schema_name": schema,
-                "comment": "Support agent memory for the Managed Memory demo.",
+                "description": "Support agent memory for the Managed Memory demo.",
             },
         )
         print(f"created memory store: {store.get('full_name', full_name)}")
@@ -120,8 +123,6 @@ memory_store
 # MAGIC reruns never duplicate or churn the data.
 
 # COMMAND ----------
-
-spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{SCHEMA}")
 
 spark.sql(f"""
 CREATE TABLE IF NOT EXISTS {ORDERS_TABLE} (

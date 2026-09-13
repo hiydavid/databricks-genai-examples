@@ -1,6 +1,20 @@
 # Managed Memory Demo — Phased Implementation
 
-## Phase 1: Foundation and Short-Term Context
+## Status
+
+- **Phase 1: COMPLETE** (commit `1c1eea4`, reviewed and fixed 2026-09-12).
+  Deliverables: `README.md`, `AGENTS.md`, `requirements.txt`,
+  `00_setup_foundations`, `01_stateless_baseline`,
+  `02_client_managed_working_memory`. Post-review fixes: memory-store create
+  body uses `description` (not `comment`), and `CREATE SCHEMA IF NOT EXISTS`
+  moved ahead of memory-store creation so a fresh `schema` widget value works.
+- **Phase 2: NEXT** — start here in a new session.
+- Phases 3–5: not started.
+
+Conventions, hard rules, and run order live in `AGENTS.md`; the user-facing
+overview is `README.md`. Both are current as of Phase 1.
+
+## Phase 1: Foundation and Short-Term Context — COMPLETE
 
 Build the shared foundation and demonstrate why memory is needed.
 
@@ -20,6 +34,38 @@ Add durable support-case continuity.
 - Save resolved case summaries under `/memories/cases/{case_id}.md`.
 - Retrieve a previous case summary from a new case conversation.
 - Clarify that conversations preserve one case; entries enable cross-case recall.
+
+Verified API facts (checked against
+`docs.databricks.com/aws/en/agents/agent-memory/memory-store-api` on
+2026-09-12 — re-verify before coding, the feature is Beta):
+
+- There is no Python SDK for these APIs; use `WorkspaceClient().api_client.do(...)`
+  as `00_setup_foundations` already does for the store.
+- Conversations: create `POST /api/2.1/unity-catalog/conversations`,
+  get `GET .../conversations/{conversation_id}`,
+  update `POST .../conversations/{conversation_id}`,
+  delete `DELETE .../conversations/{conversation_id}`,
+  add items `POST .../conversations/{conversation_id}/items`,
+  get/list items `GET .../conversations/{conversation_id}/items[/{item_id}]`,
+  delete item `DELETE .../conversations/{conversation_id}/items/{item_id}`.
+  All require `WRITE MEMORY STORE` (create/update/delete) or
+  `READ MEMORY STORE` (read) on the target store — the conversation body
+  references the memory store; check the API reference for the exact
+  create-conversation body fields before writing the helper.
+- Entries (used from Phase 3 on, listed for context): create
+  `POST /api/2.1/unity-catalog/memory-stores/{full_name}/entries`,
+  get `GET .../entries:get`, list `GET .../entries`,
+  search `POST .../entries:search`.
+
+Phase 2 implementation notes for the next session:
+
+- New notebook `03_episodic_memory`, run after `02`; it gets configuration via
+  `%run ./00_setup_foundations` (exposes `w`, `chat`, `lookup_order`,
+  `MEMORY_STORE_NAME`, `json`).
+- Keep the REST helper in a cell inside `03` for now; promote it to a shared
+  helper only when Phase 3 needs it too.
+- Names so far: store `support_agent_memory`, table `support_orders`,
+  default scope naming starts in Phase 3 — pick and document it there.
 
 ## Phase 3: Semantic Memory
 
