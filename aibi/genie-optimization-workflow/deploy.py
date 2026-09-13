@@ -130,6 +130,7 @@ def create_job(
             {
                 "task_key": "optimize",
                 "depends_on": [{"task_key": "begin_baseline_run"}],
+                "timeout_seconds": 3600,
                 "genie_task": {
                     "configuration_id": optimize_config_id,
                     "parameters": {
