@@ -128,13 +128,12 @@ if catalog and schema and space_id:
 
         w = WorkspaceClient()
         print(f"\nCapturing post-optimization snapshot for space_id={space_id} ...")
-        space = w.genie.get_space(space_id)
+        space = w.genie.get_space(space_id=space_id, include_serialized_space=True)
         post_config = {
             "space_id": space_id,
-            "title": getattr(space, "title", None),
-            "description": getattr(space, "description", None),
-            "table_identifiers": [str(t) for t in (getattr(space, "table_identifiers", None) or [])],
-            "instructions": getattr(space, "instructions", None),
+            "title": space.title,
+            "description": space.description,
+            "serialized_space": space.serialized_space,
         }
         safe_config = json.dumps(post_config, default=str).replace("'", "''")
         spark.sql(f"""
@@ -155,6 +154,8 @@ else:
 # COMMAND ----------
 
 # DBTITLE 1,Write final run status to Delta
+target_met = final_accuracy >= target_accuracy if isinstance(final_accuracy, (int, float)) else False
+
 if catalog and schema:
     final_status = {
         "run_id": run_id,
@@ -162,7 +163,7 @@ if catalog and schema:
         "baseline_accuracy": baseline_accuracy,
         "final_accuracy": final_accuracy,
         "target_accuracy": target_accuracy,
-        "target_met": final_accuracy >= target_accuracy if isinstance(final_accuracy, (int, float)) else False,
+        "target_met": target_met,
         "artifacts_collected": list(artifacts.keys()),
     }
 
@@ -193,7 +194,7 @@ exit_payload = json.dumps({
     "run_id": run_id,
     "baseline_accuracy": baseline_accuracy,
     "final_accuracy": final_accuracy,
-    "target_met": final_accuracy >= target_accuracy if isinstance(final_accuracy, (int, float)) else False,
+    "target_met": target_met,
 }, default=str)
 print(f"\nExiting with: {exit_payload}")
 dbutils.notebook.exit(exit_payload)

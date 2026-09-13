@@ -24,11 +24,11 @@ Each task writes a row to `<catalog>.<schema>.gso_prototype_artifacts` keyed by 
 
 | Task | Type | What it does |
 |------|------|--------------|
-| `intake_and_snapshot` | Notebook | Fetches the Genie Space config (`w.genie.get_space`) and writes `run_manifest` + `space_config_snapshot` artifacts. |
+| `intake_and_snapshot` | Notebook | Fetches the Genie Space config (`w.genie.get_space` with the full serialized space) and writes `run_manifest` + `space_config_snapshot` artifacts. |
 | `benchmark_qc` | Genie Code | Reviews the space's own benchmark set (question clarity, gold SQL validity, question↔SQL alignment) using its Genie benchmarking knowledge, repairs benchmarks in place (up to `benchmark_repair_max_tries` passes, gated by `benchmark_policy`), skips what it cannot fix, and writes a `benchmark_qc` artifact with counts, repair rationale, the approved `benchmark_question_ids`, and whether ≥15 valid benchmarks remain. |
 | `begin_baseline_run` | Notebook | Starts a Genie benchmark eval run (`genie_create_eval_run`) on the benchmark_qc-approved `benchmark_question_ids` (all questions if no artifact), polls it to completion, and writes a `baseline_run` artifact with the `eval_run_id`, final status, and accuracy counts. The `optimize` task reads the per-question results via that `eval_run_id`. |
 | `optimize` | Genie Code | Iterative loop (up to `max_rounds`), each round has four phases: ANALYZE (classify failures by root cause), RECOMMEND (specific changes + expected impact), ACT (apply levers), RE-EVALUATE (rerun the same benchmark questions as the baseline). Stops early when accuracy ≥ `target_accuracy`. Changes stack — never reverted between rounds. |
-| `publish_and_audit` | Notebook | Reads all artifacts for the run, captures the post-optimization space config snapshot (`space_config_post_opt`), prints an audit report (QC stats, baseline vs. final accuracy, per-round changes, target met?), and writes the `run_summary` artifact. |
+| `publish_and_audit` | Notebook | Reads all artifacts for the run, captures the post-optimization space snapshot (`space_config_post_opt`, full serialized space), prints an audit report (QC stats, baseline vs. final accuracy, per-round changes, target met?), and writes the `run_summary` artifact. |
 
 ### Optimization levers
 
@@ -118,7 +118,7 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
 
 All tasks read/write `<catalog>.<schema>.gso_prototype_artifacts`:
 
-`space_config_snapshot` (written by `intake_and_snapshot`, before optimization) and `space_config_post_opt` (written by `publish_and_audit`, after optimization) pair up as the before/after audit trail of the Genie Space config. Note that UC-level changes the optimizer may apply (table/column comments) live in Unity Catalog metadata, not in `get_space` output.
+`space_config_snapshot` (written by `intake_and_snapshot`, before optimization) and `space_config_post_opt` (written by `publish_and_audit`, after optimization) pair up as the before/after audit trail of the Genie Space. Both capture the full serialized space (`get_space` with `include_serialized_space=True`) — instructions, data sources, and benchmarks — so benchmark_qc repairs and optimize's space-level changes are diffable. UC-level changes the optimizer may apply (table/column comments) live in Unity Catalog metadata, not in `get_space` output, and are recorded only in the `optimization_result` artifact.
 
 | Column | Description |
 |--------|-------------|

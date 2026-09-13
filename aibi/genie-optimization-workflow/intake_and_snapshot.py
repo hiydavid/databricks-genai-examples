@@ -43,23 +43,20 @@ w = WorkspaceClient()
 
 space_config = None
 space_config_json = "{}"
-num_tables = 0
 
 if space_id:
     print(f"\nFetching Genie Space config for space_id={space_id} ...")
     try:
-        space = w.genie.get_space(space_id)
+        space = w.genie.get_space(space_id=space_id, include_serialized_space=True)
         space_config = {
             "space_id": space_id,
-            "title": getattr(space, "title", None),
-            "description": getattr(space, "description", None),
-            "table_identifiers": [str(t) for t in (getattr(space, "table_identifiers", None) or [])],
-            "instructions": getattr(space, "instructions", None),
+            "title": space.title,
+            "description": space.description,
+            "serialized_space": space.serialized_space,
         }
-        num_tables = len(space_config["table_identifiers"])
         space_config_json = json.dumps(space_config, default=str)
         print(f"  ✓ Space title: {space_config['title']}")
-        print(f"  ✓ Tables found: {num_tables}")
+        print(f"  ✓ Serialized space captured: {len(space.serialized_space or '')} chars")
     except Exception as e:
         print(f"  ⚠ Failed to fetch space config: {e}")
         space_config_json = json.dumps({"error": str(e)})
@@ -125,7 +122,6 @@ print("\n" + "=" * 60)
 print("[TASK INTAKE] Summary")
 print("=" * 60)
 print(f"  Space ID:      {space_id or '(dry run)'}")
-print(f"  Tables found:  {num_tables}")
 print(f"  Artifacts:     {'written to Delta' if (catalog and schema) else 'skipped (dry run)'}")
 print("=" * 60)
 
