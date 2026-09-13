@@ -32,6 +32,13 @@ are Databricks notebook source exported as `.py`.
 ## Run order
 
 `00_setup_foundations` → `01_stateless_baseline` → `02_client_managed_working_memory`
+→ `03_episodic_memory`
+
+The Managed Memory REST helper (conversations + entries) lives in a cell inside
+`03_episodic_memory`; promote it to a shared helper only when Phase 3 needs it too.
+Phase 2 scopes memory by customer ID (conversation scope
+`{"kind": "user_defined", "value": customer_id}`, entry scope `customer_id`);
+formal scope naming is chosen and documented in Phase 3.
 
 ## Phase discipline
 

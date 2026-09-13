@@ -13,9 +13,11 @@ The demo builds one copilot across four memory types:
 | 3 | Semantic memory (customer preferences) | Cross-case entries |
 | 4 | Procedural memory (shared playbooks) | Team-scoped entries |
 
-Phase 1 (this folder's current state) covers working memory: it demonstrates why a
-stateless agent fails on follow-up questions, and that a client-managed history list
-solves the problem *within* a session but disappears when the session ends.
+Phases 1 and 2 (this folder's current state) cover working and episodic memory:
+why a stateless agent fails on follow-up questions, that a client-managed history
+list only survives the session, and that Managed Memory conversations and entries
+give support cases durable, resumable history — including recall of a resolved
+case from a later one.
 
 ## Notebooks
 
@@ -24,6 +26,7 @@ solves the problem *within* a session but disappears when the session ends.
 | `00_setup_foundations` | Idempotent setup: memory store, synthetic `support_orders` Delta table, read-only `lookup_order` tool, and a `chat` helper. |
 | `01_stateless_baseline` | A stateless copilot answers a status question, then fails on a follow-up that references "that order". |
 | `02_client_managed_working_memory` | The client keeps a `messages` list: follow-ups work within the session, then fail again once the list is cleared. |
+| `03_episodic_memory` | One managed conversation per support case: history survives client recreation, resolved cases are saved as entries, and a new case recalls a prior case summary. |
 
 ## Prerequisites
 
@@ -41,7 +44,8 @@ solves the problem *within* a session but disappears when the session ends.
 
 1. Import this folder into a Databricks workspace (Repos or folder import).
 2. Run `00_setup_foundations` once (it is safe to rerun).
-3. Run `01_stateless_baseline`, then `02_client_managed_working_memory`.
+3. Run `01_stateless_baseline`, then `02_client_managed_working_memory`, then
+   `03_episodic_memory`. Notebooks 01–03 are also safe to rerun.
 
 All resource names are configurable through the widgets in `00_setup_foundations`;
 all data is synthetic. See `PLAN.md` for the full phased roadmap.
