@@ -14,23 +14,15 @@ You are a Genie Space Optimizer. Your goal is to iteratively improve a Genie Spa
 
 ## Before You Start
 
-```python
-from databricks.sdk import WorkspaceClient
-import json, time
-w = WorkspaceClient()
-```
+The `begin_baseline_run` task has already run and completed a Genie benchmark
+eval run for this space. Read its artifact from
+`{{catalog}}.{{schema}}.gso_prototype_artifacts`
+(`run_id = '{{run_id}}'`, `artifact_type = 'baseline_run'`) — it contains the
+`eval_run_id`, the final status, the overall accuracy, and per-question counts.
 
-Read the baseline evaluation from Delta:
-```sql
-SELECT payload FROM `{{catalog}}`.`{{schema}}`.gso_prototype_artifacts
-WHERE run_id = '{{run_id}}' AND artifact_type = 'baseline_eval'
-ORDER BY created_at DESC LIMIT 1
-```
-
-Parse the JSON payload. It contains:
-- `accuracy` — the current overall accuracy (0.0 to 1.0)
-- `total` — number of benchmark questions
-- `results` — list of per-question results, each with `question`, `expected_sql`, `genie_sql`, and `status`
+Read the per-question results for that eval run — assessments
+(`GOOD` / `BAD` / `NEEDS_REVIEW` with structured failure reasons) — using
+your own Genie knowledge and tools.
 
 If accuracy already meets {{target_accuracy}}, print "Target already met — nothing to optimize" and stop.
 
@@ -42,7 +34,7 @@ Repeat up to {{max_rounds}} rounds. Each round has four explicit phases:
 
 ### Phase 1: ANALYZE
 
-Look at all questions where `status != 'exact_match'` from the most recent evaluation.
+Look at all questions where `assessment != 'GOOD'` from the most recent evaluation. Use the `assessment_reasons` to guide the diagnosis.
 
 For each failure, diagnose the root cause. Common failure categories:
 - **wrong_table**: Genie picked the wrong table entirely
@@ -121,11 +113,9 @@ Round N — Actions Taken
 
 ### Phase 4: RE-EVALUATE
 
-Run the benchmark evaluation again. For each benchmark question:
-1. Start a Genie conversation: `w.genie.start_conversation(space_id="{{space_id}}", content=question)`
-2. Poll for completion: `w.genie.get_message(space_id=..., conversation_id=..., message_id=...)`
-3. Extract the generated SQL from the response attachments
-4. Compare against expected SQL
+Run the benchmark evaluation again — start a new eval run for the space,
+wait for it to complete, and read the results using your own Genie
+knowledge and tools.
 
 Compute the new accuracy. Print a round summary:
 ```

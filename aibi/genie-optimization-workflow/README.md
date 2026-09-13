@@ -11,7 +11,7 @@ intake_and_snapshot   (notebook)      → fetch space config, write run manifest
         ↓
 benchmark_qc          (Genie Code)    → validate / repair the benchmark question set
         ↓
-eval_baseline         (notebook)      → run benchmarks against the space, measure accuracy
+begin_baseline_run    (notebook)      → start the benchmark eval run, poll to completion, record status + accuracy
         ↓
 optimize              (Genie Code)    → analyze failures, apply levers, re-evaluate in a loop
         ↓
@@ -25,8 +25,8 @@ Each task writes a row to `<catalog>.<schema>.gso_prototype_artifacts` keyed by 
 | Task | Type | What it does |
 |------|------|--------------|
 | `intake_and_snapshot` | Notebook | Fetches the Genie Space config (`w.genie.get_space`) and writes `run_manifest` + `space_config_snapshot` artifacts. |
-| `benchmark_qc` | Genie Code | Reviews the benchmark table (question clarity, gold SQL validity, question↔SQL alignment) using its own Genie benchmarking knowledge. Repairs benchmarks in place (up to `benchmark_repair_max_tries` passes, gated by `benchmark_policy`), skips what it cannot fix, and writes a `benchmark_qc` artifact with counts, repair rationale, and whether ≥15 valid benchmarks remain. |
-| `eval_baseline` | Notebook | For each benchmark, starts a Genie conversation, polls for completion, extracts the generated SQL from message attachments, and compares it (normalized exact match) against the gold SQL. Persists per-question results and overall accuracy. |
+| `benchmark_qc` | Genie Code | Reviews the space's own benchmark set (question clarity, gold SQL validity, question↔SQL alignment) using its Genie benchmarking knowledge, repairs benchmarks in place (up to `benchmark_repair_max_tries` passes, gated by `benchmark_policy`), skips what it cannot fix, and writes a `benchmark_qc` artifact with counts, repair rationale, the approved `benchmark_question_ids`, and whether ≥15 valid benchmarks remain. |
+| `begin_baseline_run` | Notebook | Starts a Genie benchmark eval run (`genie_create_eval_run`) on the benchmark_qc-approved `benchmark_question_ids` (all questions if no artifact), polls it to completion, and writes a `baseline_run` artifact with the `eval_run_id`, final status, and accuracy counts. The `optimize` task reads the per-question results via that `eval_run_id`. |
 | `optimize` | Genie Code | Iterative loop (up to `max_rounds`), each round has four phases: ANALYZE (classify failures by root cause), RECOMMEND (specific changes + expected impact), ACT (apply levers), RE-EVALUATE (rerun benchmarks). Stops early when accuracy ≥ `target_accuracy`. Changes stack — never reverted between rounds. |
 | `publish_and_audit` | Notebook | Reads all artifacts for the run, captures the post-optimization space config snapshot (`space_config_post_opt`), prints an audit report (QC stats, baseline vs. final accuracy, per-round changes, target met?), and writes the `run_summary` artifact. |
 
@@ -45,7 +45,7 @@ The `optimize` prompt can act through four levers (selectable via the `levers` j
 genie-optimization-workflow/
 ├── deploy.py                 # Databricks notebook source (creates the automations + 5-task job)
 ├── intake_and_snapshot.py    # Databricks notebook source (task 1)
-├── eval_baseline.py          # Databricks notebook source (task 3)
+├── begin_baseline_run.py     # Databricks notebook source (task 3)
 ├── publish_and_audit.py      # Databricks notebook source (task 5)
 └── prompts/
     ├── benchmark_qc.md       # Prompt for the benchmark_qc Genie Code automation
@@ -60,7 +60,7 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
 
 - Python with `databricks-sdk` installed
 - `DATABRICKS_HOST` / `DATABRICKS_TOKEN` (or another SDK auth method) pointing at the target workspace
-- A benchmark table with columns `question` and `expected_sql` (optionally `expected_result`); pass its full name as the `benchmark_table` job parameter
+- Benchmark questions loaded into the Genie Space (the eval-run API evaluates the space's own benchmark set; up to 500 questions per space)
 - A SQL warehouse ID for validating benchmark SQL
 
 ### Steps
@@ -104,8 +104,7 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
 |-----------|---------|-------------|
 | `run_id` | `""` | Run identifier; empty = ad-hoc (tasks use whatever the widget holds) |
 | `space_id` | `""` | Target Genie Space. Empty → dry run (tasks skip API/Delta work) |
-| `catalog` / `schema` | `""` | Unity Catalog location for benchmarks + artifacts |
-| `benchmark_table` | `""` | Full name of the benchmark table for this run (e.g. `<catalog>.<schema>.genie_benchmarks`). Empty → benchmark_qc is a dry run |
+| `catalog` / `schema` | `""` | Unity Catalog location for artifacts |
 | `levers` | `[1,2,3,4,5,6]` | Which optimization levers the optimizer may use |
 | `max_rounds` | `3` | Max optimization iterations |
 | `target_accuracy` | `0.90` | Stop when accuracy reaches this |
@@ -124,13 +123,12 @@ All tasks read/write `<catalog>.<schema>.gso_prototype_artifacts`:
 | Column | Description |
 |--------|-------------|
 | `run_id` | Groups all rows from one pipeline run |
-| `artifact_type` | `run_manifest`, `space_config_snapshot`, `benchmark_qc`, `baseline_eval`, `optimization_result`, `space_config_post_opt`, `run_summary` |
+| `artifact_type` | `run_manifest`, `space_config_snapshot`, `benchmark_qc`, `baseline_run`, `optimization_result`, `space_config_post_opt`, `run_summary` |
 | `payload` | JSON string with the artifact contents |
 | `created_at` | Timestamp |
 
 ## Prototype limitations
 
-- **Exact-match SQL comparison**: `eval_baseline` normalizes whitespace/case and compares strings; semantically equivalent SQL that differs textually counts as a miss (semantic comparison is a TODO in the code).
 - **String-interpolated SQL**: notebooks build `INSERT`/`SELECT` statements via f-strings rather than parameterized queries — fine for a prototype with internal parameters, but not safe against arbitrary input.
 - **Prompt-defined tasks**: the Genie Code tasks execute whatever the LLM decides from the prompt; there is no hard guarantee on artifact shape beyond what the prompt asks for.
 - **Internal API**: the `deploy` notebook uses the `/api/2.0/alerts-internal/scheduled-insights` endpoint for Genie Code automations, which is internal and may change.

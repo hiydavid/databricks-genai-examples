@@ -84,7 +84,6 @@ def create_job(
             {"name": "space_id", "default": ""},
             {"name": "catalog", "default": ""},
             {"name": "schema", "default": ""},
-            {"name": "benchmark_table", "default": ""},
             {"name": "levers", "default": "[1,2,3,4,5,6]"},
             {"name": "max_rounds", "default": "3"},
             {"name": "target_accuracy", "default": "0.90"},
@@ -113,7 +112,6 @@ def create_job(
                         "space_id": "{{job.parameters.space_id}}",
                         "catalog": "{{job.parameters.catalog}}",
                         "schema": "{{job.parameters.schema}}",
-                        "benchmark_table": "{{job.parameters.benchmark_table}}",
                         "benchmark_policy": "{{job.parameters.benchmark_policy}}",
                         "benchmark_repair_max_tries": "{{job.parameters.benchmark_repair_max_tries}}",
                         "warehouse_id": "{{job.parameters.warehouse_id}}",
@@ -121,17 +119,17 @@ def create_job(
                 },
             },
             {
-                "task_key": "eval_baseline",
+                "task_key": "begin_baseline_run",
                 "depends_on": [{"task_key": "benchmark_qc"}],
                 "notebook_task": {
-                    "notebook_path": f"{notebook_root}/eval_baseline",
+                    "notebook_path": f"{notebook_root}/begin_baseline_run",
                     "source": "WORKSPACE",
                 },
                 "timeout_seconds": 3600,
             },
             {
                 "task_key": "optimize",
-                "depends_on": [{"task_key": "eval_baseline"}],
+                "depends_on": [{"task_key": "begin_baseline_run"}],
                 "genie_task": {
                     "configuration_id": optimize_config_id,
                     "parameters": {

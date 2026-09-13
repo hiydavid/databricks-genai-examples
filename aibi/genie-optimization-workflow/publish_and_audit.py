@@ -84,17 +84,19 @@ if qc:
 else:
     print(f"\n🔍 Benchmark QC: no artifact found")
 
-# --- Baseline eval ---
-baseline = artifacts.get("baseline_eval", {})
-baseline_accuracy = baseline.get("accuracy", 0.0)
+# --- Baseline run ---
+baseline = artifacts.get("baseline_run", {})
+opt = artifacts.get("optimization_result", {})
+baseline_accuracy = baseline.get("accuracy", opt.get("starting_accuracy", 0.0))
 if baseline:
     print(f"\n📊 Baseline Evaluation")
-    print(f"  Accuracy: {baseline_accuracy:.1%} ({baseline.get('correct', 0)}/{baseline.get('total', 0)})")
+    print(f"  Eval run:  {baseline.get('eval_run_id', 'n/a')}")
+    print(f"  Status:    {baseline.get('eval_run_status', 'n/a')}")
+    print(f"  Accuracy:  {baseline_accuracy:.1%}" if isinstance(baseline_accuracy, (int, float)) else "  Accuracy:  n/a")
 else:
     print(f"\n📊 Baseline Evaluation: no artifact found")
 
 # --- Optimization result ---
-opt = artifacts.get("optimization_result", {})
 final_accuracy = opt.get("final_accuracy", baseline_accuracy)
 if opt:
     print(f"\n⚙️ Optimization")
