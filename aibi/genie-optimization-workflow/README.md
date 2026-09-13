@@ -102,17 +102,16 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `run_id` | `""` | Run identifier; empty = ad-hoc (tasks use whatever the widget holds) |
+| `run_id` | `{{job.run_id}}` | Run identifier; auto-set to the job run ID each run (overridable at run-now) |
 | `space_id` | `""` | Target Genie Space. Empty → dry run (tasks skip API/Delta work) |
 | `catalog` / `schema` | `""` | Unity Catalog location for artifacts |
-| `levers` | `[1,2,3,4,5,6]` | Which optimization levers the optimizer may use |
+| `levers` | `[1,2,3,4]` | Which optimization levers the optimizer may use |
 | `max_rounds` | `3` | Max optimization iterations |
 | `target_accuracy` | `0.90` | Stop when accuracy reaches this |
 | `benchmark_policy` | `repair_allowed` | Whether QC may repair broken benchmarks |
 | `benchmark_repair_max_tries` | `3` | Repair attempts per benchmark |
 | `warehouse_id` | `""` | SQL warehouse for validating benchmark SQL |
-| `llm_model` | `databricks-claude-sonnet-4-6` | Model for Genie Code tasks |
-| `triggered_by` | `""` | Free-form provenance field |
+| `triggered_by` | `""` | Email of the user who triggered the run (recorded in the run manifest) |
 
 ## Artifacts table
 

@@ -16,7 +16,6 @@
 # COMMAND ----------
 
 # DBTITLE 1,Parameters
-import json
 from pathlib import Path
 
 from databricks.sdk import WorkspaceClient
@@ -31,11 +30,11 @@ notebook_root = dbutils.widgets.get("notebook_root").strip()
 prompts_dir = dbutils.widgets.get("prompts_dir").strip()
 
 w = WorkspaceClient()
-uid = str(w.current_user.me().id)
+me = w.current_user.me()
+uid = str(me.id)
 
 if not notebook_root:
-    email = w.current_user.me().user_name
-    notebook_root = f"/Workspace/Users/{email}/gso-prototype"
+    notebook_root = f"/Workspace/Users/{me.user_name}/gso-prototype"
 if not prompts_dir:
     prompts_dir = f"{notebook_root}/prompts"
 
@@ -64,7 +63,7 @@ def create_automation(w: WorkspaceClient, uid: str, prompt: str, name: str) -> s
         },
     )
     config_id = resp["name"]
-    print(f"  \u2713 Created automation '{name}': {config_id}")
+    print(f"  \u2713 Created automation from {name} prompt: {config_id}")
     return config_id
 
 
@@ -80,18 +79,17 @@ def create_job(
         "max_concurrent_runs": 1,
         "queue": {"enabled": True},
         "parameters": [
-            {"name": "run_id", "default": ""},
+            {"name": "run_id", "default": "{{job.run_id}}"},
             {"name": "space_id", "default": ""},
             {"name": "catalog", "default": ""},
             {"name": "schema", "default": ""},
-            {"name": "levers", "default": "[1,2,3,4,5,6]"},
+            {"name": "levers", "default": "[1,2,3,4]"},
             {"name": "max_rounds", "default": "3"},
             {"name": "target_accuracy", "default": "0.90"},
             {"name": "benchmark_repair_max_tries", "default": "3"},
             {"name": "benchmark_policy", "default": "repair_allowed"},
             {"name": "triggered_by", "default": ""},
             {"name": "warehouse_id", "default": ""},
-            {"name": "llm_model", "default": "databricks-claude-sonnet-4-6"},
         ],
         "tasks": [
             {
@@ -105,6 +103,7 @@ def create_job(
             {
                 "task_key": "benchmark_qc",
                 "depends_on": [{"task_key": "intake_and_snapshot"}],
+                "timeout_seconds": 3600,
                 "genie_task": {
                     "configuration_id": benchmark_qc_config_id,
                     "parameters": {
@@ -201,4 +200,4 @@ print(f"  benchmark_qc automation: {benchmark_qc_config_id}")
 print(f"  optimize automation:     {optimize_config_id}")
 print()
 print("To run:")
-print(f"  databricks jobs run-now {job_id} --json '{{\"job_parameters\": {{\"space_id\": \"<your-space-id>\", \"catalog\": \"<catalog>\", \"schema\": \"<schema>\"}}}}'")
+print(f"  databricks jobs run-now {job_id} --json '{{\"job_parameters\": {{\"space_id\": \"<your-space-id>\", \"catalog\": \"<catalog>\", \"schema\": \"<schema>\", \"warehouse_id\": \"<warehouse-id>\", \"triggered_by\": \"<your-email>\"}}}}'")

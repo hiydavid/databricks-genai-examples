@@ -15,13 +15,17 @@
 # -- Parameters --
 dbutils.widgets.text("run_id", "")
 dbutils.widgets.text("space_id", "")
+dbutils.widgets.text("catalog", "")
+dbutils.widgets.text("schema", "")
 dbutils.widgets.text("warehouse_id", "")
+dbutils.widgets.text("triggered_by", "")
 
 run_id = dbutils.widgets.get("run_id").strip()
 space_id = dbutils.widgets.get("space_id").strip()
 catalog = dbutils.widgets.get("catalog").strip()
 schema = dbutils.widgets.get("schema").strip()
 warehouse_id = dbutils.widgets.get("warehouse_id").strip()
+triggered_by = dbutils.widgets.get("triggered_by").strip()
 
 print("=" * 60)
 print("[TASK INTAKE] Intake & Snapshot — Prototype")
@@ -86,6 +90,7 @@ if catalog and schema:
         "space_id": space_id,
         "catalog": catalog,
         "schema": schema,
+        "triggered_by": triggered_by,
     })
 
     # Insert run_manifest artifact
