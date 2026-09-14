@@ -58,6 +58,7 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
 
 ### Prerequisites
 
+- The **Genie Code Job Task** beta enabled for your account/workspace in the [Databricks preview portal](https://previews.databricks.com). Without it, the `genie_task` entries in the job definition are not recognized — the job is still created, but the Genie Code tasks appear in the workflow UI as unconfigured tasks you must set up manually.
 - Databricks CLI installed and configured (used for uploading notebooks and triggering runs — all SDK code runs inside the workspace, not locally)
 - Benchmark questions loaded into the Genie Space (the eval-run API evaluates the space's own benchmark set; up to 500 questions per space)
 - A SQL warehouse ID for validating benchmark SQL

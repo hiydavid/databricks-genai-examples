@@ -10,6 +10,7 @@
 # MAGIC One-time deployment notebook. Creates the two Genie Code automations (from the prompt `.md` files in `prompts/`) and the 5-task job `gso-prototype-v2` in the current workspace.
 # MAGIC
 # MAGIC **Prerequisites**
+# MAGIC - The **Genie Code Job Task** beta must be enabled for your account/workspace in the [Databricks preview portal](https://previews.databricks.com). Without it, the `genie_task` entries in the job definition are not recognized — the job is still created, but the Genie Code tasks appear in the workflow UI as unconfigured tasks you must set up manually.
 # MAGIC - The task notebooks and `prompts/*.md` are already uploaded to the workspace (e.g. via `databricks workspace import-dir ./genie-optimization-workflow /Workspace/Users/you@company.com/gso-prototype`). Workspace `.md` files are plain Workspace files and can be read directly with `open()` on DBR 14.2+.
 # MAGIC - Run this notebook in the target workspace. The SDK authenticates with the notebook's own context — no token needed.
 
