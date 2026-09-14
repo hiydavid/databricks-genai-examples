@@ -58,8 +58,7 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
 
 ### Prerequisites
 
-- Python with `databricks-sdk` installed
-- `DATABRICKS_HOST` / `DATABRICKS_TOKEN` (or another SDK auth method) pointing at the target workspace
+- Databricks CLI installed and configured (used for uploading notebooks and triggering runs — all SDK code runs inside the workspace, not locally)
 - Benchmark questions loaded into the Genie Space (the eval-run API evaluates the space's own benchmark set; up to 500 questions per space)
 - A SQL warehouse ID for validating benchmark SQL
 
@@ -85,6 +84,8 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
 
    `deploy` creates two Genie Code automations (via the internal scheduled-insights API) and one job named `gso-prototype-v2`, wiring the automation `configuration_id`s into the job's `genie_task` entries.
 
+> **One-time only**: deploying always creates new automations and a new job — it does not update or reuse existing ones. Re-running the deploy notebook duplicates both; delete the old job and automations first if you need to redeploy.
+
 3. Run the job:
 
    ```bash
@@ -93,7 +94,8 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
        "space_id": "<genie-space-id>",
        "catalog": "<catalog>",
        "schema": "<schema>",
-       "warehouse_id": "<warehouse-id>"
+       "warehouse_id": "<warehouse-id>",
+       "triggered_by": "<your-email>"
      }
    }'
    ```
