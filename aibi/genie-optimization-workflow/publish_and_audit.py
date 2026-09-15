@@ -9,7 +9,7 @@
 
 # DBTITLE 1,Parameters
 import json
-from datetime import datetime
+import math
 
 dbutils.widgets.text("run_id", "")
 dbutils.widgets.text("space_id", "")
@@ -22,8 +22,16 @@ run_id = dbutils.widgets.get("run_id").strip()
 space_id = dbutils.widgets.get("space_id").strip()
 catalog = dbutils.widgets.get("catalog").strip()
 schema = dbutils.widgets.get("schema").strip()
+
+if not all((space_id, catalog, schema)):
+    dbutils.notebook.exit(json.dumps({"status": "DRY_RUN", "run_id": run_id}))
+if not run_id:
+    raise ValueError("run_id is required for a configured run; use the job run ID")
+
 target_accuracy = float(dbutils.widgets.get("target_accuracy") or "0.90")
 max_rounds = int(dbutils.widgets.get("max_rounds") or "3")
+if not math.isfinite(target_accuracy) or not 0 <= target_accuracy <= 1:
+    raise ValueError("target_accuracy must be between 0 and 1")
 
 print("=" * 60)
 print("[TASK PUBLISH] Publish & Audit — Prototype")
@@ -36,28 +44,102 @@ print(f"  target_accuracy: {target_accuracy}")
 
 # DBTITLE 1,Load all artifacts for this run
 artifacts = {}
+parse_errors = {}
+artifacts_table = ".".join(
+    f"`{part.replace('`', '``')}`" for part in (catalog, schema, "gso_prototype_artifacts")
+)
+print(f"\nLoading artifacts from {artifacts_table} for run_id={run_id} ...")
 
-if catalog and schema:
-    artifacts_table = f"`{catalog}`.`{schema}`.gso_prototype_artifacts"
-    print(f"\nLoading artifacts from {artifacts_table} for run_id={run_id} ...")
+rows = spark.sql(f"""
+    SELECT artifact_type, payload, created_at
+    FROM {artifacts_table}
+    WHERE run_id = :run_id
+    ORDER BY created_at
+""", args={"run_id": run_id}).collect()
 
-    rows = spark.sql(f"""
-        SELECT artifact_type, payload, created_at
-        FROM {artifacts_table}
-        WHERE run_id = '{run_id}'
-        ORDER BY created_at
-    """).collect()
+for row in rows:
+    artifact_type = row["artifact_type"]
+    # A repaired audit must capture a fresh snapshot, not reuse its prior output.
+    if artifact_type in ("space_config_post_opt", "run_summary"):
+        continue
+    try:
+        payload = json.loads(row["payload"])
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be a JSON object")
+        artifacts[artifact_type] = payload
+        parse_errors.pop(artifact_type, None)
+    except (ValueError, TypeError) as e:
+        artifacts[artifact_type] = {}
+        parse_errors[artifact_type] = f"Invalid {artifact_type} artifact: {e}"
 
-    for row in rows:
-        artifact_type = row["artifact_type"]
-        try:
-            artifacts[artifact_type] = json.loads(row["payload"])
-        except (json.JSONDecodeError, TypeError):
-            artifacts[artifact_type] = {"raw": row["payload"]}
+print(f"  ✓ Found {len(artifacts)} artifact(s): {', '.join(artifacts.keys())}")
 
-    print(f"  ✓ Found {len(artifacts)} artifact(s): {', '.join(artifacts.keys())}")
-else:
-    print("\n  ⏭ No catalog/schema — skipping artifact load (dry run)")
+# COMMAND ----------
+
+# DBTITLE 1,Validate the audit inputs
+errors = list(parse_errors.values())
+required_artifacts = ("run_manifest", "space_config_snapshot", "benchmark_qc",
+                      "baseline_run", "optimization_result")
+for artifact_type in required_artifacts:
+    if artifact_type not in artifacts:
+        errors.append(f"Missing required artifact: {artifact_type}")
+
+
+def valid_accuracy(value):
+    return type(value) in (int, float) and math.isfinite(value) and 0 <= value <= 1
+
+
+def valid_snapshot(snapshot):
+    try:
+        return snapshot.get("space_id") == space_id and isinstance(
+            json.loads(snapshot.get("serialized_space")), dict
+        )
+    except (ValueError, TypeError):
+        return False
+
+
+manifest = artifacts.get("run_manifest", {})
+qc = artifacts.get("benchmark_qc", {})
+baseline = artifacts.get("baseline_run", {})
+opt = artifacts.get("optimization_result", {})
+
+if manifest.get("run_id") != run_id or manifest.get("space_id") != space_id:
+    errors.append("Run manifest does not match this run and space")
+if not valid_snapshot(artifacts.get("space_config_snapshot", {})):
+    errors.append("Missing or invalid pre-optimization space snapshot")
+approved_ids = qc.get("approved_benchmark_question_ids")
+if (not isinstance(approved_ids, list) or not approved_ids
+        or any(not isinstance(i, str) or not i.strip() for i in approved_ids)):
+    errors.append("QC artifact must contain a nonempty list of approved benchmark IDs")
+if baseline.get("eval_run_status") != "DONE" or not baseline.get("eval_run_id"):
+    errors.append("Baseline evaluation did not complete successfully")
+if baseline.get("status") != "SUCCESS" or baseline.get("error"):
+    errors.append("Baseline artifact does not report success")
+if opt.get("status") != "SUCCESS" or opt.get("error"):
+    errors.append("Optimization artifact does not report success")
+
+baseline_accuracy = baseline.get("accuracy")
+final_accuracy = opt.get("final_accuracy")
+if not valid_accuracy(baseline_accuracy):
+    errors.append("Missing or invalid baseline accuracy")
+    baseline_accuracy = None
+if not valid_accuracy(final_accuracy):
+    errors.append("Missing or invalid final accuracy in optimization_result")
+    final_accuracy = None
+if not valid_accuracy(opt.get("starting_accuracy")):
+    errors.append("Missing or invalid starting accuracy in optimization_result")
+elif baseline_accuracy is not None and not math.isclose(opt["starting_accuracy"], baseline_accuracy):
+    errors.append("Optimization starting accuracy does not match the baseline")
+rounds = opt.get("rounds_executed")
+if type(rounds) is not int or not 0 <= rounds <= max_rounds:
+    errors.append("Missing or invalid rounds_executed in optimization_result")
+changes = opt.get("changes_per_round")
+if (not isinstance(changes, list)
+        or any(not isinstance(r, dict) or not isinstance(r.get("summary"), str) for r in changes)):
+    errors.append("Missing or invalid changes_per_round in optimization_result")
+    changes = []
+if not isinstance(opt.get("remaining_failures"), list):
+    errors.append("Missing or invalid remaining_failures in optimization_result")
 
 # COMMAND ----------
 
@@ -67,13 +149,11 @@ print("AUDIT REPORT")
 print("═" * 60)
 
 # --- Run manifest ---
-manifest = artifacts.get("run_manifest", {})
 print(f"\n📋 Run Manifest")
 print(f"  Run ID:     {manifest.get('run_id', run_id)}")
 print(f"  Space ID:   {manifest.get('space_id', space_id)}")
 
 # --- Benchmark QC ---
-qc = artifacts.get("benchmark_qc", {})
 if qc:
     print(f"\n🔍 Benchmark QC")
     print(f"  Total benchmarks:     {qc.get('total', 'n/a')}")
@@ -85,9 +165,6 @@ else:
     print(f"\n🔍 Benchmark QC: no artifact found")
 
 # --- Baseline run ---
-baseline = artifacts.get("baseline_run", {})
-opt = artifacts.get("optimization_result", {})
-baseline_accuracy = baseline.get("accuracy", opt.get("starting_accuracy", 0.0))
 if baseline:
     print(f"\n📊 Baseline Evaluation")
     print(f"  Eval run:  {baseline.get('eval_run_id', 'n/a')}")
@@ -97,17 +174,14 @@ else:
     print(f"\n📊 Baseline Evaluation: no artifact found")
 
 # --- Optimization result ---
-final_accuracy = opt.get("final_accuracy", baseline_accuracy)
 if opt:
     print(f"\n⚙️ Optimization")
     print(f"  Starting accuracy:  {opt.get('starting_accuracy', 'n/a')}")
     print(f"  Final accuracy:     {opt.get('final_accuracy', 'n/a')}")
     print(f"  Rounds executed:    {opt.get('rounds_executed', 'n/a')} of {max_rounds}")
-    target_met = final_accuracy >= target_accuracy if isinstance(final_accuracy, (int, float)) else False
-    print(f"  Target met:         {'Yes ✓' if target_met else 'No ✗'}")
-    if opt.get("changes_per_round"):
+    if changes:
         print(f"  Changes per round:")
-        for rnd in opt["changes_per_round"]:
+        for rnd in changes:
             print(f"    Round {rnd.get('round', '?')}: {rnd.get('summary', 'n/a')}")
 else:
     print(f"\n⚙️ Optimization: no artifact found")
@@ -122,79 +196,67 @@ print("\n" + "═" * 60)
 # Note: UC-level changes the optimizer may have made (table/column comments) are
 # not part of get_space output and are therefore not captured here.
 
-if catalog and schema and space_id:
-    try:
-        from databricks.sdk import WorkspaceClient
+try:
+    from databricks.sdk import WorkspaceClient
 
-        w = WorkspaceClient()
-        print(f"\nCapturing post-optimization snapshot for space_id={space_id} ...")
-        space = w.genie.get_space(space_id=space_id, include_serialized_space=True)
-        post_config = {
-            "space_id": space_id,
-            "title": space.title,
-            "description": space.description,
-            "serialized_space": space.serialized_space,
-        }
-        safe_config = json.dumps(post_config, default=str).replace("'", "''")
-        spark.sql(f"""
-            INSERT INTO {artifacts_table}
-            VALUES (
-                '{run_id}',
-                'space_config_post_opt',
-                '{safe_config}',
-                current_timestamp()
-            )
-        """)
-        print(f"  ✓ Wrote space_config_post_opt artifact to {artifacts_table}")
-    except Exception as e:
-        print(f"  ⚠ Failed to capture post-optimization snapshot: {e}")
-else:
-    print("\n  ⏭ Skipping post-optimization snapshot (dry run or no space_id)")
+    w = WorkspaceClient()
+    print(f"\nCapturing post-optimization snapshot for space_id={space_id} ...")
+    space = w.genie.get_space(space_id=space_id, include_serialized_space=True)
+    post_config = {
+        "space_id": space_id,
+        "title": space.title,
+        "description": space.description,
+        "serialized_space": space.serialized_space,
+    }
+    if not valid_snapshot(post_config):
+        raise ValueError("Genie did not return a valid serialized space snapshot")
+    spark.sql(f"""
+        INSERT INTO {artifacts_table} (run_id, artifact_type, payload, created_at)
+        VALUES (:run_id, :artifact_type, :payload, current_timestamp())
+    """, args={
+        "run_id": run_id,
+        "artifact_type": "space_config_post_opt",
+        "payload": json.dumps(post_config),
+    })
+    artifacts["space_config_post_opt"] = post_config
+    print(f"  ✓ Wrote space_config_post_opt artifact to {artifacts_table}")
+except Exception as e:
+    errors.append(f"Failed to capture post-optimization snapshot: {e}")
 
 # COMMAND ----------
 
 # DBTITLE 1,Write final run status to Delta
-target_met = final_accuracy >= target_accuracy if isinstance(final_accuracy, (int, float)) else False
-
-if catalog and schema:
-    final_status = {
-        "run_id": run_id,
-        "space_id": space_id,
-        "baseline_accuracy": baseline_accuracy,
-        "final_accuracy": final_accuracy,
-        "target_accuracy": target_accuracy,
-        "target_met": target_met,
-        "artifacts_collected": list(artifacts.keys()),
-    }
-
-    safe_payload = json.dumps(final_status, default=str).replace("'", "''")
-    spark.sql(f"""
-        INSERT INTO {artifacts_table}
-        VALUES (
-            '{run_id}',
-            'run_summary',
-            '{safe_payload}',
-            current_timestamp()
-        )
-    """)
-    print(f"\n  ✓ Wrote run_summary artifact to {artifacts_table}")
-else:
-    final_status = {"status": "DRY_RUN"}
-    print("\n  ⏭ No catalog/schema — skipping Delta write (dry run)")
+audit_complete = not errors
+# Unknown is distinct from a completed optimization that missed its target.
+target_met = final_accuracy >= target_accuracy if audit_complete else None
+final_status = {
+    "status": "SUCCESS" if audit_complete else "INCOMPLETE",
+    "run_id": run_id,
+    "space_id": space_id,
+    "baseline_accuracy": baseline_accuracy,
+    "final_accuracy": final_accuracy,
+    "target_accuracy": target_accuracy,
+    "target_met": target_met,
+    "audit_complete": audit_complete,
+    "errors": errors,
+    "artifacts_collected": list(artifacts.keys()),
+}
+spark.sql(f"""
+    INSERT INTO {artifacts_table} (run_id, artifact_type, payload, created_at)
+    VALUES (:run_id, :artifact_type, :payload, current_timestamp())
+""", args={"run_id": run_id, "artifact_type": "run_summary", "payload": json.dumps(final_status)})
+print(f"\n  ✓ Wrote run_summary artifact to {artifacts_table}")
+print(f"  Audit complete: {audit_complete}; target met: {target_met}")
 
 # COMMAND ----------
 
 # DBTITLE 1,Exit
 print("\n" + "=" * 60)
-print("[TASK PUBLISH] Complete")
+print(f"[TASK PUBLISH] {final_status['status']}")
 print("=" * 60)
 
-exit_payload = json.dumps({
-    "status": "SUCCESS",
-    "run_id": run_id,
-    "baseline_accuracy": baseline_accuracy,
-    "final_accuracy": final_accuracy,
-    "target_met": target_met,
-}, default=str)
+if errors:
+    raise RuntimeError("Audit incomplete: " + "; ".join(errors))
+exit_payload = json.dumps(final_status)
 print(f"\nExiting with: {exit_payload}")
 dbutils.notebook.exit(exit_payload)

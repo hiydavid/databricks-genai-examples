@@ -17,11 +17,21 @@ you exhaust your rounds.
 
 ## Before You Start
 
-The `begin_baseline_run` task already ran and completed a Genie benchmark
-eval run for this space. Read its artifact from the artifacts table
+Before using any tools: if `{{space_id}}`, `{{catalog}}`, or `{{schema}}` is
+empty, report `DRY_RUN` and exit without API calls or Delta reads/writes.
+For a configured run, an empty `{{run_id}}` is an error; fail the task.
+
+Read the most recent artifact written by `begin_baseline_run` from the artifacts table
 (`run_id = '{{run_id}}'`, `artifact_type = 'baseline_run'`) — it contains the
 `eval_run_id`, the final status, the overall accuracy, and the
-`benchmark_question_ids` the run covered.
+`benchmark_question_ids` the run covered. Order by `created_at` descending.
+
+Before making changes, require a valid artifact with `status = 'SUCCESS'`,
+`eval_run_status = 'DONE'`, a nonempty `eval_run_id`, a nonempty
+`benchmark_question_ids` list, and numeric accuracy between 0 and 1.
+If any of these are missing or invalid, fail the task. An absent or unfinished
+evaluation is not a baseline with zero accuracy. Do not substitute another run
+or broaden the question set.
 
 Read the per-question results for that eval run — assessments
 (`GOOD` / `BAD` / `NEEDS_REVIEW`) with structured `assessment_reasons` — using
@@ -44,7 +54,12 @@ Repeat up to `{{max_rounds}}` rounds. Each round has four phases:
    descriptions, example SQL / certified questions.
 4. **RE-EVALUATE** — start a new eval run on **the same
    `benchmark_question_ids`** the baseline covered, wait for it to complete,
-   and read the results.
+   and read the results. Only accept `DONE` with positive `num_questions`
+   and valid `num_correct`; compute accuracy as `num_correct / num_questions`,
+   matching the baseline. A failed, cancelled, timed-out, or unfinished run
+   has no usable final accuracy. Record the error and eval run ID in a
+   diagnostic `optimization_result` artifact with `status = 'FAILED'` and
+   `final_accuracy = null`, then fail the task. Do not continue the loop.
 
 Rules:
 - **Changes stack** — each round only adds; never remove or revert changes
@@ -59,7 +74,12 @@ fixed, questions regressed) and a final summary at the end.
 Write one artifact row to the artifacts table with
 `run_id = '{{run_id}}'`, `artifact_type = 'optimization_result'`, and a JSON
 payload containing at least:
-`{starting_accuracy, final_accuracy, rounds_executed, changes_per_round,
+`{status, starting_accuracy, final_accuracy, rounds_executed, changes_per_round,
 remaining_failures}`
-where `changes_per_round` is a list of `{round, summary}` and
+where `status = 'SUCCESS'` for a completed loop (including zero rounds or
+finishing below target), `changes_per_round` is a list of `{round, summary}` and
 `remaining_failures` lists the questions still not `GOOD` with their reasons.
+
+Use parameter binding for artifact reads and writes, or a DataFrame write,
+so quotes, backslashes, and newlines in JSON are preserved. Do not interpolate
+the payload or run ID into SQL string literals.

@@ -12,6 +12,8 @@
 # COMMAND ----------
 
 # DBTITLE 1,Parameters
+import json
+
 # -- Parameters --
 dbutils.widgets.text("run_id", "")
 dbutils.widgets.text("space_id", "")
@@ -27,6 +29,12 @@ schema = dbutils.widgets.get("schema").strip()
 warehouse_id = dbutils.widgets.get("warehouse_id").strip()
 triggered_by = dbutils.widgets.get("triggered_by").strip()
 
+# Keep dry runs free of API calls and Delta reads/writes, including partial config.
+if not all((space_id, catalog, schema)):
+    dbutils.notebook.exit(json.dumps({"status": "DRY_RUN", "run_id": run_id}))
+if not run_id:
+    raise ValueError("run_id is required for a configured run; use the job run ID")
+
 print("=" * 60)
 print("[TASK INTAKE] Intake & Snapshot — Prototype")
 print("=" * 60)
@@ -39,86 +47,61 @@ print(f"  warehouse_id:{warehouse_id or '(empty)'}")
 # COMMAND ----------
 
 # DBTITLE 1,Fetch Genie Space config
-import json
-from datetime import datetime
 from databricks.sdk import WorkspaceClient
 
 w = WorkspaceClient()
 
-space_config = None
-space_config_json = "{}"
-
-if space_id:
-    print(f"\nFetching Genie Space config for space_id={space_id} ...")
-    try:
-        space = w.genie.get_space(space_id=space_id, include_serialized_space=True)
-        space_config = {
-            "space_id": space_id,
-            "title": space.title,
-            "description": space.description,
-            "serialized_space": space.serialized_space,
-        }
-        space_config_json = json.dumps(space_config, default=str)
-        print(f"  ✓ Space title: {space_config['title']}")
-        print(f"  ✓ Serialized space captured: {len(space.serialized_space or '')} chars")
-    except Exception as e:
-        print(f"  ⚠ Failed to fetch space config: {e}")
-        space_config_json = json.dumps({"error": str(e)})
-else:
-    print("\n  ⏭ No space_id provided — skipping Genie API call (dry run)")
-    space_config_json = json.dumps({"dry_run": True})
+print(f"\nFetching Genie Space config for space_id={space_id} ...")
+# A failed or missing snapshot must stop the job before QC mutates the space.
+space = w.genie.get_space(space_id=space_id, include_serialized_space=True)
+if not space.serialized_space or not isinstance(json.loads(space.serialized_space), dict):
+    raise ValueError("Genie did not return a valid serialized space snapshot")
+space_config = {
+    "space_id": space_id,
+    "title": space.title,
+    "description": space.description,
+    "serialized_space": space.serialized_space,
+}
+print(f"  ✓ Space title: {space_config['title']}")
+print(f"  ✓ Serialized space captured: {len(space.serialized_space)} chars")
 
 # COMMAND ----------
 
 # DBTITLE 1,Write artifacts to Delta
-if catalog and schema:
-    artifacts_table = f"`{catalog}`.`{schema}`.gso_prototype_artifacts"
+artifacts_table = ".".join(
+    f"`{part.replace('`', '``')}`" for part in (catalog, schema, "gso_prototype_artifacts")
+)
+spark.sql(f"""
+    CREATE TABLE IF NOT EXISTS {artifacts_table} (
+        run_id STRING,
+        artifact_type STRING,
+        payload STRING,
+        created_at TIMESTAMP
+    ) USING DELTA
+""")
 
-    # Create table if not exists
+run_manifest = {
+    "run_id": run_id,
+    "space_id": space_id,
+    "catalog": catalog,
+    "schema": schema,
+    "triggered_by": triggered_by,
+}
+
+# Bind JSON as a value: SQL string parsing must not consume its escape characters.
+for artifact_type, payload in (
+    ("run_manifest", run_manifest),
+    ("space_config_snapshot", space_config),
+):
     spark.sql(f"""
-        CREATE TABLE IF NOT EXISTS {artifacts_table} (
-            run_id STRING,
-            artifact_type STRING,
-            payload STRING,
-            created_at TIMESTAMP
-        ) USING DELTA
-    """)
-
-    # Build the run manifest payload
-    run_manifest = json.dumps({
+        INSERT INTO {artifacts_table} (run_id, artifact_type, payload, created_at)
+        VALUES (:run_id, :artifact_type, :payload, current_timestamp())
+    """, args={
         "run_id": run_id,
-        "space_id": space_id,
-        "catalog": catalog,
-        "schema": schema,
-        "triggered_by": triggered_by,
+        "artifact_type": artifact_type,
+        "payload": json.dumps(payload),
     })
-
-    # Insert run_manifest artifact
-    spark.sql(f"""
-        INSERT INTO {artifacts_table}
-        VALUES (
-            '{run_id}',
-            'run_manifest',
-            '{run_manifest.replace("'", "''")  }',
-            current_timestamp()
-        )
-    """)
-    print(f"\n  ✓ Wrote run_manifest artifact to {artifacts_table}")
-
-    # Insert space_config_snapshot artifact
-    safe_config = space_config_json.replace("'", "''")
-    spark.sql(f"""
-        INSERT INTO {artifacts_table}
-        VALUES (
-            '{run_id}',
-            'space_config_snapshot',
-            '{safe_config}',
-            current_timestamp()
-        )
-    """)
-    print(f"  ✓ Wrote space_config_snapshot artifact to {artifacts_table}")
-else:
-    print("\n  ⏭ No catalog/schema provided — skipping Delta writes (dry run)")
+    print(f"  ✓ Wrote {artifact_type} artifact to {artifacts_table}")
 
 # COMMAND ----------
 
