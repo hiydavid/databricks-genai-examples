@@ -17,10 +17,15 @@
 # MAGIC - A Lakebase instance with the pgvector extension available
 # MAGIC - A Databricks secret scope with Lakebase credentials
 # MAGIC - Run on **Serverless** or a cluster with network access to Lakebase
+# MAGIC
+# MAGIC **Notebook flow:** setup creates the demo data schema first, then the cache
+# MAGIC infrastructure. Cache seeding is **optional** (set `seed_demo_cache: true`
+# MAGIC in configs.yaml) — by default the caches start empty so the scenario
+# MAGIC notebooks demonstrate a true cold → warm progression.
 
 # COMMAND ----------
 
-# MAGIC %pip install "databricks-sdk>=0.85" "databricks-vectorsearch" "psycopg[binary]>=3.1" "pgvector>=0.3" pyyaml --quiet
+# MAGIC %pip install "databricks-sdk>=0.85" "databricks-ai-search>=0.78" "psycopg[binary]>=3.1" "pgvector>=0.3" pyyaml --quiet
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -46,13 +51,20 @@ CATALOG = config["catalog"]
 SCHEMA = config["schema"]
 VS_ENDPOINT = config["vs_endpoint"]
 EMBEDDING_MODEL = config.get("embedding_model", "databricks-qwen3-embedding-0-6b")
-EMBEDDING_DIM = config.get("embedding_dimension", 1024)
+# Must equal the embedding model's native output dimension (1024 for
+# databricks-qwen3-embedding-0-6b). The Foundation Model API call does not
+# override the dimension.
+EMBEDDING_DIM = 1024
+DEMO_DATA_SCHEMA = config.get("demo_data_schema", "genie_cache_demo")
+SEED_DEMO_CACHE = config.get("seed_demo_cache", False)
 
 print(f"Catalog:          {CATALOG}")
 print(f"Schema:           {SCHEMA}")
 print(f"VS Endpoint:      {VS_ENDPOINT}")
 print(f"Embedding Model:  {EMBEDDING_MODEL}")
 print(f"Embedding Dim:    {EMBEDDING_DIM}")
+print(f"Demo Data Schema: {CATALOG}.{DEMO_DATA_SCHEMA}")
+print(f"Seed Cache:       {SEED_DEMO_CACHE}")
 
 # COMMAND ----------
 
@@ -64,6 +76,94 @@ print(f"Embedding Dim:    {EMBEDDING_DIM}")
 spark.sql(f"CREATE CATALOG IF NOT EXISTS {CATALOG}")
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{SCHEMA}")
 print(f"Catalog and schema ready: {CATALOG}.{SCHEMA}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Create Demo Data Schema
+# MAGIC
+# MAGIC Self-contained banking demo data. The seeded cache SQL (and a Genie
+# MAGIC Space, if you point one at this schema) queries these tables, so the
+# MAGIC example has no dependency on external demo datasets.
+# MAGIC
+# MAGIC Tables: `demo_customers` (30), `demo_accounts` (60), `demo_branches` (12),
+# MAGIC `demo_transactions` (600). Generation uses fixed seeds, so re-running
+# MAGIC this notebook produces identical data.
+
+# COMMAND ----------
+
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{DEMO_DATA_SCHEMA}")
+dd = f"{CATALOG}.{DEMO_DATA_SCHEMA}"
+
+customers = (
+    spark.range(30)
+    .selectExpr(
+        "CAST(id + 1 AS INT) AS customer_id",
+        "concat('Customer ', CAST(id + 1 AS STRING)) AS name",
+        "element_at(array('NY', 'CA', 'FL', 'TX', 'IL'), CAST(floor(rand(42) * 5) + 1 AS INT)) AS state",
+        "element_at(array('Private Client', 'Preferred', 'Standard'), CAST(floor(rand(43) * 3) + 1 AS INT)) AS relationship_tier",
+    )
+)
+customers.write.mode("overwrite").saveAsTable(f"{dd}.demo_customers")
+
+accounts = (
+    spark.range(60)
+    .selectExpr(
+        "CAST(id + 1 AS INT) AS account_id",
+        "CAST(pmod(id, 30) + 1 AS INT) AS customer_id",
+    )
+    .join(customers, "customer_id")
+    .selectExpr(
+        "account_id",
+        "customer_id",
+        "round("
+        "  CASE relationship_tier"
+        "    WHEN 'Private Client' THEN 250000 + rand(44) * 750000"
+        "    WHEN 'Preferred'      THEN 25000  + rand(44) * 75000"
+        "    ELSE                       2000   + rand(44) * 18000"
+        "  END, 2) AS current_balance_usd",
+    )
+)
+accounts.write.mode("overwrite").saveAsTable(f"{dd}.demo_accounts")
+
+branches = spark.createDataFrame(
+    [
+        (1, "Manhattan Financial District", "Northeast"),
+        (2, "Brooklyn Heights", "Northeast"),
+        (3, "Boston Beacon Street", "Northeast"),
+        (4, "Miami South", "Southeast"),
+        (5, "Atlanta Midtown", "Southeast"),
+        (6, "Charlotte Uptown", "Southeast"),
+        (7, "Chicago Loop", "Midwest"),
+        (8, "Detroit Riverfront", "Midwest"),
+        (9, "Minneapolis North Loop", "Midwest"),
+        (10, "San Francisco Financial", "West"),
+        (11, "Los Angeles Downtown", "West"),
+        (12, "Seattle Waterfront", "West"),
+    ],
+    schema="branch_id INT, branch_name STRING, region STRING",
+)
+branches.write.mode("overwrite").saveAsTable(f"{dd}.demo_branches")
+
+transactions = (
+    spark.range(600)
+    .selectExpr(
+        "CAST(id + 1 AS LONG) AS transaction_id",
+        "CAST(pmod(id, 60) + 1 AS INT) AS account_id",
+        "CAST(pmod(id, 12) + 1 AS INT) AS branch_id",
+        "element_at(array('Deposit', 'Withdrawal', 'Transfer'), CAST(pmod(id, 3) + 1 AS INT)) AS transaction_type",
+        "round(100 + rand(45) * 14900, 2) AS amount_usd",
+        "round(CASE WHEN pmod(id, 4) = 0 THEN rand(46) * 40 ELSE 0 END, 2) AS fee_usd",
+        "CAST(2023 + pmod(id, 3) AS INT) AS transaction_year",
+        "CAST(pmod(id, 12) + 1 AS INT) AS transaction_month",
+    )
+)
+transactions.write.mode("overwrite").saveAsTable(f"{dd}.demo_transactions")
+
+for t, n in [("demo_customers", 30), ("demo_accounts", 60), ("demo_branches", 12), ("demo_transactions", 600)]:
+    count = spark.table(f"{dd}.{t}").count()
+    assert count == n, f"{dd}.{t}: expected {n} rows, got {count}"
+    print(f"  {dd}.{t}: {count} rows")
 
 # COMMAND ----------
 
@@ -130,8 +230,13 @@ print(f"Delta table ready: {CACHE_KB_TABLE}")
 # MAGIC with the pgvector extension for vector similarity search.
 # MAGIC
 # MAGIC - **HNSW index** on the embedding column for fast approximate nearest-neighbor search
-# MAGIC - **B-tree index** on `question_normalized` for exact-match lookups
-# MAGIC - **UNIQUE constraint** on `question_normalized` to support `ON CONFLICT` upserts
+# MAGIC - **B-tree index** on `session_id` for session-scoped queries (Scenario 3)
+# MAGIC - **UNIQUE constraint** on `(question_normalized, session_id)` to support
+# MAGIC   `ON CONFLICT` upserts — entries are scoped per session (`''` = global),
+# MAGIC   so one session's cache entry can never be hijacked by another.
+# MAGIC
+# MAGIC If an older version of this example created the table with a single-column
+# MAGIC unique constraint, the migration below upgrades it in place.
 
 # COMMAND ----------
 
@@ -141,17 +246,35 @@ try:
         # Enable pgvector extension
         cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
+        # Migrate legacy schema: UNIQUE(question_normalized) with nullable
+        # session_id -> UNIQUE(question_normalized, session_id) NOT NULL
+        cur.execute("""
+            SELECT 1 FROM information_schema.table_constraints
+            WHERE table_name = 'genie_cache'
+              AND constraint_name = 'genie_cache_question_normalized_key'
+        """)
+        if cur.fetchone():
+            cur.execute("ALTER TABLE genie_cache DROP CONSTRAINT genie_cache_question_normalized_key")
+            cur.execute("UPDATE genie_cache SET session_id = '' WHERE session_id IS NULL")
+            cur.execute("ALTER TABLE genie_cache ALTER COLUMN session_id SET NOT NULL")
+            cur.execute(
+                "ALTER TABLE genie_cache ADD CONSTRAINT genie_cache_question_session_key "
+                "UNIQUE (question_normalized, session_id)"
+            )
+            print("Migrated genie_cache to UNIQUE (question_normalized, session_id)")
+
         # Create cache table
         cur.execute(f"""
             CREATE TABLE IF NOT EXISTS genie_cache (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                question_normalized TEXT NOT NULL UNIQUE,
+                question_normalized TEXT NOT NULL,
                 embedding vector({EMBEDDING_DIM}),
                 cached_sql TEXT,
                 cached_response JSONB,
-                session_id TEXT,
+                session_id TEXT NOT NULL DEFAULT '',
                 created_at TIMESTAMPTZ DEFAULT now(),
-                hit_count INTEGER DEFAULT 0
+                hit_count INTEGER DEFAULT 0,
+                UNIQUE (question_normalized, session_id)
             )
         """)
 
@@ -189,9 +312,9 @@ finally:
 
 import time
 
-from databricks.vector_search.client import VectorSearchClient
+from databricks.ai_search.client import AISearchClient
 
-vsc = VectorSearchClient(disable_notice=True)
+vsc = AISearchClient(disable_notice=True)
 
 
 def wait_for_endpoint_ready(endpoint_name: str, timeout_minutes: int = 30):
@@ -307,10 +430,14 @@ wait_for_index_ready(VS_ENDPOINT, CACHE_KB_INDEX)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Seed Demo Data
+# MAGIC ## Seed Cache (Optional)
 # MAGIC
-# MAGIC Pre-populates all 3 cache stores with 5 seed entries so the scenario
-# MAGIC notebooks show cache **HITs** immediately on the first pass.
+# MAGIC **Off by default.** With seeding off, the scenario notebooks start from an
+# MAGIC empty cache and demonstrate a true cold (Genie API) → warm (cache hit)
+# MAGIC progression. Set `seed_demo_cache: true` in configs.yaml before running
+# MAGIC this notebook to instead pre-populate all 3 cache stores with 5 seed
+# MAGIC entries, which lets the notebooks show HITs without a configured Genie
+# MAGIC Space (they never call the Genie API when every question is a hit).
 # MAGIC
 # MAGIC | Store | Scenario | Seeding method |
 # MAGIC |-------|----------|----------------|
@@ -320,24 +447,19 @@ wait_for_index_ready(VS_ENDPOINT, CACHE_KB_INDEX)
 
 # COMMAND ----------
 
-# The seed SQL references the Horizon Bank data schema (from genie-demo-data),
-# which is separate from the cache schema. Adjust DATA_SCHEMA if your Horizon
-# Bank tables live in a different schema.
-DATA_SCHEMA = "horizon_bank"
-ds = f"{CATALOG}.{DATA_SCHEMA}"
-
+# The seed SQL targets the demo data schema created above.
 SEED_ENTRIES = [
     {
         "question_text": "What was total deposit volume in 2024?",
         "cached_sql": (
             f"SELECT SUM(amount_usd) AS total_deposit_volume\n"
-            f"FROM {ds}.transactions\n"
+            f"FROM {dd}.demo_transactions\n"
             f"WHERE transaction_type = 'Deposit'\n"
             f"  AND transaction_year = 2024"
         ),
         "response_text": (
-            "The total deposit volume in 2024 was approximately $15.2 million "
-            "across all accounts and branches."
+            "Total deposit volume for 2024 across all accounts and branches — "
+            "see the executed cached SQL for the exact figure."
         ),
     },
     {
@@ -345,15 +467,13 @@ SEED_ENTRIES = [
         "cached_sql": (
             f"SELECT transaction_year, transaction_month,\n"
             f"       SUM(amount_usd) AS monthly_deposit_volume\n"
-            f"FROM {ds}.transactions\n"
+            f"FROM {dd}.demo_transactions\n"
             f"WHERE transaction_type = 'Deposit'\n"
             f"GROUP BY transaction_year, transaction_month\n"
             f"ORDER BY transaction_year, transaction_month"
         ),
         "response_text": (
-            "Here is the monthly deposit trend from January 2023 through "
-            "December 2025. Notable patterns include seasonal spikes in "
-            "November/December and a Q2 2024 dip of approximately 15%."
+            "Monthly deposit volumes from January 2023 through December 2025."
         ),
     },
     {
@@ -361,25 +481,23 @@ SEED_ENTRIES = [
         "cached_sql": (
             f"SELECT c.state,\n"
             f"       ROUND(AVG(a.current_balance_usd), 2) AS avg_balance\n"
-            f"FROM {ds}.customers c\n"
-            f"JOIN {ds}.accounts a ON c.customer_id = a.customer_id\n"
+            f"FROM {dd}.demo_customers c\n"
+            f"JOIN {dd}.demo_accounts a ON c.customer_id = a.customer_id\n"
             f"WHERE c.relationship_tier = 'Private Client'\n"
             f"GROUP BY c.state\n"
             f"ORDER BY avg_balance DESC"
         ),
         "response_text": (
-            "Private Client customers have average account balances roughly 3x "
-            "higher than Standard tier. The highest averages are concentrated in "
-            "New York, California, and Florida."
+            "Average account balances for Private Client customers by state."
         ),
     },
     {
-        "question_text": "Which 10 branches had the highest deposit volume this year?",
+        "question_text": "Which 10 branches had the highest deposit volume in 2025?",
         "cached_sql": (
             f"SELECT b.branch_name, b.region,\n"
             f"       SUM(t.amount_usd) AS deposit_volume\n"
-            f"FROM {ds}.transactions t\n"
-            f"JOIN {ds}.branches b ON t.branch_id = b.branch_id\n"
+            f"FROM {dd}.demo_transactions t\n"
+            f"JOIN {dd}.demo_branches b ON t.branch_id = b.branch_id\n"
             f"WHERE t.transaction_type = 'Deposit'\n"
             f"  AND t.transaction_year = 2025\n"
             f"GROUP BY b.branch_name, b.region\n"
@@ -387,9 +505,7 @@ SEED_ENTRIES = [
             f"LIMIT 10"
         ),
         "response_text": (
-            "The top 10 branches by deposit volume are led by the Manhattan "
-            "Financial District and Miami South branches. Southeast branches "
-            "show approximately 20% higher average transaction values."
+            "The 10 branches with the highest deposit volume in 2025."
         ),
     },
     {
@@ -399,24 +515,25 @@ SEED_ENTRIES = [
             f"       COUNT(DISTINCT c.customer_id) AS customer_count,\n"
             f"       SUM(t.fee_usd) AS total_fee_revenue,\n"
             f"       ROUND(SUM(t.fee_usd) / COUNT(DISTINCT c.customer_id), 2) AS fee_per_customer\n"
-            f"FROM {ds}.transactions t\n"
-            f"JOIN {ds}.accounts a ON t.account_id = a.account_id\n"
-            f"JOIN {ds}.customers c ON a.customer_id = c.customer_id\n"
+            f"FROM {dd}.demo_transactions t\n"
+            f"JOIN {dd}.demo_accounts a ON t.account_id = a.account_id\n"
+            f"JOIN {dd}.demo_customers c ON a.customer_id = c.customer_id\n"
             f"WHERE t.fee_usd > 0\n"
             f"GROUP BY c.relationship_tier\n"
             f"ORDER BY fee_per_customer DESC"
         ),
         "response_text": (
-            "Fee revenue per customer varies significantly by tier. Private "
-            "Client customers generate the highest fee revenue per customer, "
-            "followed by Preferred and Standard tiers."
+            "Fee revenue per customer broken down by relationship tier."
         ),
     },
 ]
 
-print(f"Defined {len(SEED_ENTRIES)} seed entries")
-for i, entry in enumerate(SEED_ENTRIES, 1):
-    print(f"  {i}. {entry['question_text']}")
+if SEED_DEMO_CACHE:
+    print(f"Defined {len(SEED_ENTRIES)} seed entries")
+    for i, entry in enumerate(SEED_ENTRIES, 1):
+        print(f"  {i}. {entry['question_text']}")
+else:
+    print("seed_demo_cache is false — skipping cache seeding (caches start empty)")
 
 # COMMAND ----------
 
@@ -428,21 +545,22 @@ for i, entry in enumerate(SEED_ENTRIES, 1):
 
 # COMMAND ----------
 
-for entry in SEED_ENTRIES:
-    print(f"  Seeding: {entry['question_text'][:60]}...")
-    lakebase_cache_write(
-        config,
-        question=entry["question_text"],
-        sql=entry["cached_sql"],
-        response_text=entry["response_text"],
-    )
+if SEED_DEMO_CACHE:
+    for entry in SEED_ENTRIES:
+        print(f"  Seeding: {entry['question_text'][:60]}...")
+        lakebase_cache_write(
+            config,
+            question=entry["question_text"],
+            sql=entry["cached_sql"],
+            response_text=entry["response_text"],
+        )
 
-# Verify
-conn = get_lakebase_connection(config)
-with conn.cursor() as cur:
-    cur.execute("SELECT count(*) FROM genie_cache")
-    lb_count = cur.fetchone()[0]
-print(f"\nLakebase genie_cache: {lb_count} rows")
+    # Verify
+    conn = get_lakebase_connection(config)
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM genie_cache")
+        lb_count = cur.fetchone()[0]
+    print(f"\nLakebase genie_cache: {lb_count} rows")
 
 # COMMAND ----------
 
@@ -456,26 +574,29 @@ print(f"\nLakebase genie_cache: {lb_count} rows")
 
 from pyspark.sql import Row
 
-existing_count = spark.sql(f"SELECT count(*) FROM {CACHE_STORE_TABLE}").collect()[0][0]
-if existing_count > 0:
-    print(f"Delta table {CACHE_STORE_TABLE} already has {existing_count} rows — skipping seed")
+if not SEED_DEMO_CACHE:
+    print("Skipping — seed_demo_cache is false")
 else:
-    rows = []
-    for entry in SEED_ENTRIES:
-        rows.append(
-            Row(
-                id=generate_id(),
-                question_text=entry["question_text"],
-                question_normalized=normalize_question(entry["question_text"]),
-                cached_sql=entry["cached_sql"],
-                cached_response=entry["response_text"],
-                created_at=utcnow(),
-                hit_count=0,
+    existing_count = spark.sql(f"SELECT count(*) FROM {CACHE_STORE_TABLE}").collect()[0][0]
+    if existing_count > 0:
+        print(f"Delta table {CACHE_STORE_TABLE} already has {existing_count} rows — skipping seed")
+    else:
+        rows = []
+        for entry in SEED_ENTRIES:
+            rows.append(
+                Row(
+                    id=generate_id(),
+                    question_text=entry["question_text"],
+                    question_normalized=normalize_question(entry["question_text"]),
+                    cached_sql=entry["cached_sql"],
+                    cached_response=entry["response_text"],
+                    created_at=utcnow(),
+                    hit_count=0,
+                )
             )
-        )
-    df = spark.createDataFrame(rows)
-    df.write.mode("append").saveAsTable(CACHE_STORE_TABLE)
-    print(f"Seeded {len(rows)} rows into {CACHE_STORE_TABLE}")
+        df = spark.createDataFrame(rows)
+        df.write.mode("append").saveAsTable(CACHE_STORE_TABLE)
+        print(f"Seeded {len(rows)} rows into {CACHE_STORE_TABLE}")
 
 # COMMAND ----------
 
@@ -486,28 +607,31 @@ else:
 
 # COMMAND ----------
 
-existing_count = spark.sql(f"SELECT count(*) FROM {CACHE_KB_TABLE}").collect()[0][0]
-if existing_count > 0:
-    print(f"Delta table {CACHE_KB_TABLE} already has {existing_count} rows — skipping seed")
+if not SEED_DEMO_CACHE:
+    print("Skipping — seed_demo_cache is false")
 else:
-    rows = []
-    for entry in SEED_ENTRIES:
-        rows.append(
-            Row(
-                id=generate_id(),
-                question_text=entry["question_text"],
-                question_normalized=normalize_question(entry["question_text"]),
-                cached_sql=entry["cached_sql"],
-                cached_response=entry["response_text"],
-                validated=True,
-                validation_source="seed",
-                created_at=utcnow(),
-                hit_count=0,
+    existing_count = spark.sql(f"SELECT count(*) FROM {CACHE_KB_TABLE}").collect()[0][0]
+    if existing_count > 0:
+        print(f"Delta table {CACHE_KB_TABLE} already has {existing_count} rows — skipping seed")
+    else:
+        rows = []
+        for entry in SEED_ENTRIES:
+            rows.append(
+                Row(
+                    id=generate_id(),
+                    question_text=entry["question_text"],
+                    question_normalized=normalize_question(entry["question_text"]),
+                    cached_sql=entry["cached_sql"],
+                    cached_response=entry["response_text"],
+                    validated=True,
+                    validation_source="seed",
+                    created_at=utcnow(),
+                    hit_count=0,
+                )
             )
-        )
-    df = spark.createDataFrame(rows)
-    df.write.mode("append").saveAsTable(CACHE_KB_TABLE)
-    print(f"Seeded {len(rows)} rows into {CACHE_KB_TABLE}")
+        df = spark.createDataFrame(rows)
+        df.write.mode("append").saveAsTable(CACHE_KB_TABLE)
+        print(f"Seeded {len(rows)} rows into {CACHE_KB_TABLE}")
 
 # COMMAND ----------
 
@@ -516,11 +640,14 @@ else:
 
 # COMMAND ----------
 
-print("Syncing cache_store index...")
-sync_vs_index_and_wait(vsc, VS_ENDPOINT, CACHE_STORE_INDEX)
+if not SEED_DEMO_CACHE:
+    print("Skipping index sync — nothing was seeded (indexes stay in sync via setup)")
+else:
+    print("Syncing cache_store index...")
+    sync_vs_index_and_wait(vsc, VS_ENDPOINT, CACHE_STORE_INDEX)
 
-print("Syncing cache_knowledge_base index...")
-sync_vs_index_and_wait(vsc, VS_ENDPOINT, CACHE_KB_INDEX)
+    print("Syncing cache_knowledge_base index...")
+    sync_vs_index_and_wait(vsc, VS_ENDPOINT, CACHE_KB_INDEX)
 
 # COMMAND ----------
 
@@ -529,7 +656,7 @@ sync_vs_index_and_wait(vsc, VS_ENDPOINT, CACHE_KB_INDEX)
 
 # COMMAND ----------
 
-# Seed row counts
+# Cache row counts (0 across the board unless seeding was enabled)
 conn = get_lakebase_connection(config)
 with conn.cursor() as cur:
     cur.execute("SELECT count(*) FROM genie_cache")

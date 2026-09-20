@@ -23,7 +23,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install "databricks-sdk>=0.85" "databricks-vectorsearch" pyyaml --quiet
+# MAGIC %pip install "databricks-sdk>=0.85" "databricks-ai-search>=0.78" pyyaml --quiet
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -35,7 +35,7 @@
 
 import time
 
-from databricks.vector_search.client import VectorSearchClient
+from databricks.ai_search.client import AISearchClient
 
 from utils import (
     call_genie_with_retry,
@@ -44,7 +44,6 @@ from utils import (
     normalize_question,
     print_summary_table,
     sync_vs_index_and_wait,
-    utcnow,
 )
 
 config = load_config("./configs.yaml")
@@ -59,7 +58,7 @@ thresholds = config.get("thresholds", {})
 AUTO_THRESHOLD = thresholds.get("vs_auto_execute", 0.90)
 CONFIRM_THRESHOLD = thresholds.get("vs_confirm", 0.75)
 
-vsc = VectorSearchClient(disable_notice=True)
+vsc = AISearchClient(disable_notice=True)
 
 print(f"VS Index:           {CACHE_STORE_INDEX}")
 print(f"Auto threshold:     {AUTO_THRESHOLD}")
@@ -123,29 +122,50 @@ def cache_lookup_vs(
 
 
 def cache_write_delta(question: str, sql: str, response_text: str):
-    """Append a new entry to the cache_store Delta table.
+    """Upsert a cache entry into the cache_store Delta table.
 
-    The VS index will pick up the new row on the next sync.
+    MERGE on ``question_normalized`` so re-running the notebook refreshes the
+    cached answer instead of appending a duplicate row. The VS index picks up
+    the change on the next sync (Change Data Feed).
     """
-    from pyspark.sql import Row
-
     row_id = generate_id()
     normalized = normalize_question(question)
 
-    new_row = Row(
-        id=row_id,
-        question_text=question,
-        question_normalized=normalized,
-        cached_sql=sql or "",
-        cached_response=response_text or "",
-        created_at=utcnow(),
-        hit_count=0,
-    )
-    df = spark.createDataFrame([new_row])
-    df.write.mode("append").saveAsTable(CACHE_STORE_TABLE)
+    spark.createDataFrame(
+        [(row_id, normalized, question, sql or "", response_text or "")],
+        schema=(
+            "id STRING, question_normalized STRING, question_text STRING, "
+            "cached_sql STRING, cached_response STRING"
+        ),
+    ).createOrReplaceTempView("new_cache_entry")
 
-    print(f"  Written to Delta table {CACHE_STORE_TABLE} (id={row_id})")
+    spark.sql(f"""
+        MERGE INTO {CACHE_STORE_TABLE} t
+        USING new_cache_entry s
+          ON t.question_normalized = s.question_normalized
+        WHEN MATCHED THEN UPDATE SET
+            t.cached_sql = s.cached_sql,
+            t.cached_response = s.cached_response,
+            t.created_at = current_timestamp()
+        WHEN NOT MATCHED THEN INSERT
+            (id, question_text, question_normalized, cached_sql, cached_response, created_at, hit_count)
+        VALUES
+            (s.id, s.question_text, s.question_normalized, s.cached_sql,
+             s.cached_response, current_timestamp(), 0)
+    """)
+
+    print(f"  Upserted into Delta table {CACHE_STORE_TABLE} (id={row_id})")
     return row_id
+
+
+def execute_cached_sql(sql: str):
+    """Execute a cached SQL statement and return the DataFrame.
+
+    Used by the 'auto' confidence tier: the cached SQL is trusted enough to
+    re-run against the source tables, so the user gets fresh results at
+    cache-hit latency instead of a stale stored answer.
+    """
+    return spark.sql(sql)
 
 
 # COMMAND ----------
@@ -154,9 +174,10 @@ def cache_write_delta(question: str, sql: str, response_text: str):
 # MAGIC ## Demo — Cold Pass (Cache Miss → Genie API)
 # MAGIC
 # MAGIC Each question goes through:
-# MAGIC 1. VS hybrid search → expected **MISS** (empty index)
+# MAGIC 1. VS hybrid search → expected **MISS** (empty index, unless
+# MAGIC    `seed_demo_cache` was enabled in 0_setup)
 # MAGIC 2. Genie API call with retry/backoff
-# MAGIC 3. Delta table append → VS index sync
+# MAGIC 3. Delta table upsert → VS index sync
 
 # COMMAND ----------
 
@@ -177,6 +198,9 @@ for question in demo_questions:
     if tier:
         latency = time.time() - t0
         print(f"  HIT (tier={tier}, score={score:.3f}) in {latency:.3f}s")
+        if tier == "auto" and cached_sql:
+            print("  Auto tier — executing cached SQL:")
+            execute_cached_sql(cached_sql).display()
         results.append({
             "question": question[:50],
             "cold_s": latency,
@@ -220,7 +244,10 @@ sync_vs_index_and_wait(vsc, VS_ENDPOINT, CACHE_STORE_INDEX)
 # MAGIC %md
 # MAGIC ## Demo — Warm Pass (Cache Hit with Confidence Tiering)
 # MAGIC
-# MAGIC Same questions — should now return from VS cache with **auto** tier.
+# MAGIC Same questions — should now return from VS cache.  **auto**-tier hits
+# MAGIC re-execute the cached SQL so the answer reflects the current data;
+# MAGIC **confirm**-tier hits return the cached SQL flagged for review without
+# MAGIC executing it.
 
 # COMMAND ----------
 
@@ -234,10 +261,13 @@ for i, question in enumerate(demo_questions):
 
     if tier:
         print(f"  HIT (tier={tier}, score={score:.3f}) in {warm_latency:.3f}s")
-        if tier == "confirm":
-            print("  Confidence is moderate — a production system would ask the user to confirm")
-        if cached_sql:
-            print(f"  Cached SQL: {cached_sql[:120]}...")
+        if tier == "auto" and cached_sql:
+            print("  Auto tier — executing cached SQL for fresh results:")
+            execute_cached_sql(cached_sql).display()
+        elif tier == "confirm":
+            print("  Confidence is moderate — a production system would ask the user to confirm before executing")
+            if cached_sql:
+                print(f"  Cached SQL (not executed): {cached_sql[:120]}...")
     else:
         print(f"  Unexpected MISS (score={score:.3f})")
         warm_latency = None
@@ -270,7 +300,9 @@ if demo_questions:
 
     if tier == "auto":
         print(f"\n  AUTO tier (score={score:.3f}) in {latency:.3f}s")
-        print("  High confidence — safe to execute cached SQL directly")
+        print("  High confidence — executing cached SQL directly:")
+        if cached_sql:
+            execute_cached_sql(cached_sql).display()
     elif tier == "confirm":
         print(f"\n  CONFIRM tier (score={score:.3f}) in {latency:.3f}s")
         print("  Moderate confidence — production system would ask user to review")

@@ -8,22 +8,24 @@
 # MAGIC
 # MAGIC | Layer | Technology | Purpose | TTL |
 # MAGIC |-------|-----------|---------|-----|
-# MAGIC | **L1** | Lakebase + pgvector | Session cache — fast exact + vector match | Session lifetime |
+# MAGIC | **L1** | Lakebase + pgvector | Session cache — fast exact + vector match | Session lifetime (TTL-evicted, default 4h) |
 # MAGIC | **L2** | Vector Search + Delta | Knowledge base — validated, durable cache | 30+ weeks |
 # MAGIC
 # MAGIC **Cache flow:**
 # MAGIC 1. **L1 check** — exact match + pgvector similarity (threshold ≥ 0.93) in Lakebase
-# MAGIC 2. **L1 HIT** → return cached response immediately
+# MAGIC 2. **L1 HIT** → return cached response immediately; once the entry's
+# MAGIC    `hit_count` reaches the promotion threshold it is auto-promoted to L2
 # MAGIC 3. **L1 MISS → L2 check** — hybrid semantic + BM25 search (threshold ≥ 0.90)
-# MAGIC 4. **L2 HIT** → re-execute cached SQL for freshness, promote to L1
+# MAGIC 4. **L2 HIT** → re-execute the cached SQL for fresh results, cache in L1
 # MAGIC 5. **L2 MISS** → Genie API (with retry + backoff) → write to L1
-# MAGIC 6. **Promotion** — entries promoted from L1 → L2 after validation (thumbs-up or hit_count ≥ 3)
+# MAGIC 6. **Promotion** — entries promote L1 → L2 on explicit user validation
+# MAGIC    (thumbs-up) or automatically when `hit_count` ≥ threshold (default 3)
 # MAGIC
 # MAGIC **Prerequisites:** Run `0_setup.py` first.
 
 # COMMAND ----------
 
-# MAGIC %pip install "databricks-sdk>=0.85" "databricks-vectorsearch" "psycopg[binary]>=3.1" "pgvector>=0.3" pyyaml --quiet
+# MAGIC %pip install "databricks-sdk>=0.85" "databricks-ai-search>=0.78" "psycopg[binary]>=3.1" "pgvector>=0.3" pyyaml --quiet
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -37,10 +39,11 @@ import json
 import time
 import uuid
 
-from databricks.vector_search.client import VectorSearchClient
+from databricks.ai_search.client import AISearchClient
 
 from utils import (
     call_genie_with_retry,
+    evict_expired_l1,
     generate_id,
     get_lakebase_connection,
     lakebase_cache_lookup,
@@ -49,7 +52,6 @@ from utils import (
     normalize_question,
     print_summary_table,
     sync_vs_index_and_wait,
-    utcnow,
 )
 
 config = load_config("./configs.yaml")
@@ -64,14 +66,26 @@ thresholds = config.get("thresholds", {})
 L1_THRESHOLD = thresholds.get("lakebase_hybrid", 0.93)
 L2_THRESHOLD = thresholds.get("vs_auto_execute", 0.90)
 
+PROMOTION_THRESHOLD = config.get("promotion", {}).get("hit_count_threshold", 3)
+L1_TTL_MINUTES = config.get("l1_ttl_minutes", 240)
+
 # Unique session ID for this notebook run — scopes L1 cache entries
 SESSION_ID = uuid.uuid4().hex[:8]
 
-vsc = VectorSearchClient(disable_notice=True)
+vsc = AISearchClient(disable_notice=True)
+
+# Enforce the L1 session lifetime: evict expired entries from other sessions
+evict_expired_l1(config, L1_TTL_MINUTES)
+
+# Questions already promoted to L2 during this notebook run — prevents
+# re-promoting the same entry on every subsequent L1 hit
+promoted_to_l2 = set()
 
 print(f"Session ID:         {SESSION_ID}")
 print(f"L1 threshold:       {L1_THRESHOLD} (Lakebase pgvector)")
 print(f"L2 threshold:       {L2_THRESHOLD} (Vector Search)")
+print(f"Promotion at:       hit_count >= {PROMOTION_THRESHOLD}")
+print(f"L1 TTL:             {L1_TTL_MINUTES} min")
 print(f"L2 Knowledge Base:  {CACHE_KB_INDEX}")
 
 # COMMAND ----------
@@ -90,7 +104,6 @@ def l1_clear_session(session_id: str = SESSION_ID):
     conn = get_lakebase_connection(config)
     with conn.cursor() as cur:
         cur.execute("DELETE FROM genie_cache WHERE session_id = %s", (session_id,))
-    conn.commit()
     print(f"  Cleared L1 cache for session {session_id}")
 
 
@@ -129,28 +142,69 @@ def l2_cache_lookup(question: str):
 
 
 def promote_to_l2(question: str, sql: str, response_text: str, source: str = "auto"):
-    """Promote a validated entry from L1 to the L2 knowledge base (Delta table)."""
-    from pyspark.sql import Row
+    """Promote a validated entry from L1 to the L2 knowledge base (Delta table).
 
+    MERGE on ``question_normalized`` so re-promoting an entry refreshes it
+    instead of appending a duplicate row.
+    """
     row_id = generate_id()
     normalized = normalize_question(question)
 
-    new_row = Row(
-        id=row_id,
-        question_text=question,
-        question_normalized=normalized,
-        cached_sql=sql or "",
-        cached_response=response_text or "",
-        validated=True,
-        validation_source=source,
-        created_at=utcnow(),
-        hit_count=0,
-    )
-    df = spark.createDataFrame([new_row])
-    df.write.mode("append").saveAsTable(CACHE_KB_TABLE)
+    spark.createDataFrame(
+        [(row_id, normalized, question, sql or "", response_text or "", source)],
+        schema=(
+            "id STRING, question_normalized STRING, question_text STRING, "
+            "cached_sql STRING, cached_response STRING, validation_source STRING"
+        ),
+    ).createOrReplaceTempView("new_kb_entry")
+
+    spark.sql(f"""
+        MERGE INTO {CACHE_KB_TABLE} t
+        USING new_kb_entry s
+          ON t.question_normalized = s.question_normalized
+        WHEN MATCHED THEN UPDATE SET
+            t.cached_sql = s.cached_sql,
+            t.cached_response = s.cached_response,
+            t.validation_source = s.validation_source,
+            t.validated = true,
+            t.created_at = current_timestamp()
+        WHEN NOT MATCHED THEN INSERT
+            (id, question_text, question_normalized, cached_sql, cached_response,
+             validated, validation_source, created_at, hit_count)
+        VALUES
+            (s.id, s.question_text, s.question_normalized, s.cached_sql,
+             s.cached_response, true, s.validation_source, current_timestamp(), 0)
+    """)
 
     print(f"  Promoted to L2 knowledge base (id={row_id}, source={source})")
     return row_id
+
+
+def validate_l1_entry(question: str, session_id: str = SESSION_ID):
+    """Explicit user validation ("thumbs-up") — promote an L1 entry to L2 now.
+
+    The counterpart to hit-count-based auto-promotion: a user who confirms a
+    cached answer is correct can promote it to the durable knowledge base
+    immediately, without waiting for repeated use.
+    """
+    conn = get_lakebase_connection(config)
+    normalized = normalize_question(question)
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT cached_sql, cached_response FROM genie_cache "
+            "WHERE question_normalized = %s AND session_id = %s",
+            (normalized, session_id or ""),
+        )
+        row = cur.fetchone()
+
+    if not row:
+        print(f"  No L1 entry to validate for: {question}")
+        return None
+
+    resp = json.loads(row[1]) if row[1] else None
+    resp_str = resp.get("text", "") if isinstance(resp, dict) else (resp or "")
+    promoted_to_l2.add(normalized)
+    return promote_to_l2(question, row[0] or "", resp_str, source="user-validation")
 
 
 # COMMAND ----------
@@ -164,27 +218,41 @@ def promote_to_l2(question: str, sql: str, response_text: str, source: str = "au
 def query_with_hybrid_cache(question: str, session_id: str = SESSION_ID):
     """Execute the full hybrid cache flow: L1 → L2 → Genie API.
 
-    Returns a dict with: source, sql, response, score, latency_s
+    Returns a dict with: source, sql, response, score, latency_s, and df
+    (the executed cached-SQL DataFrame, when the flow re-executed SQL).
     """
     start = time.time()
 
     # --- L1: Lakebase session cache ---
-    hit_type, sql, resp, score, embedding = lakebase_cache_lookup(
+    hit_type, sql, resp, score, embedding, hit_count = lakebase_cache_lookup(
         config, question, threshold=L1_THRESHOLD, session_id=session_id,
     )
     if hit_type:
+        # Auto-promotion: once an L1 entry has been hit enough times, it has
+        # proven repeatedly useful — promote it to the durable L2 knowledge base.
+        normalized = normalize_question(question)
+        if hit_count >= PROMOTION_THRESHOLD and normalized not in promoted_to_l2:
+            promoted_to_l2.add(normalized)
+            resp_str = (
+                resp.get("text", "") if isinstance(resp, dict) else (resp or "")
+            )
+            promote_to_l2(question, sql or "", resp_str, source="hit-count")
         return {
             "source": f"L1-{hit_type}",
             "sql": sql,
             "response": resp,
             "score": score,
+            "df": None,
             "latency_s": time.time() - start,
         }
 
     # --- L2: Vector Search knowledge base ---
     hit, sql, resp_text, score = l2_cache_lookup(question)
     if hit:
-        # Promote L2 hit to L1 for session-level caching (reuse embedding from L1 lookup)
+        # Re-execute the cached SQL so the answer reflects current data, then
+        # cache the entry in L1 for the rest of the session (reuse the
+        # embedding generated by the L1 lookup).
+        df = spark.sql(sql) if sql else None
         lakebase_cache_write(
             config, question, sql, resp_text or "",
             session_id=session_id, embedding=embedding,
@@ -194,6 +262,7 @@ def query_with_hybrid_cache(question: str, session_id: str = SESSION_ID):
             "sql": sql,
             "response": resp_text,
             "score": score,
+            "df": df,
             "latency_s": time.time() - start,
         }
 
@@ -213,6 +282,7 @@ def query_with_hybrid_cache(question: str, session_id: str = SESSION_ID):
         "sql": sql,
         "response": text,
         "score": 0.0,
+        "df": None,
         "latency_s": time.time() - start,
     }
 
@@ -264,19 +334,30 @@ for question in demo_questions:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Promote to L2 — Simulate Validation
+# MAGIC ## Promote to L2 — Explicit Validation + Auto-Promotion
 # MAGIC
-# MAGIC In production, entries are promoted to L2 after user validation (thumbs-up) or
-# MAGIC repeated use (hit_count ≥ 3).  Here we simulate this by promoting all cached
-# MAGIC entries.
+# MAGIC Two promotion paths into the L2 knowledge base:
+# MAGIC
+# MAGIC 1. **Explicit validation ("thumbs-up")** — `validate_l1_entry()` promotes a
+# MAGIC    single confirmed-correct entry immediately.
+# MAGIC 2. **Auto-promotion by repeated use** — once an L1 entry's `hit_count`
+# MAGIC    reaches the threshold (default 3), `query_with_hybrid_cache()` promotes
+# MAGIC    it automatically.  Pass 2 gave each entry hit_count = 1; the loop below
+# MAGIC    queries the remaining questions two more times each to cross the
+# MAGIC    threshold.
 
 # COMMAND ----------
 
-for question in demo_questions:
-    r = all_results[question]["pass1"]
-    resp = r["response"]
-    resp_str = resp if isinstance(resp, str) else json.dumps(resp) if resp else ""
-    promote_to_l2(question, r["sql"] or "", resp_str, source="manual-validation")
+# Path 1: user explicitly validates the first entry
+print(f"{'=' * 60}")
+print(f"Explicit validation (thumbs-up): {demo_questions[0]}")
+validate_l1_entry(demo_questions[0])
+
+# Path 2: repeated L1 hits push the remaining entries past the threshold
+for question in demo_questions[1:]:
+    for _ in range(PROMOTION_THRESHOLD - 1):
+        result = query_with_hybrid_cache(question)
+        print(f"  {result['source']} — {question[:50]}")
 
 print("\nSyncing L2 VS index...")
 sync_vs_index_and_wait(vsc, VS_ENDPOINT, CACHE_KB_INDEX)
@@ -295,7 +376,7 @@ l1_clear_session(SESSION_ID)
 
 # Verify L1 is empty for these questions
 for question in demo_questions:
-    hit_type, _, _, _, _ = lakebase_cache_lookup(
+    hit_type, _, _, _, _, _ = lakebase_cache_lookup(
         config, question, threshold=L1_THRESHOLD, session_id=SESSION_ID,
     )
     status = "MISS" if hit_type is None else f"HIT ({hit_type})"
@@ -304,10 +385,11 @@ for question in demo_questions:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Pass 3 — L2 Warm (Knowledge Base Hit → Promote to L1)
+# MAGIC ## Pass 3 — L2 Warm (Knowledge Base Hit → Re-execute + Promote to L1)
 # MAGIC
-# MAGIC L1 is empty, but L2 has the promoted entries.  Each L2 hit gets promoted
-# MAGIC back to L1 for the rest of the session.
+# MAGIC L1 is empty, but L2 holds the promoted entries.  Each L2 hit re-executes
+# MAGIC the cached SQL so results are fresh, and promotes the entry to L1 for the
+# MAGIC rest of the session.
 
 # COMMAND ----------
 
@@ -317,6 +399,9 @@ for question in demo_questions:
 
     result = query_with_hybrid_cache(question)
     print(f"  Source: {result['source']} | Score: {result['score']:.3f} | Latency: {result['latency_s']:.3f}s")
+    if result.get("df") is not None:
+        print("  Re-executed cached SQL for freshness:")
+        result["df"].display()
 
     all_results[question]["pass3"] = result
 
@@ -366,7 +451,7 @@ print_summary_table(
 print()
 print("Pass 1: Cold — Genie API (5-30s)")
 print("Pass 2: L1 warm — Lakebase exact match (~50-200ms)")
-print("Pass 3: L2 warm — VS hybrid search + promote to L1 (~0.5-2s)")
+print("Pass 3: L2 warm — VS hybrid search + SQL re-execution + promote to L1 (~0.5-2s)")
 print("Pass 4: L1 warm — promoted entries now in L1 (~50-200ms)")
 print()
 print("The hybrid approach gives you the best of both worlds:")
@@ -384,7 +469,6 @@ print("  - L2 (Vector Search): Durable knowledge base that persists across sessi
 # MAGIC from utils import get_lakebase_connection
 # MAGIC conn = get_lakebase_connection(config)
 # MAGIC conn.cursor().execute("TRUNCATE TABLE genie_cache")
-# MAGIC conn.commit()
 # MAGIC
 # MAGIC # Clear L2 (Delta)
 # MAGIC spark.sql(f"TRUNCATE TABLE {CACHE_KB_TABLE}")

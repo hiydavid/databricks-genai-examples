@@ -21,9 +21,11 @@ lakebase:
 # Vector Search (Scenarios 2 & 3)
 vs_endpoint: "genie-cache-vs-endpoint"     # TODO
 
+# Demo data schema created by 0_setup.py (customers/accounts/branches/transactions)
+demo_data_schema: "genie_cache_demo"
+
 # Embedding model (Foundation Model API, used for Lakebase pgvector)
 embedding_model: "databricks-qwen3-embedding-0-6b"
-embedding_dimension: 1024
 # Optional: task-specific instruction for improved retrieval accuracy (1-5% boost).
 # Only used by models that support the instruction parameter (e.g., Qwen3).
 embedding_instruction: "Represent this question for finding semantically similar questions:"
@@ -41,12 +43,23 @@ thresholds:
   vs_auto_execute: 0.90           # Scenarios 2 & 3 - auto-execute cached SQL
   vs_confirm: 0.75                # Scenario 2 - return but flag for user confirmation
 
+# Scenario 3 - L1 -> L2 promotion and session lifetime
+promotion:
+  hit_count_threshold: 3          # auto-promote an L1 entry after this many hits
+l1_ttl_minutes: 240               # session-scoped L1 entries older than this are evicted
+
+# Pre-populate all caches with the seed entries in 0_setup.py.
+# false (default) keeps the caches empty so the scenario notebooks show a
+# true cold (Genie API) -> warm (cache hit) progression. true makes every
+# demo question a HIT, which lets the notebooks run without a Genie Space.
+seed_demo_cache: false
+
 # Demo questions (used across all scenario notebooks)
-# These match the seed data in 0_setup.py — the setup notebook pre-populates
-# the cache so the demo shows HITs on the first pass.
+# These target the demo data schema created by 0_setup.py and match the seed
+# entries (used only when seed_demo_cache is true).
 demo_questions:
   - "What was total deposit volume in 2024?"
   - "Show monthly deposit trend from Jan 2023 to Dec 2025"
   - "What is the average account balance for Private Client customers by state?"
-  - "Which 10 branches had the highest deposit volume this year?"
+  - "Which 10 branches had the highest deposit volume in 2025?"
   - "What is fee revenue per customer by relationship tier?"

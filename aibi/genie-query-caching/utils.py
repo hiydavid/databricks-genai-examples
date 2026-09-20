@@ -66,7 +66,6 @@ def generate_embedding(
     text: str,
     model: str = DEFAULT_EMBEDDING_MODEL,
     instruction: Optional[str] = None,
-    dimensions: Optional[int] = None,
 ) -> list[float]:
     """Generate an embedding vector via the Databricks Foundation Model API.
 
@@ -78,23 +77,46 @@ def generate_embedding(
     instruction : str, optional
         Task-specific instruction for instruction-aware models (e.g.,
         ``databricks-qwen3-embedding-0-6b``).  Can improve retrieval by 1-5%.
-    dimensions : int, optional
-        Output dimensionality for models supporting Matryoshka embeddings
-        (32-1024 for Qwen3).  Omit to use the model's native dimension.
+        ``query()`` has no dedicated kwarg for it, so it is passed through
+        ``extra_params``.
     """
     w = _get_workspace_client()
-    kwargs: dict = {"name": model, "input": [text]}
-    if instruction is not None:
-        kwargs["instruction"] = instruction
-    if dimensions is not None:
-        kwargs["dimensions"] = dimensions
-    response = w.serving_endpoints.query(**kwargs)
+    extra_params = {"instruction": instruction} if instruction is not None else None
+    response = w.serving_endpoints.query(name=model, input=[text], extra_params=extra_params)
     return response.data[0].embedding
 
 
 # ---------------------------------------------------------------------------
 # Retry with exponential backoff + decorrelated jitter
 # ---------------------------------------------------------------------------
+
+def _is_retryable(e: Exception) -> bool:
+    """Return True only for transient errors worth retrying.
+
+    Auth failures, NOT_FOUND, malformed requests etc. fail immediately.
+    The SDK maps HTTP statuses to typed exceptions, so retryability is
+    decided from the exception class; ``retry_after_secs`` is set whenever
+    the API returns a Retry-After header.
+    """
+    if isinstance(e, (TimeoutError, ConnectionError)):
+        return True
+    try:
+        from databricks.sdk.errors import (
+            DatabricksError,
+            DeadlineExceeded,
+            InternalError,
+            TemporarilyUnavailable,
+            TooManyRequests,
+        )
+    except ImportError:
+        return False
+    if isinstance(e, DatabricksError):
+        return (
+            e.retry_after_secs is not None
+            or isinstance(e, (TooManyRequests, InternalError, TemporarilyUnavailable, DeadlineExceeded))
+        )
+    return False
+
 
 def retry_with_backoff(
     fn,
@@ -108,14 +130,15 @@ def retry_with_backoff(
     This avoids thundering-herd effects in distributed systems.
 
     Only the Genie API call should be wrapped with this — cache lookups should
-    fail fast without retry.
+    fail fast without retry.  Non-retryable errors (auth, NOT_FOUND, ...) are
+    raised on the first attempt rather than retried.
     """
     last_delay = base_delay
     for attempt in range(1, max_attempts + 1):
         try:
             return fn()
         except Exception as e:
-            if attempt == max_attempts:
+            if attempt == max_attempts or not _is_retryable(e):
                 raise
             delay = min(max_delay, random.uniform(base_delay, last_delay * 3))
             last_delay = delay
@@ -167,7 +190,7 @@ def call_genie(
     )
 
     if message.status == MessageStatus.FAILED:
-        error_msg = message.error.message if message.error else "Unknown error"
+        error_msg = message.error.error if message.error else "Unknown error"
         raise RuntimeError(f"Genie failed: {error_msg}")
 
     generated_sql = None
@@ -265,7 +288,9 @@ def get_lakebase_connection(config: dict):
         user=username,
         password=password,
         sslmode="require",
-        autocommit=False,
+        # Autocommit keeps the SELECT 1 health check above from leaving a
+        # dangling idle transaction on every cache call.
+        autocommit=True,
     )
     register_vector(conn)
     _lakebase_conn = conn
@@ -287,6 +312,16 @@ def close_lakebase_connection():
 # Lakebase cache operations
 # ---------------------------------------------------------------------------
 
+def _session_key(session_id: Optional[str]) -> str:
+    """Map a nullable session id to its storage key.
+
+    ``session_id`` is stored NOT NULL with '' as the sentinel for global
+    (non-session-scoped) entries, so Postgres unique constraints treat two
+    global writes of the same question as a conflict.
+    """
+    return session_id or ""
+
+
 def lakebase_cache_lookup(
     config: dict,
     question: str,
@@ -298,71 +333,72 @@ def lakebase_cache_lookup(
     1. Exact match on normalized question text.
     2. If no exact match, cosine similarity search via pgvector.
 
-    When *session_id* is provided, queries are scoped to that session.
+    When *session_id* is provided, queries are scoped to that session;
+    otherwise they run against the global ('') entries.
 
-    Returns ``(hit_type, cached_sql, cached_response, score, embedding)``
-    where hit_type is ``"exact"``, ``"vector"``, or ``None`` on miss.
+    Returns ``(hit_type, cached_sql, cached_response, score, embedding,
+    hit_count)`` where hit_type is ``"exact"``, ``"vector"``, or ``None`` on
+    miss, and hit_count is the entry's hit count AFTER this hit (0 on miss).
     The embedding is returned so callers can reuse it for cache writes.
     """
+    from pgvector import Vector
+
     normalized = normalize_question(question)
     embedding_model = config.get("embedding_model", DEFAULT_EMBEDDING_MODEL)
     embedding_instruction = config.get("embedding_instruction")
+    session_key = _session_key(session_id)
 
     conn = get_lakebase_connection(config)
     with conn.cursor() as cur:
         # --- Exact match ---
-        session_filter = "AND session_id = %s" if session_id else ""
-        params: list = [normalized]
-        if session_id:
-            params.append(session_id)
-
         cur.execute(
-            f"SELECT cached_sql, cached_response FROM genie_cache "
-            f"WHERE question_normalized = %s {session_filter} LIMIT 1",
-            params,
+            "SELECT cached_sql, cached_response FROM genie_cache "
+            "WHERE question_normalized = %s AND session_id = %s LIMIT 1",
+            (normalized, session_key),
         )
         row = cur.fetchone()
         if row:
             cur.execute(
-                f"UPDATE genie_cache SET hit_count = hit_count + 1 "
-                f"WHERE question_normalized = %s {session_filter}",
-                params,
+                "UPDATE genie_cache SET hit_count = hit_count + 1 "
+                "WHERE question_normalized = %s AND session_id = %s RETURNING hit_count",
+                (normalized, session_key),
             )
-            conn.commit()
+            hit_count = cur.fetchone()[0]
             resp = json.loads(row[1]) if row[1] else None
-            return "exact", row[0], resp, 1.0, None
+            return "exact", row[0], resp, 1.0, None, hit_count
 
         # --- Vector similarity ---
         embedding = generate_embedding(
             question, model=embedding_model, instruction=embedding_instruction,
         )
-        vs_params: list = [embedding, session_id, embedding] if session_id else [embedding, embedding]
-        session_where = "WHERE session_id = %s AND embedding IS NOT NULL" if session_id else "WHERE embedding IS NOT NULL"
+        # pgvector's psycopg adapter only registers dumpers for Vector and
+        # numpy.ndarray — a plain list would be adapted as a PG array.
+        vec = Vector(embedding)
 
         cur.execute(
-            f"""
+            """
             SELECT question_normalized, cached_sql, cached_response,
-                   1 - (embedding <=> %s::vector) AS similarity
+                   1 - (embedding <=> %s) AS similarity
             FROM genie_cache
-            {session_where}
-            ORDER BY embedding <=> %s::vector
+            WHERE session_id = %s AND embedding IS NOT NULL
+            ORDER BY embedding <=> %s
             LIMIT 1
             """,
-            vs_params,
+            (vec, session_key, vec),
         )
         row = cur.fetchone()
 
         if row and row[3] is not None and row[3] >= threshold:
             cur.execute(
-                f"UPDATE genie_cache SET hit_count = hit_count + 1 "
-                f"WHERE question_normalized = %s {session_filter}",
-                [row[0]] + ([session_id] if session_id else []),
+                "UPDATE genie_cache SET hit_count = hit_count + 1 "
+                "WHERE question_normalized = %s AND session_id = %s RETURNING hit_count",
+                (row[0], session_key),
             )
-            conn.commit()
+            hit_count = cur.fetchone()[0]
             resp = json.loads(row[2]) if row[2] else None
-            return "vector", row[1], resp, float(row[3]), embedding
+            return "vector", row[1], resp, float(row[3]), embedding, hit_count
 
-    return None, None, None, 0.0, embedding
+    return None, None, None, 0.0, embedding, 0
 
 
 def lakebase_cache_write(
@@ -375,11 +411,14 @@ def lakebase_cache_write(
 ):
     """Write a Genie response to the Lakebase cache.
 
-    Uses ``ON CONFLICT`` to upsert.  When *session_id* is provided, the
-    ``session_id`` column is also set.
+    Uses ``ON CONFLICT (question_normalized, session_id)`` to upsert, so a
+    session's entry is never overwritten by another session asking the same
+    question.
 
     If *embedding* is provided it is reused; otherwise a new one is generated.
     """
+    from pgvector import Vector
+
     normalized = normalize_question(question)
     embedding_model = config.get("embedding_model", DEFAULT_EMBEDDING_MODEL)
     embedding_instruction = config.get("embedding_instruction")
@@ -395,16 +434,33 @@ def lakebase_cache_write(
             """
             INSERT INTO genie_cache
                 (question_normalized, embedding, cached_sql, cached_response, session_id)
-            VALUES (%s, %s::vector, %s, %s::jsonb, %s)
-            ON CONFLICT (question_normalized) DO UPDATE SET
+            VALUES (%s, %s, %s, %s::jsonb, %s)
+            ON CONFLICT (question_normalized, session_id) DO UPDATE SET
                 cached_sql = EXCLUDED.cached_sql,
                 cached_response = EXCLUDED.cached_response,
-                embedding = EXCLUDED.embedding,
-                session_id = EXCLUDED.session_id
+                embedding = EXCLUDED.embedding
             """,
-            (normalized, embedding, sql, response_json, session_id),
+            (normalized, Vector(embedding), sql, response_json, _session_key(session_id)),
         )
-    conn.commit()
+
+
+def evict_expired_l1(config: dict, ttl_minutes: int):
+    """Delete session-scoped L1 entries older than the TTL.
+
+    Global entries (session_id = '') are the durable cache and are never
+    evicted by this; only per-session rows have a lifetime.
+    """
+    conn = get_lakebase_connection(config)
+    with conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM genie_cache WHERE session_id <> '' "
+            "AND created_at < now() - make_interval(mins => %s)",
+            (ttl_minutes,),
+        )
+        deleted = cur.rowcount
+    if deleted:
+        print(f"  Evicted {deleted} expired L1 entries (TTL {ttl_minutes} min)")
+    return deleted
 
 
 # ---------------------------------------------------------------------------

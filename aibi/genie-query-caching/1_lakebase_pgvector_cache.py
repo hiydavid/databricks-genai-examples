@@ -72,7 +72,7 @@ for question in demo_questions:
 
     # --- Cache lookup ---
     t0 = time.time()
-    hit_type, cached_sql, cached_resp, score, embedding = lakebase_cache_lookup(
+    hit_type, cached_sql, cached_resp, score, embedding, _hit_count = lakebase_cache_lookup(
         config, question, threshold=SIMILARITY_THRESHOLD
     )
 
@@ -125,7 +125,7 @@ for i, question in enumerate(demo_questions):
     print(f"Question: {question}")
 
     t0 = time.time()
-    hit_type, cached_sql, cached_resp, score, _ = lakebase_cache_lookup(
+    hit_type, cached_sql, cached_resp, score, _, _hit_count = lakebase_cache_lookup(
         config, question, threshold=SIMILARITY_THRESHOLD
     )
     warm_latency = time.time() - t0
@@ -161,7 +161,7 @@ if demo_questions:
     print(f"Paraphrased: {paraphrased}")
 
     t0 = time.time()
-    hit_type, cached_sql, cached_resp, score, _ = lakebase_cache_lookup(
+    hit_type, cached_sql, cached_resp, score, _, _hit_count = lakebase_cache_lookup(
         config, paraphrased, threshold=SIMILARITY_THRESHOLD
     )
     latency = time.time() - t0
@@ -200,5 +200,4 @@ print("vs. Genie API latency (~5-30s).  Expect 50-500x speedup on cache hits.")
 # MAGIC from utils import get_lakebase_connection
 # MAGIC conn = get_lakebase_connection(config)
 # MAGIC conn.cursor().execute("TRUNCATE TABLE genie_cache")
-# MAGIC conn.commit()
 # MAGIC ```

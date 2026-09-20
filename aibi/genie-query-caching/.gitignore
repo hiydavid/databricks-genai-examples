@@ -1,0 +1,9 @@
+# Local notebook runtime state
+__pycache__/
+*.pyc
+
+# User-specific config (contains workspace host, space IDs)
+configs.yaml
+
+# Databricks VS Code extension sync state
+.databricks/
