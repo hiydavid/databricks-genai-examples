@@ -39,11 +39,11 @@ def load_config(path: str = "./configs.yaml") -> dict:
 def normalize_question(question: str) -> str:
     """Normalize a question for exact-match dedup.
 
-    Lowercases, strips punctuation, and collapses whitespace so that trivially
-    different phrasings (trailing '?', extra spaces) map to the same key.
+    Lowercases, removes a trailing question mark, and collapses whitespace.
+    Preserve meaningful punctuation: '1.5', '15', '<', and '>' must not
+    collapse to the same cache key.
     """
-    q = question.lower().strip()
-    q = re.sub(r"[^\w\s]", "", q)
+    q = question.lower().strip().rstrip("?").rstrip()
     q = re.sub(r"\s+", " ", q)
     return q
 
@@ -364,7 +364,8 @@ def lakebase_cache_lookup(
                 (normalized, session_key),
             )
             hit_count = cur.fetchone()[0]
-            resp = json.loads(row[1]) if row[1] else None
+            # psycopg decodes JSONB into Python objects when reading the row.
+            resp = row[1]
             return "exact", row[0], resp, 1.0, None, hit_count
 
         # --- Vector similarity ---
@@ -395,7 +396,7 @@ def lakebase_cache_lookup(
                 (row[0], session_key),
             )
             hit_count = cur.fetchone()[0]
-            resp = json.loads(row[2]) if row[2] else None
+            resp = row[2]
             return "vector", row[1], resp, float(row[3]), embedding, hit_count
 
     return None, None, None, 0.0, embedding, 0
@@ -473,18 +474,28 @@ def sync_vs_index_and_wait(vsc, endpoint_name: str, index_name: str, timeout_min
     index.sync()
     print("  VS index sync triggered...")
 
-    start = time.time()
-    timeout_seconds = timeout_minutes * 60
+    # An ONLINE index may still be serving the previous snapshot during sync.
+    # Let the SDK wait for pending updates too, and propagate timeout/failure
+    # instead of letting the notebooks continue with an incomplete index.
+    index.wait_until_ready(
+        timeout=timedelta(minutes=timeout_minutes), wait_for_updates=True,
+    )
+    print("  VS index sync complete")
 
-    while True:
-        status = index.describe().get("status", {})
-        if status.get("ready", False):
-            print("  VS index sync complete")
-            return
-        if time.time() - start > timeout_seconds:
-            print("  WARNING: Sync timed out — new entries may not be searchable yet")
-            return
-        time.sleep(5)
+
+def execute_cached_sql(spark, sql: str):
+    """Return materialized pandas results, or None if cached SQL fails.
+
+    These demos return small aggregates, so collecting them to pandas is
+    appropriate. This executes the query inside the error handler and lets
+    notebook display() reuse its results without re-running the source SQL.
+    For larger result sets, use a bounded result-serving path instead.
+    """
+    try:
+        return spark.sql(sql).toPandas()
+    except Exception as e:
+        print(f"  Cached SQL failed to execute ({type(e).__name__}) — falling back to Genie")
+        return None
 
 
 # ---------------------------------------------------------------------------

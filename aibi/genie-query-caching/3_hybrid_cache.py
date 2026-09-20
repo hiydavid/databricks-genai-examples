@@ -15,7 +15,7 @@
 # MAGIC 1. **L1 check** — exact match + pgvector similarity (threshold ≥ 0.93) in Lakebase
 # MAGIC 2. **L1 HIT** → return cached response immediately; once the entry's
 # MAGIC    `hit_count` reaches the promotion threshold it is auto-promoted to L2
-# MAGIC 3. **L1 MISS → L2 check** — hybrid semantic + BM25 search (threshold ≥ 0.90)
+# MAGIC 3. **L1 MISS → L2 check** — hybrid retrieval, followed by exact-question verification
 # MAGIC 4. **L2 HIT** → re-execute the cached SQL for fresh results, cache in L1
 # MAGIC 5. **L2 MISS** → Genie API (with retry + backoff) → write to L1
 # MAGIC 6. **Promotion** — entries promote L1 → L2 on explicit user validation
@@ -35,7 +35,6 @@
 
 # COMMAND ----------
 
-import json
 import time
 import uuid
 
@@ -44,6 +43,7 @@ from databricks.ai_search.client import AISearchClient
 from utils import (
     call_genie_with_retry,
     evict_expired_l1,
+    execute_cached_sql,
     generate_id,
     get_lakebase_connection,
     lakebase_cache_lookup,
@@ -64,7 +64,6 @@ CACHE_KB_INDEX = f"{CATALOG}.{SCHEMA}.cache_knowledge_base_index"
 
 thresholds = config.get("thresholds", {})
 L1_THRESHOLD = thresholds.get("lakebase_hybrid", 0.93)
-L2_THRESHOLD = thresholds.get("vs_auto_execute", 0.90)
 
 PROMOTION_THRESHOLD = config.get("promotion", {}).get("hit_count_threshold", 3)
 L1_TTL_MINUTES = config.get("l1_ttl_minutes", 240)
@@ -83,7 +82,7 @@ promoted_to_l2 = set()
 
 print(f"Session ID:         {SESSION_ID}")
 print(f"L1 threshold:       {L1_THRESHOLD} (Lakebase pgvector)")
-print(f"L2 threshold:       {L2_THRESHOLD} (Vector Search)")
+print("L2 reuse policy:    Same normalized question only; other candidates → Genie")
 print(f"Promotion at:       hit_count >= {PROMOTION_THRESHOLD}")
 print(f"L1 TTL:             {L1_TTL_MINUTES} min")
 print(f"L2 Knowledge Base:  {CACHE_KB_INDEX}")
@@ -116,13 +115,17 @@ def l1_clear_session(session_id: str = SESSION_ID):
 
 
 def l2_cache_lookup(question: str):
-    """L2 cache lookup: hybrid semantic + BM25 search on the knowledge base VS index."""
+    """Retrieve L2 candidates, reusing only the same normalized question.
+
+    Hybrid RRF rank scores do not prove that two questions are equivalent.
+    Without a user confirmation flow, non-exact candidates fall back to Genie.
+    """
     index = vsc.get_index(endpoint_name=VS_ENDPOINT, index_name=CACHE_KB_INDEX)
 
     results = index.similarity_search(
         query_text=question,
         columns=["id", "question_text", "cached_sql", "cached_response"],
-        num_results=1,
+        num_results=5,
         query_type="HYBRID",
     )
 
@@ -130,15 +133,10 @@ def l2_cache_lookup(question: str):
     if not hits:
         return None, None, None, 0.0
 
-    row = hits[0]
-    score = float(row[-1]) if row[-1] is not None else 0.0
-    cached_sql = row[2]
-    cached_response = row[3]
-
-    if score >= L2_THRESHOLD:
-        return "hit", cached_sql, cached_response, score
-
-    return None, None, None, score
+    for row in hits:
+        if normalize_question(row[1] or "") == normalize_question(question):
+            return "hit", row[2], row[3], float(row[-1] or 0.0)
+    return None, None, None, float(hits[0][-1] or 0.0)
 
 
 def promote_to_l2(question: str, sql: str, response_text: str, source: str = "auto"):
@@ -201,7 +199,7 @@ def validate_l1_entry(question: str, session_id: str = SESSION_ID):
         print(f"  No L1 entry to validate for: {question}")
         return None
 
-    resp = json.loads(row[1]) if row[1] else None
+    resp = row[1]  # psycopg has already decoded the JSONB value.
     resp_str = resp.get("text", "") if isinstance(resp, dict) else (resp or "")
     promoted_to_l2.add(normalized)
     return promote_to_l2(question, row[0] or "", resp_str, source="user-validation")
@@ -219,9 +217,9 @@ def query_with_hybrid_cache(question: str, session_id: str = SESSION_ID):
     """Execute the full hybrid cache flow: L1 → L2 → Genie API.
 
     Returns a dict with: source, sql, response, score, latency_s, and df
-    (the executed cached-SQL DataFrame, when the flow re-executed SQL).
+    (materialized pandas results, when the flow re-executed SQL).
     """
-    start = time.time()
+    start = time.perf_counter()
 
     # --- L1: Lakebase session cache ---
     hit_type, sql, resp, score, embedding, hit_count = lakebase_cache_lookup(
@@ -243,7 +241,7 @@ def query_with_hybrid_cache(question: str, session_id: str = SESSION_ID):
             "response": resp,
             "score": score,
             "df": None,
-            "latency_s": time.time() - start,
+            "latency_s": time.perf_counter() - start,
         }
 
     # --- L2: Vector Search knowledge base ---
@@ -255,11 +253,8 @@ def query_with_hybrid_cache(question: str, session_id: str = SESSION_ID):
         # the SQL no longer runs (schema drift since it was cached), degrade
         # to the Genie path below instead of failing the request — a stale
         # entry must not be promoted into L1.
-        try:
-            l2_df = spark.sql(sql)
-        except Exception as e:
-            print(f"  L2 cached SQL failed to execute ({type(e).__name__}) — falling back to Genie")
-            l2_usable = False
+        l2_df = execute_cached_sql(spark, sql)
+        l2_usable = l2_df is not None
     if l2_usable:
         # Cache the entry in L1 for the rest of the session (reuse the
         # embedding generated by the L1 lookup).
@@ -273,7 +268,7 @@ def query_with_hybrid_cache(question: str, session_id: str = SESSION_ID):
             "response": resp_text,
             "score": score,
             "df": l2_df,
-            "latency_s": time.time() - start,
+            "latency_s": time.perf_counter() - start,
         }
 
     # --- Genie API (with retry/backoff) ---
@@ -293,7 +288,7 @@ def query_with_hybrid_cache(question: str, session_id: str = SESSION_ID):
         "response": text,
         "score": 0.0,
         "df": None,
-        "latency_s": time.time() - start,
+        "latency_s": time.perf_counter() - start,
     }
 
 
@@ -411,7 +406,7 @@ for question in demo_questions:
     print(f"  Source: {result['source']} | Score: {result['score']:.3f} | Latency: {result['latency_s']:.3f}s")
     if result.get("df") is not None:
         print("  Re-executed cached SQL for freshness:")
-        result["df"].display()
+        display(result["df"])
 
     all_results[question]["pass3"] = result
 
@@ -461,7 +456,7 @@ print_summary_table(
 print()
 print("Pass 1: Cold — Genie API (5-30s)")
 print("Pass 2: L1 warm — Lakebase exact match (~50-200ms)")
-print("Pass 3: L2 warm — VS hybrid search + SQL re-execution + promote to L1 (~0.5-2s)")
+print("Pass 3: L2 warm — VS lookup + SQL execution and result collection + write to L1")
 print("Pass 4: L1 warm — promoted entries now in L1 (~50-200ms)")
 print()
 print("The hybrid approach gives you the best of both worlds:")

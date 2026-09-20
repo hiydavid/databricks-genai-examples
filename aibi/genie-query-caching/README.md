@@ -34,10 +34,10 @@ Demonstrates three caching strategies for Databricks Genie API responses, reduci
 3. Create a **Genie Space** over the demo data schema (`<catalog>.genie_cache_demo` by default, from `demo_data_schema` in `configs.yaml`) and set its ID as `genie_space_id` in `configs.yaml`. The scenario notebooks call Genie on cache misses, so this step is required unless you set `seed_demo_cache: true` (which makes every question a cache hit)
 4. Run any scenario notebook:
    - `1_lakebase_pgvector_cache.py` — simplest, Lakebase-only
-   - `2_vector_search_cache.py` — Vector Search with confidence tiering
+   - `2_vector_search_cache.py` — Vector Search with exact-question reuse and candidate review
    - `3_hybrid_cache.py` — recommended two-tier approach
 
-Each scenario notebook walks a **cold pass** (cache miss → Genie API → cache write) followed by **warm passes** (cache hits), so run them right after `0_setup.py` to see the full progression.
+Each scenario notebook walks a **cold pass** (cache miss → Genie API → cache write) followed by **warm passes** (cache hits). This progression assumes fresh, unseeded caches. Setup preserves existing cache entries; use the notebooks' optional cleanup cells when repeating a cold-cache demo.
 
 ## Notebooks
 
@@ -45,7 +45,7 @@ Each scenario notebook walks a **cold pass** (cache miss → Genie API → cache
 |------|---------|
 | `0_setup.py` | Create demo data schema, catalog/schema, Lakebase table with pgvector, Delta tables, VS endpoint/indexes, and optional cache seeding |
 | `1_lakebase_pgvector_cache.py` | Scenario 1: exact match + pgvector similarity (≥ 0.92) |
-| `2_vector_search_cache.py` | Scenario 2: hybrid semantic + BM25 with 3-tier confidence scoring — top tier auto-executes the cached SQL |
+| `2_vector_search_cache.py` | Scenario 2: hybrid retrieval — auto-execute same-question matches, show other candidates for review, call Genie on misses or failed SQL |
 | `3_hybrid_cache.py` | Scenario 3: L1 Lakebase session cache + L2 VS knowledge base with L2 re-execution and L1→L2 promotion (thumbs-up or hit count) |
 | `utils.py` | Shared helpers: retry/backoff, Genie API wrapper, embeddings, Lakebase connectivity |
 
@@ -58,7 +58,7 @@ See `configs.template.yaml` for all settings:
 - **Lakebase** — host, port, database, secret scope/keys
 - **Vector Search** — endpoint name, embedding model
 - **Retry/backoff** — max attempts, base/max delay (decorrelated jitter)
-- **Thresholds** — similarity thresholds for each cache layer
+- **Thresholds** — pgvector cosine thresholds for Lakebase; Vector Search rank scores do not authorize reuse
 - **Promotion & TTL** — L1→L2 promotion hit-count threshold, L1 session TTL (Scenario 3)
 - **Seeding** — `seed_demo_cache` flag to pre-populate caches (default off)
 - **Demo questions** — sample questions used across all notebooks
@@ -71,4 +71,8 @@ See `configs.template.yaml` for all settings:
 - **Lakebase connectivity**: `psycopg` (psycopg3, autocommit) + `pgvector` Python package for native PostgreSQL vector search; credentials via Databricks Secrets
 - **Cache upserts**: Lakebase `ON CONFLICT (question_normalized, session_id)` and Delta `MERGE` — notebook re-runs refresh entries instead of duplicating them, and one session's L1 entry can never be overwritten by another session asking the same question
 - **Vector Search**: Delta Sync indexes with managed embeddings and `HYBRID` query type (semantic + BM25), via the `databricks-ai-search` package
+- **SQL reuse**: Hybrid scores use reciprocal rank fusion (RRF), so they rank candidates rather than measure question equivalence. Scenarios 2 and 3 auto-execute only a candidate with the same normalized question. Other candidates require review in Scenario 2 or fall back to Genie in Scenario 3. Normalization preserves numbers and operators, allowing only case, whitespace, and trailing-question-mark differences. The old `vs_auto_execute` and `vs_confirm` settings are no longer used.
+- **SQL execution and timing**: Cached SQL results are collected to pandas inside the failure handler before an L2 entry is written to L1. This suits the small aggregate demo results and avoids re-executing source SQL when displaying them. Hit latency includes execution and collection; Scenario 2 reports batch index sync separately. Failed SQL falls back to Genie.
+- **Index freshness**: Setup and sync wait for pending updates to finish, not just for the index to become queryable. Timeout and offline errors stop the notebook.
+- **Demo data**: The repeatable 600-row transaction dataset includes all three transaction types in every month from January 2023 through December 2025. Setup checks deposit coverage and all 12 branches in the 2025 ranking.
 - **Code structure**: Shared `utils.py` module imported by all notebooks; each notebook adds scenario-specific cache logic

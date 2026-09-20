@@ -40,8 +40,11 @@ retry:
 thresholds:
   lakebase_similarity: 0.92       # Scenario 1 - pgvector cosine similarity
   lakebase_hybrid: 0.93           # Scenario 3 - L1 pgvector threshold (stricter)
-  vs_auto_execute: 0.90           # Scenarios 2 & 3 - auto-execute cached SQL
-  vs_confirm: 0.75                # Scenario 2 - return but flag for user confirmation
+
+# Vector Search uses hybrid scores only to rank candidates, never as confidence.
+# Scenario 2 auto-executes exact question matches and sends other candidates
+# for review. Scenario 3 falls back to Genie for non-exact L2 candidates.
+# Legacy vs_auto_execute / vs_confirm settings are no longer used.
 
 # Scenario 3 - L1 -> L2 promotion and session lifetime
 promotion:

@@ -35,6 +35,9 @@
 
 # COMMAND ----------
 
+from datetime import timedelta
+import random
+
 from utils import (
     generate_id,
     get_lakebase_connection,
@@ -145,18 +148,35 @@ branches = spark.createDataFrame(
 )
 branches.write.mode("overwrite").saveAsTable(f"{dd}.demo_branches")
 
-transactions = (
-    spark.range(600)
-    .selectExpr(
-        "CAST(id + 1 AS LONG) AS transaction_id",
-        "CAST(pmod(id, 60) + 1 AS INT) AS account_id",
-        "CAST(pmod(id, 12) + 1 AS INT) AS branch_id",
-        "element_at(array('Deposit', 'Withdrawal', 'Transfer'), CAST(pmod(id, 3) + 1 AS INT)) AS transaction_type",
-        "round(100 + rand(45) * 14900, 2) AS amount_usd",
-        "round(CASE WHEN pmod(id, 4) = 0 THEN rand(46) * 40 ELSE 0 END, 2) AS fee_usd",
-        "CAST(2023 + pmod(id, 3) AS INT) AS transaction_year",
-        "CAST(pmod(id, 12) + 1 AS INT) AS transaction_month",
-    )
+
+def demo_transaction_rows():
+    """Generate every transaction type in every month, with repeatable amounts."""
+    rng = random.Random(45)
+    rows = []
+    for i in range(600):
+        # Each month gets all three types before advancing to the next month.
+        # Accounts and branches are sampled independently of type and date.
+        month_index = (i // 3) % 36
+        rows.append((
+            i + 1,
+            rng.randint(1, 60),
+            rng.randint(1, 12),
+            ("Deposit", "Withdrawal", "Transfer")[i % 3],
+            round(rng.uniform(100, 15000), 2),
+            round(rng.uniform(1, 40), 2) if i % 4 == 0 else 0.0,
+            2023 + month_index // 12,
+            month_index % 12 + 1,
+        ))
+    return rows
+
+
+transactions = spark.createDataFrame(
+    demo_transaction_rows(),
+    schema=(
+        "transaction_id LONG, account_id INT, branch_id INT, "
+        "transaction_type STRING, amount_usd DOUBLE, fee_usd DOUBLE, "
+        "transaction_year INT, transaction_month INT"
+    ),
 )
 transactions.write.mode("overwrite").saveAsTable(f"{dd}.demo_transactions")
 
@@ -165,6 +185,11 @@ for t, n in [("demo_customers", 30), ("demo_accounts", 60), ("demo_branches", 12
     assert count == n, f"{dd}.{t}: expected {n} rows, got {count}"
     print(f"  {dd}.{t}: {count} rows")
 
+# Check the questions have useful data, not merely the expected row count.
+deposits = spark.table(f"{dd}.demo_transactions").where("transaction_type = 'Deposit'")
+assert deposits.select("transaction_year", "transaction_month").distinct().count() == 36
+assert deposits.where("transaction_year = 2025").select("branch_id").distinct().count() == 12
+
 # COMMAND ----------
 
 # MAGIC %md
@@ -172,6 +197,8 @@ for t, n in [("demo_customers", 30), ("demo_accounts", 60), ("demo_branches", 12
 # MAGIC
 # MAGIC Stores cached Genie responses for the Vector Search caching scenario.
 # MAGIC Change Data Feed (CDF) is enabled so the Delta Sync VS index can track changes.
+# MAGIC Writers supply `hit_count` (and `validated` for the knowledge base)
+# MAGIC explicitly, so these tables do not require Delta's column-default feature.
 
 # COMMAND ----------
 
@@ -185,7 +212,7 @@ spark.sql(f"""
         cached_sql STRING,
         cached_response STRING,
         created_at TIMESTAMP,
-        hit_count INT DEFAULT 0
+        hit_count INT
     )
     USING DELTA
     TBLPROPERTIES (delta.enableChangeDataFeed = true)
@@ -211,10 +238,10 @@ spark.sql(f"""
         question_normalized STRING,
         cached_sql STRING,
         cached_response STRING,
-        validated BOOLEAN DEFAULT false,
+        validated BOOLEAN,
         validation_source STRING,
         created_at TIMESTAMP,
-        hit_count INT DEFAULT 0
+        hit_count INT
     )
     USING DELTA
     TBLPROPERTIES (delta.enableChangeDataFeed = true)
@@ -365,26 +392,12 @@ wait_for_endpoint_ready(VS_ENDPOINT)
 
 
 def wait_for_index_ready(endpoint_name: str, index_name: str, timeout_minutes: int = 60):
-    """Wait for a Vector Search index to be ready."""
-    start_time = time.time()
-    timeout_seconds = timeout_minutes * 60
-
-    while True:
-        index = vsc.get_index(endpoint_name=endpoint_name, index_name=index_name)
-        status = index.describe().get("status", {})
-        ready = status.get("ready", False)
-        detailed = status.get("detailed_state", "UNKNOWN")
-
-        if ready:
-            print(f"Index {index_name} is READY")
-            return
-        if detailed == "FAILED":
-            raise RuntimeError(f"Index {index_name} is in FAILED state")
-        if time.time() - start_time > timeout_seconds:
-            raise TimeoutError(f"Timeout waiting for index {index_name}")
-
-        print(f"  Index status: ready={ready}, state={detailed}. Waiting...")
-        time.sleep(30)
+    """Wait for initial provisioning and any pending Delta updates."""
+    index = vsc.get_index(endpoint_name=endpoint_name, index_name=index_name)
+    index.wait_until_ready(
+        verbose=True, timeout=timedelta(minutes=timeout_minutes), wait_for_updates=True,
+    )
+    print(f"Index {index_name} is READY with no pending updates")
 
 
 def create_or_sync_index(source_table: str, index_name: str):
