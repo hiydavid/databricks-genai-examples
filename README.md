@@ -93,7 +93,7 @@ For Databricks skills and coding-assistant setup, see the [Databricks AI Dev Kit
 
 | Example | What it covers |
 | --- | --- |
-| [Support copilot with managed memory](memory/) | Compare a stateless baseline, client-managed working memory, and durable episodic memory across support cases. The current notebooks cover working and episodic memory; semantic and procedural memory are planned. Requires the Managed agent memory preview. |
+| [Managed memory](memory/) | Compare a stateless baseline, client-managed working memory, and durable episodic memory across support cases. The current notebooks cover working and episodic memory; semantic and procedural memory are planned. Requires the Managed agent memory preview. |
 
 ### Model serving
 
