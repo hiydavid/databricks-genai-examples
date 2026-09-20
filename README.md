@@ -47,7 +47,7 @@ For Databricks skills and coding-assistant setup, see the [Databricks AI Dev Kit
 
 | Example | What it covers |
 | --- | --- |
-| [Genie optimization workflow](aibi/genie-optimization-workflow/) | Snapshot a space, validate benchmarks, measure baseline accuracy, optimize with Genie Code tasks, and record an audit trail. **WIP; requires the Genie Code Job Task preview.** |
+| [Genie optimization workflow](aibi/genie-optimization-workflow/) | **WIP.** Snapshot a space, validate benchmarks, measure baseline accuracy, optimize with Genie Code tasks, and record an audit trail; requires the Genie Code Job Task preview. |
 | [Genie latency guide](aibi/genie-latency-guide/) | Diagnose query-generation and execution latency using API timing, MLflow tracing, and tuning guidance. |
 | [Genie demo data](aibi/genie-demo-data/) | Generate synthetic banking, talent advisory, healthcare, retail, SaaS, and wind turbine datasets, with benchmark loaders. |
 | [Genie query caching](aibi/genie-query-caching/) | Explore Lakebase + pgvector, Vector Search, and hybrid caching strategies. **WIP; not ready for use.** |
@@ -93,7 +93,7 @@ For Databricks skills and coding-assistant setup, see the [Databricks AI Dev Kit
 
 | Example | What it covers |
 | --- | --- |
-| [Managed memory](memory/) | Compare a stateless baseline, client-managed working memory, and durable episodic memory across support cases. The current notebooks cover working and episodic memory; semantic and procedural memory are planned. Requires the Managed agent memory preview. **WIP.** |
+| [Managed memory](memory/) | **WIP.** Compare a stateless baseline, client-managed working memory, and durable episodic memory across support cases. The current notebooks cover working and episodic memory; semantic and procedural memory are planned. Requires the Managed agent memory preview. |
 
 ### Model serving
 
