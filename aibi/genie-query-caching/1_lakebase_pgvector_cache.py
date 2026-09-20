@@ -21,7 +21,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install "databricks-sdk>=0.85" "psycopg[binary]>=3.1" "pgvector>=0.3" pyyaml --quiet
+# MAGIC %pip install "databricks-sdk>=0.85" "psycopg[binary]>=3.1" "pgvector>=0.4.0" pyyaml --quiet
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------

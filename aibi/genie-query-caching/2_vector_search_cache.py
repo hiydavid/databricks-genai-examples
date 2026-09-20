@@ -164,8 +164,33 @@ def execute_cached_sql(sql: str):
     Used by the 'auto' confidence tier: the cached SQL is trusted enough to
     re-run against the source tables, so the user gets fresh results at
     cache-hit latency instead of a stale stored answer.
+
+    Returns None if the SQL no longer executes (e.g. the source schema
+    changed after the entry was cached), so callers can fall back to Genie
+    instead of failing the demo.
     """
-    return spark.sql(sql)
+    try:
+        return spark.sql(sql)
+    except Exception as e:
+        print(f"  Cached SQL failed to execute ({type(e).__name__}) — entry is stale")
+        return None
+
+
+def genie_fallback(question: str):
+    """Re-answer a question from Genie and refresh its cache entry.
+
+    Called when a cache hit's stored SQL no longer executes. A production
+    system would evict the matched entry; here we re-run the cold-pass flow
+    (Genie + cache write) so the demo continues and the entry is refreshed.
+    """
+    print("  Falling back to Genie for a fresh answer...")
+    genie_result = call_genie_with_retry(config, question)
+    cache_write_delta(
+        question,
+        genie_result.generated_sql or "",
+        genie_result.response_text or "",
+    )
+    print(f"  Refreshed cache entry from Genie in {genie_result.latency_seconds:.1f}s")
 
 
 # COMMAND ----------
@@ -200,7 +225,11 @@ for question in demo_questions:
         print(f"  HIT (tier={tier}, score={score:.3f}) in {latency:.3f}s")
         if tier == "auto" and cached_sql:
             print("  Auto tier — executing cached SQL:")
-            execute_cached_sql(cached_sql).display()
+            df = execute_cached_sql(cached_sql)
+            if df is not None:
+                df.display()
+            else:
+                genie_fallback(question)
         results.append({
             "question": question[:50],
             "cold_s": latency,
@@ -263,7 +292,11 @@ for i, question in enumerate(demo_questions):
         print(f"  HIT (tier={tier}, score={score:.3f}) in {warm_latency:.3f}s")
         if tier == "auto" and cached_sql:
             print("  Auto tier — executing cached SQL for fresh results:")
-            execute_cached_sql(cached_sql).display()
+            df = execute_cached_sql(cached_sql)
+            if df is not None:
+                df.display()
+            else:
+                genie_fallback(question)
         elif tier == "confirm":
             print("  Confidence is moderate — a production system would ask the user to confirm before executing")
             if cached_sql:
@@ -302,7 +335,11 @@ if demo_questions:
         print(f"\n  AUTO tier (score={score:.3f}) in {latency:.3f}s")
         print("  High confidence — executing cached SQL directly:")
         if cached_sql:
-            execute_cached_sql(cached_sql).display()
+            df = execute_cached_sql(cached_sql)
+            if df is not None:
+                df.display()
+            else:
+                genie_fallback(paraphrased)
     elif tier == "confirm":
         print(f"\n  CONFIRM tier (score={score:.3f}) in {latency:.3f}s")
         print("  Moderate confidence — production system would ask user to review")

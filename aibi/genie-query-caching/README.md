@@ -31,7 +31,8 @@ Demonstrates three caching strategies for Databricks Genie API responses, reduci
 
 1. Copy `configs.template.yaml` → `configs.yaml` and fill in your values
 2. Run `0_setup.py` — creates the demo data schema (self-contained banking dataset), all cache infrastructure (Lakebase table, Delta tables, VS endpoint + indexes), and optionally seeds the caches (`seed_demo_cache`, default `false`, so the demos start cold)
-3. Run any scenario notebook:
+3. Create a **Genie Space** over the demo data schema (`<catalog>.genie_cache_demo` by default, from `demo_data_schema` in `configs.yaml`) and set its ID as `genie_space_id` in `configs.yaml`. The scenario notebooks call Genie on cache misses, so this step is required unless you set `seed_demo_cache: true` (which makes every question a cache hit)
+4. Run any scenario notebook:
    - `1_lakebase_pgvector_cache.py` — simplest, Lakebase-only
    - `2_vector_search_cache.py` — Vector Search with confidence tiering
    - `3_hybrid_cache.py` — recommended two-tier approach
