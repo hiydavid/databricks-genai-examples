@@ -30,7 +30,6 @@ For Databricks skills and coding-assistant setup, see the [Databricks AI Dev Kit
 
 | Example | What it covers |
 | --- | --- |
-| [Agent Bricks](agents/agent-bricks/) | Build a Multi-Agent Supervisor that coordinates a Genie Space and a Knowledge Assistant. |
 | [LangGraph research assistant](agents/langgraph-research-assistant/) | Validate company names, plan research, and retrieve financial documents with a multi-agent graph. |
 | [LangGraph Genie deep research](agents/langgraph-genie-deep-research/) | Route questions to Genie and coordinate parallel queries for financial analysis. |
 | [Genie agent with OpenAI-compatible tool calling](agents/openai-genie-agent/) | Combine Genie queries and Unity Catalog function tools in an MLflow `ResponsesAgent`. |
