@@ -74,12 +74,17 @@ fixed, questions regressed) and a final summary at the end.
 Write one artifact row to the artifacts table with
 `run_id = '{{run_id}}'`, `artifact_type = 'optimization_result'`, and a JSON
 payload containing at least:
-`{status, starting_accuracy, final_accuracy, rounds_executed, changes_per_round,
-remaining_failures}`
+`{status, starting_accuracy, final_accuracy, final_eval_run_id, rounds_executed,
+changes_per_round, remaining_failures}`
 where `status = 'SUCCESS'` for a completed loop (including zero rounds or
 finishing below target), `changes_per_round` is a list of `{round, summary}` and
 `remaining_failures` lists the questions still not `GOOD` with their reasons.
+`final_eval_run_id` is the eval run that produced `final_accuracy` (the
+baseline's `eval_run_id` when zero rounds ran); the audit re-reads it.
 
 Use parameter binding for artifact reads and writes, or a DataFrame write,
 so quotes, backslashes, and newlines in JSON are preserved. Do not interpolate
 the payload or run ID into SQL string literals.
+Quote each identifier of the artifacts table with backticks
+(`` `{{catalog}}`.`{{schema}}`.`gso_prototype_artifacts` ``) so names with
+hyphens or other special characters work.

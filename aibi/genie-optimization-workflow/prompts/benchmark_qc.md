@@ -27,6 +27,9 @@ valid — downstream evaluation runs only those.
 Write the JSON payload using parameter binding or a DataFrame write so quotes,
 backslashes, and newlines in repairs are preserved. Do not interpolate the
 payload or run ID into SQL string literals.
+Quote each identifier of the artifacts table with backticks
+(`` `{{catalog}}`.`{{schema}}`.`gso_prototype_artifacts` ``) so names with
+hyphens or other special characters work.
 
 If fewer than 15 valid benchmarks remain, set `is_sufficient = false`.
 With 1–14 valid benchmarks the run continues and the audit records the warning.

@@ -2,6 +2,9 @@
 # /// script
 # [tool.databricks.environment]
 # environment_version = "5"
+# dependencies = [
+#   "databricks-sdk>=0.102.0",
+# ]
 # ///
 # DBTITLE 1,Intake and Snapshot Prototype
 # MAGIC %md
@@ -38,11 +41,11 @@ if not run_id:
 print("=" * 60)
 print("[TASK INTAKE] Intake & Snapshot — Prototype")
 print("=" * 60)
-print(f"  run_id:      {run_id or '(empty — dry run)'}")
-print(f"  space_id:    {space_id or '(empty — will skip API call)'}")
-print(f"  catalog:     {catalog or '(empty)'}")
-print(f"  schema:      {schema or '(empty)'}")
-print(f"  warehouse_id:{warehouse_id or '(empty)'}")
+print(f"  run_id:       {run_id}")
+print(f"  space_id:     {space_id}")
+print(f"  catalog:      {catalog}")
+print(f"  schema:       {schema}")
+print(f"  warehouse_id: {warehouse_id or '(empty)'}")
 
 # COMMAND ----------
 
@@ -109,8 +112,8 @@ for artifact_type, payload in (
 print("\n" + "=" * 60)
 print("[TASK INTAKE] Summary")
 print("=" * 60)
-print(f"  Space ID:      {space_id or '(dry run)'}")
-print(f"  Artifacts:     {'written to Delta' if (catalog and schema) else 'skipped (dry run)'}")
+print(f"  Space ID:      {space_id}")
+print(f"  Artifacts:     written to {artifacts_table}")
 print("=" * 60)
 
 exit_payload = json.dumps({"status": "SUCCESS", "run_id": run_id})

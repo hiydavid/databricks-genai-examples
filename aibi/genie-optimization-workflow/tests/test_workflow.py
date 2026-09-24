@@ -140,13 +140,16 @@ class WorkflowTests(unittest.TestCase):
         })
         self.store.seed("benchmark_qc", {"approved_benchmark_question_ids": APPROVED_IDS})
         self.store.seed("baseline_run", {
-            "status": "SUCCESS", "eval_run_id": "test-eval", "eval_run_status": "DONE", "accuracy": 0.9,
+            "status": "SUCCESS", "eval_run_id": "test-eval", "eval_run_status": "DONE",
+            "num_questions": 20, "accuracy": 0.9,
         })
         self.store.seed("optimization_result", {
             "status": "SUCCESS", "starting_accuracy": 0.9, "final_accuracy": final_accuracy,
-            "rounds_executed": 1, "changes_per_round": [{"round": 1, "summary": "Added a description"}],
+            "final_eval_run_id": "final-eval", "rounds_executed": 1,
+            "changes_per_round": [{"round": 1, "summary": "Added a description"}],
             "remaining_failures": [],
         })
+        self.genie.genie_get_eval_run.return_value = evaluation(num_correct=round(final_accuracy * 20))
 
     def test_successful_handoffs_preserve_nested_json_and_bound_values(self):
         self.run_notebook("intake_and_snapshot.py")
@@ -160,6 +163,7 @@ class WorkflowTests(unittest.TestCase):
         )
         self.store.seed("optimization_result", {
             "status": "SUCCESS", "starting_accuracy": 0.9, "final_accuracy": 0.9,
+            "final_eval_run_id": baseline["eval_run_id"],
             "rounds_executed": 0, "changes_per_round": [], "remaining_failures": [],
         })
         result = self.run_notebook("publish_and_audit.py")
@@ -326,6 +330,41 @@ class WorkflowTests(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, "does not report success"):
                         self.run_notebook("publish_and_audit.py")
                     self.assertIsNone(self.store.latest("run_summary")["target_met"])
+
+    def test_audit_verifies_final_accuracy_against_the_named_eval_run(self):
+        cases = (
+            ("missing id", {"final_eval_run_id": None}, None, "final_eval_run_id"),
+            ("not done", {}, evaluation("EVALUATION_FAILED"), "has status"),
+            ("bad counts", {}, evaluation(num_questions=0), "invalid accuracy counts"),
+            ("mismatch", {}, evaluation(num_correct=10), "does not match the final evaluation"),
+            ("other questions", {}, evaluation(num_questions=40, num_correct=38), "did not cover"),
+            ("reused baseline", {"final_eval_run_id": "test-eval"}, None, "baseline eval run"),
+        )
+        for name, override, final_eval, message in cases:
+            with self.subTest(case=name):
+                self.setUp()
+                self.seed_complete_audit()
+                payload = {**self.store.latest("optimization_result"), **override}
+                self.store.seed("optimization_result", payload)
+                if final_eval is not None:
+                    self.genie.genie_get_eval_run.return_value = final_eval
+                with self.assertRaisesRegex(RuntimeError, message):
+                    self.run_notebook("publish_and_audit.py")
+                self.assertIsNone(self.store.latest("run_summary")["target_met"])
+
+    def test_audit_uses_api_accuracy_when_reported_value_is_rounded(self):
+        self.seed_complete_audit()
+        self.genie.genie_get_eval_run.return_value = evaluation(num_questions=20, num_correct=17)
+        payload = {**self.store.latest("optimization_result"), "final_accuracy": 0.86}
+        self.store.seed("optimization_result", payload)
+        result = self.run_notebook("publish_and_audit.py")
+        self.assertTrue(result["audit_complete"])
+        self.assertEqual(self.store.latest("run_summary")["final_accuracy"], 0.85)
+
+    def test_audit_rejects_negative_max_rounds(self):
+        self.seed_complete_audit()
+        with self.assertRaisesRegex(ValueError, "max_rounds"):
+            self.run_notebook("publish_and_audit.py", max_rounds="-1")
 
 
 if __name__ == "__main__":

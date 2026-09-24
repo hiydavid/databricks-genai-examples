@@ -1,4 +1,11 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# dependencies = [
+#   "databricks-sdk>=0.102.0",
+# ]
+# ///
 # DBTITLE 1,Publish & Audit — GSO Prototype
 # MAGIC %md
 # MAGIC # Publish & Audit — GSO Prototype
@@ -32,12 +39,14 @@ target_accuracy = float(dbutils.widgets.get("target_accuracy") or "0.90")
 max_rounds = int(dbutils.widgets.get("max_rounds") or "3")
 if not math.isfinite(target_accuracy) or not 0 <= target_accuracy <= 1:
     raise ValueError("target_accuracy must be between 0 and 1")
+if max_rounds < 0:
+    raise ValueError("max_rounds must be a nonnegative integer")
 
 print("=" * 60)
 print("[TASK PUBLISH] Publish & Audit — Prototype")
 print("=" * 60)
-print(f"  run_id:          {run_id or '(empty — dry run)'}")
-print(f"  space_id:        {space_id or '(empty)'}")
+print(f"  run_id:          {run_id}")
+print(f"  space_id:        {space_id}")
 print(f"  target_accuracy: {target_accuracy}")
 
 # COMMAND ----------
@@ -140,6 +149,42 @@ if (not isinstance(changes, list)
     changes = []
 if not isinstance(opt.get("remaining_failures"), list):
     errors.append("Missing or invalid remaining_failures in optimization_result")
+final_eval_run_id = opt.get("final_eval_run_id")
+if not isinstance(final_eval_run_id, str) or not final_eval_run_id.strip():
+    errors.append("Missing or invalid final_eval_run_id in optimization_result")
+    final_eval_run_id = None
+elif (type(rounds) is int and rounds > 0
+        and final_eval_run_id == baseline.get("eval_run_id")):
+    errors.append("final_eval_run_id is the baseline eval run, but optimization rounds ran")
+
+# COMMAND ----------
+
+# DBTITLE 1,Verify the final evaluation against the Genie API
+# The optimizer reports its own final accuracy; re-read the eval run it names and use
+# the API counts as the final accuracy. The reported value only has to agree to within
+# half a question, so a rounded number (e.g. 0.89 for 17/19) is accepted.
+if final_eval_run_id and final_accuracy is not None:
+    try:
+        from databricks.sdk import WorkspaceClient
+
+        w = WorkspaceClient()
+        final_eval = w.genie.genie_get_eval_run(space_id=space_id, eval_run_id=final_eval_run_id)
+        final_eval_status = final_eval.eval_run_status.value if final_eval.eval_run_status else None
+        total, correct = final_eval.num_questions, final_eval.num_correct
+        if final_eval_status != "DONE":
+            errors.append(f"Final evaluation {final_eval_run_id} has status {final_eval_status}")
+        elif (type(total) is not int or total <= 0
+                or type(correct) is not int or not 0 <= correct <= total):
+            errors.append(f"Final evaluation {final_eval_run_id} has invalid accuracy counts")
+        elif abs(correct / total - final_accuracy) > 0.5 / total:
+            errors.append("Reported final accuracy does not match the final evaluation")
+        # Same question count as the baseline; the API does not return question IDs.
+        elif total != baseline.get("num_questions"):
+            errors.append("Final evaluation did not cover the baseline's benchmark questions")
+        else:
+            final_accuracy = correct / total
+    except Exception as e:
+        errors.append(f"Could not read final evaluation {final_eval_run_id}: {e}")
 
 # COMMAND ----------
 
@@ -177,7 +222,7 @@ else:
 if opt:
     print(f"\n⚙️ Optimization")
     print(f"  Starting accuracy:  {opt.get('starting_accuracy', 'n/a')}")
-    print(f"  Final accuracy:     {opt.get('final_accuracy', 'n/a')}")
+    print(f"  Final accuracy:     {final_accuracy if final_accuracy is not None else 'n/a'}")
     print(f"  Rounds executed:    {opt.get('rounds_executed', 'n/a')} of {max_rounds}")
     if changes:
         print(f"  Changes per round:")

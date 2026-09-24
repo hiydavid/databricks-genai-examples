@@ -27,8 +27,8 @@ Each task writes a row to `<catalog>.<schema>.gso_prototype_artifacts` keyed by 
 | `intake_and_snapshot` | Notebook | Fetches the Genie Space config (`w.genie.get_space` with the full serialized space) and writes `run_manifest` + `space_config_snapshot` artifacts. |
 | `benchmark_qc` | Genie Code | Reviews the space's own benchmark set (question clarity, gold SQL validity, question↔SQL alignment) using its Genie benchmarking knowledge, repairs benchmarks in place (up to `benchmark_repair_max_tries` passes, gated by `benchmark_policy`), skips what it cannot fix, and writes a `benchmark_qc` artifact with counts, repair rationale, the approved `benchmark_question_ids`, and whether ≥15 valid benchmarks remain. |
 | `begin_baseline_run` | Notebook | Requires a nonempty `approved_benchmark_question_ids` list from QC, starts a Genie benchmark eval run (`genie_create_eval_run`) on those questions, and polls it to completion. Writes a `baseline_run` artifact with the `eval_run_id`, status, accuracy counts, and any error. Failed or unfinished evaluations fail the task after diagnostics are saved. |
-| `optimize` | Genie Code | Iterative loop (up to `max_rounds`), each round has four phases: ANALYZE (classify failures by root cause), RECOMMEND (specific changes + expected impact), ACT (apply levers), RE-EVALUATE (rerun the same benchmark questions as the baseline). Stops early when accuracy ≥ `target_accuracy`. Changes stack — never reverted between rounds. |
-| `publish_and_audit` | Notebook | Validates required artifacts and captures the post-optimization space snapshot (`space_config_post_opt`, full serialized space). Writes a `run_summary` with accuracy and audit completeness; incomplete audits save their errors and fail the task. |
+| `optimize` | Genie Code | Iterative loop (up to `max_rounds`), each round has four phases: ANALYZE (classify failures by root cause), RECOMMEND (specific changes + expected impact), ACT (apply levers), RE-EVALUATE (rerun the same benchmark questions as the baseline). Stops early when accuracy ≥ `target_accuracy`. Changes stack — never reverted between rounds. Task timeout is 4 hours, since each round runs its own eval. |
+| `publish_and_audit` | Notebook | Runs after upstream tasks finish, even if they failed (`run_if: ALL_DONE`). Validates required artifacts, re-reads the optimizer's `final_eval_run_id` from the Genie API to confirm the reported final accuracy, and captures the post-optimization space snapshot (`space_config_post_opt`, full serialized space). Writes a `run_summary` with accuracy and audit completeness; incomplete audits save their errors and fail the task. |
 
 ### Optimization levers
 
@@ -62,7 +62,7 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
 - Databricks CLI installed and configured (used for uploading notebooks and triggering runs — all SDK code runs inside the workspace, not locally)
 - Benchmark questions loaded into the Genie Space (the eval-run API evaluates the space's own benchmark set; up to 500 questions per space)
 - A SQL warehouse ID for validating benchmark SQL
-- Notebook compute supporting [named parameters](https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-parameter-marker) in `spark.sql(..., args=...)` (Databricks Runtime 12.1+ or serverless), and a Databricks SDK version exposing `genie_create_eval_run` / `genie_get_eval_run`
+- Serverless compute for notebook tasks. The job defines no clusters, so the notebook tasks run on serverless; each notebook declares environment version 5 and `databricks-sdk>=0.102.0` (the version exposing `genie_create_eval_run` / `genie_get_eval_run`) in its header
 
 ### Steps
 
@@ -144,9 +144,10 @@ serialized-space JSON, SQL quotes, backslashes, and newlines without manual esca
 - **Baseline failure:** API errors, unsuccessful terminal statuses, polling
   exhaustion, and invalid counts produce a `baseline_run` diagnostic with
   `status = 'FAILED'`, an error, and `accuracy = null`; the notebook then raises
-  an error. The dependent optimizer and audit tasks do not run.
-- **Incomplete audit:** missing/invalid required artifacts or a failed final
-  snapshot produce a `run_summary` with `status = 'INCOMPLETE'`,
+  an error. The optimizer does not run; the audit still runs and records an
+  incomplete `run_summary`.
+- **Incomplete audit:** missing/invalid required artifacts, a final accuracy that
+  does not match the `final_eval_run_id` eval run, or a failed final snapshot produce a `run_summary` with `status = 'INCOMPLETE'`,
   `audit_complete = false`, `errors`, and `target_met = null`; the audit task
   then raises an error. Final accuracy is never inferred from the baseline.
 - **Completed run:** a valid audit has `status = 'SUCCESS'` and
@@ -169,5 +170,5 @@ benchmark API and Genie Code automations.
 
 ## Prototype limitations
 
-- **Prompt-defined tasks**: Genie Code chooses its actions from the prompts. Downstream notebooks validate required handoff fields, but do not independently verify every claimed optimization change.
+- **Prompt-defined tasks**: Genie Code chooses its actions from the prompts. Downstream notebooks validate required handoff fields, and re-check the final accuracy against the named eval run, but do not independently verify every claimed optimization change. The eval-run API does not return question IDs, so the audit checks the final run covers the same number of questions as the baseline, not the exact set.
 - **Internal API**: the `deploy` notebook uses the `/api/2.0/alerts-internal/scheduled-insights` endpoint for Genie Code automations, which is internal and may change.

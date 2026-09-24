@@ -2,6 +2,9 @@
 # /// script
 # [tool.databricks.environment]
 # environment_version = "5"
+# dependencies = [
+#   "databricks-sdk>=0.102.0",
+# ]
 # ///
 # DBTITLE 1,Deploy GSO Prototype v2
 # MAGIC %md
@@ -130,7 +133,9 @@ def create_job(
             {
                 "task_key": "optimize",
                 "depends_on": [{"task_key": "begin_baseline_run"}],
-                "timeout_seconds": 3600,
+                # Each round runs a fresh eval (up to ~1h, like the baseline), so budget
+                # for the default max_rounds = 3 plus analysis time.
+                "timeout_seconds": 14400,
                 "genie_task": {
                     "configuration_id": optimize_config_id,
                     "parameters": {
@@ -148,6 +153,9 @@ def create_job(
             {
                 "task_key": "publish_and_audit",
                 "depends_on": [{"task_key": "optimize"}],
+                # Run even when upstream tasks fail or time out, so every run ends with
+                # a run_summary (INCOMPLETE, with errors, when artifacts are missing).
+                "run_if": "ALL_DONE",
                 "notebook_task": {
                     "notebook_path": f"{notebook_root}/publish_and_audit",
                     "source": "WORKSPACE",

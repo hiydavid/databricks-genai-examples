@@ -1,4 +1,11 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# dependencies = [
+#   "databricks-sdk>=0.102.0",
+# ]
+# ///
 # DBTITLE 1,Begin Baseline Run — GSO Prototype
 # MAGIC %md
 # MAGIC # Begin Baseline Run — GSO Prototype
@@ -32,10 +39,10 @@ if not run_id:
 print("=" * 60)
 print("[TASK BEGIN_BASELINE_RUN] Begin Baseline Run — Prototype")
 print("=" * 60)
-print(f"  run_id:   {run_id or '(empty — dry run)'}")
-print(f"  space_id: {space_id or '(empty)'}")
-print(f"  catalog:  {catalog or '(empty)'}")
-print(f"  schema:   {schema or '(empty)'}")
+print(f"  run_id:   {run_id}")
+print(f"  space_id: {space_id}")
+print(f"  catalog:  {catalog}")
+print(f"  schema:   {schema}")
 
 # COMMAND ----------
 
