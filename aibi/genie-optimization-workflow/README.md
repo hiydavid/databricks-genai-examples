@@ -78,7 +78,7 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
 
    (or upload the `.py` files individually via the workspace UI as notebooks)
 
-2. Deploy the automations and job: open the `deploy` notebook in the target workspace and click *Run all*. It authenticates with the notebook's own context — no token needed.
+2. Deploy the automations and job: open the `deploy` notebook in the target workspace, run the first cell (**Widgets**) to create the widgets, fill them in, then click *Run all*. It authenticates with the notebook's own context — no token needed.
 
    Parameters (widgets at the top of the notebook):
 

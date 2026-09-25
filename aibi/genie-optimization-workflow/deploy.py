@@ -19,12 +19,8 @@
 
 # COMMAND ----------
 
-# DBTITLE 1,Parameters
-from pathlib import Path
-
-from databricks.sdk import WorkspaceClient
-
-# -- Parameters --
+# DBTITLE 1,Widgets
+# Run this cell first to create the widgets, fill them in, then Run all.
 # Workspace directory holding notebooks/ + prompts/ (default: your home + /gso-prototype)
 dbutils.widgets.text("notebook_root", "")
 # Directory holding the prompt .md files (default: <notebook_root>/prompts)
@@ -36,6 +32,13 @@ dbutils.widgets.text("space_id", "")
 dbutils.widgets.text("catalog", "")
 dbutils.widgets.text("schema", "")
 dbutils.widgets.text("warehouse_id", "")
+
+# COMMAND ----------
+
+# DBTITLE 1,Parameters
+from pathlib import Path
+
+from databricks.sdk import WorkspaceClient
 
 notebook_root = dbutils.widgets.get("notebook_root").strip()
 prompts_dir = dbutils.widgets.get("prompts_dir").strip()
