@@ -28,6 +28,13 @@ dbutils.widgets.text("space_id", "")
 dbutils.widgets.text("catalog", "")
 dbutils.widgets.text("schema", "")
 dbutils.widgets.text("warehouse_id", "")
+# What benchmark_qc may change: validate_only never edits the space,
+# validate_and_repair fixes benchmarks in place, repair_and_augment also adds new
+# benchmarks until 15 are valid. Overridable per run under Job parameters.
+dbutils.widgets.dropdown(
+    "benchmark_policy", "validate_and_repair",
+    ["validate_only", "validate_and_repair", "repair_and_augment"],
+)
 
 # COMMAND ----------
 
@@ -38,7 +45,7 @@ from databricks.sdk import WorkspaceClient
 
 job_defaults = {
     name: dbutils.widgets.get(name).strip()
-    for name in ("space_id", "catalog", "schema", "warehouse_id")
+    for name in ("space_id", "catalog", "schema", "warehouse_id", "benchmark_policy")
 }
 
 w = WorkspaceClient()
@@ -105,7 +112,7 @@ def create_job(
             {"name": "max_rounds", "default": "3"},
             {"name": "target_accuracy", "default": "0.90"},
             {"name": "benchmark_repair_max_tries", "default": "3"},
-            {"name": "benchmark_policy", "default": "repair_allowed"},
+            {"name": "benchmark_policy", "default": job_defaults["benchmark_policy"]},
             # Empty: intake_and_snapshot records whoever started the run. Set it only when
             # an external orchestrator should attribute the run to someone else.
             {"name": "triggered_by", "default": ""},

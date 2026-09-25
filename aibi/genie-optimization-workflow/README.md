@@ -25,10 +25,10 @@ Each task writes a row to `<catalog>.<schema>.genie_agent_optimization_workflow_
 | Task | Type | What it does |
 |------|------|--------------|
 | `intake_and_snapshot` | Notebook | Fetches the Genie Space config (`w.genie.get_space` with the full serialized space) and writes `run_manifest` + `space_config_snapshot` artifacts. |
-| `benchmark_qc` | Genie Code | Reviews the space's own benchmark set (question clarity, gold SQL validity, question↔SQL alignment) using its Genie benchmarking knowledge, repairs benchmarks in place (up to `benchmark_repair_max_tries` passes, gated by `benchmark_policy`), skips what it cannot fix, and writes a `benchmark_qc` artifact with counts, repair rationale, the approved `benchmark_question_ids`, and whether ≥15 valid benchmarks remain. |
+| `benchmark_qc` | Genie Code | Reviews the space's own benchmark set (question clarity, gold SQL validity, question↔SQL alignment) using its Genie benchmarking knowledge. Depending on `benchmark_policy` (see [Benchmark policies](#benchmark-policies)) it only excludes bad benchmarks, repairs them in place (up to `benchmark_repair_max_tries` passes), or also adds new ones until 15 are valid. Writes a `benchmark_qc` artifact with counts, repair rationale, the approved and generated `benchmark_question_ids`, and whether ≥15 approved benchmarks remain. |
 | `begin_baseline_run` | Notebook | Requires a nonempty `approved_benchmark_question_ids` list from QC, starts a Genie benchmark eval run (`genie_create_eval_run`) on those questions, and polls it to completion. Writes a `baseline_run` artifact with the `eval_run_id`, status, accuracy counts, and any error. Failed or unfinished evaluations fail the task after diagnostics are saved. |
 | `optimize` | Genie Code | Iterative loop (up to `max_rounds`), each round has four phases: ANALYZE (classify failures by root cause), RECOMMEND (specific changes + expected impact), ACT (apply levers), RE-EVALUATE (rerun the same benchmark questions as the baseline). Stops early when accuracy ≥ `target_accuracy`. Changes stack — never reverted between rounds. Task timeout is 4 hours, since each round runs its own eval. |
-| `publish_and_audit` | Notebook | Runs after upstream tasks finish, even if they failed (`run_if: ALL_DONE`). Validates required artifacts, re-reads the optimizer's `final_eval_run_id` from the Genie API to confirm the reported final accuracy, and captures the post-optimization space snapshot (`space_config_post_opt`, full serialized space). Writes a `run_summary` with accuracy and audit completeness; incomplete audits save their errors and fail the task. |
+| `publish_and_audit` | Notebook | Runs after upstream tasks finish, even if they failed (`run_if: ALL_DONE`). Validates required artifacts, re-reads the optimizer's `final_eval_run_id` from the Genie API to confirm the reported final accuracy, scores the human-authored benchmarks separately when QC generated any, and captures the post-optimization space snapshot (`space_config_post_opt`, full serialized space). Writes a `run_summary` with accuracy and audit completeness; incomplete audits save their errors and fail the task. |
 
 ### Optimization levers
 
@@ -72,8 +72,7 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
 1. Upload the notebooks to a workspace directory (as notebooks, not raw files). Include the `notebooks/` and `prompts/` folders — the prompt `.md` files become plain Workspace files that the deploy notebook reads directly:
 
    ```bash
-   databricks workspace import-dir ./genie-optimization-workflow \
-       /Workspace/Users/you@company.com/genie-agent-optimization-workflow
+   databricks workspace import-dir . /Workspace/Users/you@company.com/genie-agent-optimization-workflow
    ```
 
    (or upload the `.py` files individually via the workspace UI as notebooks)
@@ -89,6 +88,7 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
    | `space_id` | `""` | Target Genie Space, saved as the job's `space_id` default |
    | `catalog` / `schema` | `""` | Unity Catalog location for the artifacts table, saved as job defaults |
    | `warehouse_id` | `""` | SQL warehouse for validating benchmark SQL, saved as a job default |
+   | `benchmark_policy` | `validate_and_repair` | What `benchmark_qc` may change (see [Benchmark policies](#benchmark-policies)), saved as a job default |
 
    Set `space_id`, `catalog`, `schema`, and `warehouse_id` here so the job runs against your space with a plain **Run now**. If `space_id`, `catalog`, or `schema` is empty, the job's default run is a dry run.
 
@@ -121,10 +121,30 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
 | `levers` | `[1,2,3,4]` | Which optimization levers the optimizer may use |
 | `max_rounds` | `3` | Max optimization iterations |
 | `target_accuracy` | `0.90` | Stop when accuracy reaches this |
-| `benchmark_policy` | `repair_allowed` | Whether QC may repair broken benchmarks |
+| `benchmark_policy` | `deploy` widget (`validate_and_repair`) | What QC may change: `validate_only`, `validate_and_repair`, or `repair_and_augment`. Any other value fails `intake_and_snapshot` |
 | `benchmark_repair_max_tries` | `3` | Repair attempts per benchmark |
 | `warehouse_id` | `deploy` widget | SQL warehouse for validating benchmark SQL |
 | `triggered_by` | `""` | Leave empty: `intake_and_snapshot` looks up who started the run (`creator_user_name` from the Jobs API) and records it with the trigger type in the run manifest. Set it only to attribute a run to someone else, e.g. from an external orchestrator |
+
+### Benchmark policies
+
+| Policy | Edits existing benchmarks | Adds benchmarks |
+|--------|---------------------------|-----------------|
+| `validate_only` | No; bad benchmarks are excluded | No |
+| `validate_and_repair` (default) | Yes, preserving each question's intent; unfixable ones are excluded | No |
+| `repair_and_augment` | Yes, as above | Yes, until exactly 15 are valid |
+
+No policy deletes benchmarks from the space; excluded benchmarks are left out of
+the approved list. `repair_and_augment` adds nothing when zero existing
+benchmarks are valid, so the run still halts.
+
+Generated benchmarks have gold SQL written by Genie Code, and the optimizer is
+then graded partly against it. To keep that visible, QC lists them in
+`generated_benchmark_question_ids`, and `publish_and_audit` reports
+`human_authored_baseline_accuracy` and `human_authored_final_accuracy` in the
+`run_summary` next to the overall numbers. If the overall accuracy improves but
+the human-authored accuracy does not, review the generated benchmarks in the
+space before trusting the gain.
 
 ## Artifacts table
 

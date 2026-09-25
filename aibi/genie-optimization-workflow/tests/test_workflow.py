@@ -112,11 +112,27 @@ class WorkflowTests(unittest.TestCase):
         )
         self.genie.genie_create_eval_run.return_value = evaluation("RUNNING")
         self.genie.genie_get_eval_run.return_value = evaluation()
+        self.genie.genie_list_eval_results.side_effect = self.list_results
+        self.genie.genie_get_eval_result_details.side_effect = self.result_details
+        self.assessments = {}  # (eval_run_id, question_id) -> GOOD/BAD
         self.jobs = Mock()
         self.jobs.get_run.return_value = types.SimpleNamespace(
             creator_user_name="runner@example.com", trigger=types.SimpleNamespace(value="ONE_TIME"),
         )
         self.client = Mock(return_value=types.SimpleNamespace(genie=self.genie, jobs=self.jobs))
+
+    def list_results(self, space_id, eval_run_id, page_token=None):
+        # Two pages, so the audit has to follow next_page_token.
+        results = [types.SimpleNamespace(result_id=f"{eval_run_id}/{q}", benchmark_question_id=q)
+                   for q in APPROVED_IDS]
+        if page_token is None:
+            return types.SimpleNamespace(eval_results=results[:10], next_page_token="page-2")
+        return types.SimpleNamespace(eval_results=results[10:], next_page_token=None)
+
+    def result_details(self, space_id, eval_run_id, result_id):
+        question_id = result_id.split("/", 1)[1]
+        value = self.assessments.get((eval_run_id, question_id), "GOOD")
+        return types.SimpleNamespace(assessment=types.SimpleNamespace(value=value))
 
     def run_notebook(self, filename, **overrides):
         sdk = types.ModuleType("databricks.sdk")
@@ -143,6 +159,19 @@ class WorkflowTests(unittest.TestCase):
         manifest = self.store.latest("run_manifest")
         self.assertEqual(manifest["triggered_by"], "runner@example.com")
         self.assertEqual(manifest["trigger_type"], "ONE_TIME")
+
+    def test_intake_records_each_benchmark_policy(self):
+        for policy in ("validate_only", "validate_and_repair", "repair_and_augment"):
+            with self.subTest(policy=policy):
+                self.run_notebook("intake_and_snapshot.py", benchmark_policy=policy)
+                self.assertEqual(self.store.latest("run_manifest")["benchmark_policy"], policy)
+
+    def test_intake_rejects_unknown_benchmark_policy_before_any_calls(self):
+        for policy in ("repair_allowed", "", "Validate_Only"):
+            with self.subTest(policy=policy), self.assertRaisesRegex(ValueError, "benchmark_policy"):
+                self.run_notebook("intake_and_snapshot.py", benchmark_policy=policy)
+        self.client.assert_not_called()
+        self.assertEqual(self.store.calls, [])
 
     def test_intake_does_not_fail_when_run_lookup_fails(self):
         self.jobs.get_run.side_effect = RuntimeError("simulated lookup failure")
@@ -376,6 +405,52 @@ class WorkflowTests(unittest.TestCase):
         result = self.run_notebook("publish_and_audit.py")
         self.assertTrue(result["audit_complete"])
         self.assertEqual(self.store.latest("run_summary")["final_accuracy"], 0.85)
+
+    def test_audit_without_generated_benchmarks_skips_the_split(self):
+        self.seed_complete_audit()
+        result = self.run_notebook("publish_and_audit.py")
+        self.assertEqual(result["generated_benchmark_count"], 0)
+        self.assertIsNone(result["human_authored_baseline_accuracy"])
+        self.assertIsNone(result["human_authored_final_accuracy"])
+        self.genie.genie_list_eval_results.assert_not_called()
+
+    def test_audit_scores_human_authored_benchmarks_separately(self):
+        self.seed_complete_audit()
+        generated = APPROVED_IDS[15:]
+        self.store.seed("benchmark_qc", {"approved_benchmark_question_ids": APPROVED_IDS,
+                                         "generated_benchmark_question_ids": generated})
+        # Baseline misses 3 of 15 human-authored questions, final misses 1; generated
+        # questions are all BAD in the baseline so they must not affect the split.
+        for q in APPROVED_IDS[:3]:
+            self.assessments[("test-eval", q)] = "BAD"
+        for q in generated:
+            self.assessments[("test-eval", q)] = "BAD"
+        self.assessments[("final-eval", APPROVED_IDS[0])] = "NEEDS_REVIEW"
+        result = self.run_notebook("publish_and_audit.py")
+        self.assertTrue(result["audit_complete"])
+        self.assertEqual(result["generated_benchmark_count"], 5)
+        self.assertEqual(result["human_authored_baseline_accuracy"], 12 / 15)
+        self.assertEqual(result["human_authored_final_accuracy"], 14 / 15)
+
+    def test_audit_rejects_invalid_generated_benchmark_ids(self):
+        for generated in ("question-1", ["not-approved"], [123], APPROVED_IDS):
+            with self.subTest(generated=generated):
+                self.setUp()
+                self.seed_complete_audit()
+                self.store.seed("benchmark_qc", {"approved_benchmark_question_ids": APPROVED_IDS,
+                                                 "generated_benchmark_question_ids": generated})
+                with self.assertRaisesRegex(RuntimeError, "generated"):
+                    self.run_notebook("publish_and_audit.py")
+                self.assertFalse(self.store.latest("run_summary")["audit_complete"])
+
+    def test_audit_split_failure_makes_audit_incomplete(self):
+        self.seed_complete_audit()
+        self.store.seed("benchmark_qc", {"approved_benchmark_question_ids": APPROVED_IDS,
+                                         "generated_benchmark_question_ids": APPROVED_IDS[15:]})
+        self.genie.genie_list_eval_results.side_effect = RuntimeError("simulated results failure")
+        with self.assertRaisesRegex(RuntimeError, "human-authored"):
+            self.run_notebook("publish_and_audit.py")
+        self.assertIsNone(self.store.latest("run_summary")["target_met"])
 
     def test_audit_rejects_negative_max_rounds(self):
         self.seed_complete_audit()

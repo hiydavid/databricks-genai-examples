@@ -25,6 +25,7 @@ dbutils.widgets.text("schema", "")
 dbutils.widgets.text("warehouse_id", "")
 dbutils.widgets.text("triggered_by", "")
 dbutils.widgets.text("job_run_id", "")
+dbutils.widgets.text("benchmark_policy", "validate_and_repair")
 
 run_id = dbutils.widgets.get("run_id").strip()
 space_id = dbutils.widgets.get("space_id").strip()
@@ -33,12 +34,18 @@ schema = dbutils.widgets.get("schema").strip()
 warehouse_id = dbutils.widgets.get("warehouse_id").strip()
 triggered_by = dbutils.widgets.get("triggered_by").strip()
 job_run_id = dbutils.widgets.get("job_run_id").strip()
+benchmark_policy = dbutils.widgets.get("benchmark_policy").strip()
 
 # Keep dry runs free of API calls and Delta reads/writes, including partial config.
 if not all((space_id, catalog, schema)):
     dbutils.notebook.exit(json.dumps({"status": "DRY_RUN", "run_id": run_id}))
 if not run_id:
     raise ValueError("run_id is required for a configured run; use the job run ID")
+# benchmark_qc reads the policy from its prompt; reject typos here, before QC can
+# act on a value it has to guess at.
+BENCHMARK_POLICIES = ("validate_only", "validate_and_repair", "repair_and_augment")
+if benchmark_policy not in BENCHMARK_POLICIES:
+    raise ValueError(f"benchmark_policy must be one of {', '.join(BENCHMARK_POLICIES)}; got {benchmark_policy!r}")
 
 print("=" * 60)
 print("[TASK INTAKE] Intake & Snapshot — Prototype")
@@ -48,6 +55,7 @@ print(f"  space_id:     {space_id}")
 print(f"  catalog:      {catalog}")
 print(f"  schema:       {schema}")
 print(f"  warehouse_id: {warehouse_id or '(empty)'}")
+print(f"  benchmark_policy: {benchmark_policy}")
 
 # COMMAND ----------
 
@@ -106,6 +114,7 @@ run_manifest = {
     "space_id": space_id,
     "catalog": catalog,
     "schema": schema,
+    "benchmark_policy": benchmark_policy,
     "triggered_by": triggered_by or None,
     "trigger_type": trigger_type,
 }

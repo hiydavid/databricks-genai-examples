@@ -120,6 +120,16 @@ approved_ids = qc.get("approved_benchmark_question_ids")
 if (not isinstance(approved_ids, list) or not approved_ids
         or any(not isinstance(i, str) or not i.strip() for i in approved_ids)):
     errors.append("QC artifact must contain a nonempty list of approved benchmark IDs")
+    approved_ids = []
+# Benchmarks QC wrote itself (repair_and_augment); absent means none were added.
+generated_ids = qc.get("generated_benchmark_question_ids", [])
+if (not isinstance(generated_ids, list)
+        or any(not isinstance(i, str) or i not in approved_ids for i in generated_ids)):
+    errors.append("QC generated_benchmark_question_ids must be a list of approved benchmark IDs")
+    generated_ids = []
+elif approved_ids and set(approved_ids) <= set(generated_ids):
+    errors.append("QC approved only generated benchmarks; no human-authored baseline remains")
+generated_ids = set(generated_ids)
 if baseline.get("eval_run_status") != "DONE" or not baseline.get("eval_run_id"):
     errors.append("Baseline evaluation did not complete successfully")
 if baseline.get("status") != "SUCCESS" or baseline.get("error"):
@@ -188,6 +198,56 @@ if final_eval_run_id and final_accuracy is not None:
 
 # COMMAND ----------
 
+# DBTITLE 1,Score the human-authored benchmarks separately
+# When QC generated benchmarks, the optimizer is partly graded against gold SQL that
+# Genie wrote. Accuracy on the human-authored subset shows whether gains hold up on
+# questions the optimizer did not help write. GOOD counts as correct, as in num_correct.
+human_ids = set(approved_ids) - generated_ids
+
+
+def human_authored_accuracy(eval_run_id):
+    correct = total = 0
+    page_token = None
+    while True:
+        page = w.genie.genie_list_eval_results(
+            space_id=space_id, eval_run_id=eval_run_id, page_token=page_token
+        )
+        for result in page.eval_results or []:
+            if result.benchmark_question_id not in human_ids:
+                continue
+            details = w.genie.genie_get_eval_result_details(
+                space_id=space_id, eval_run_id=eval_run_id, result_id=result.result_id
+            )
+            total += 1
+            correct += details.assessment is not None and details.assessment.value == "GOOD"
+        page_token = page.next_page_token
+        if not page_token:
+            break
+    if total != len(human_ids):
+        raise ValueError(f"expected {len(human_ids)} human-authored results, found {total}")
+    return correct / total
+
+
+human_baseline_accuracy = human_final_accuracy = None
+if generated_ids and human_ids:
+    from databricks.sdk import WorkspaceClient
+
+    w = WorkspaceClient()
+    for label, eval_run_id in (("baseline", baseline.get("eval_run_id")), ("final", final_eval_run_id)):
+        if not eval_run_id:
+            continue  # already reported as an audit error above
+        try:
+            accuracy = human_authored_accuracy(eval_run_id)
+        except Exception as e:
+            errors.append(f"Could not score human-authored benchmarks in {label} eval {eval_run_id}: {e}")
+            continue
+        if label == "baseline":
+            human_baseline_accuracy = accuracy
+        else:
+            human_final_accuracy = accuracy
+
+# COMMAND ----------
+
 # DBTITLE 1,Compile audit report
 print("\n" + "═" * 60)
 print("AUDIT REPORT")
@@ -205,6 +265,7 @@ if qc:
     print(f"  Valid:                {qc.get('valid_count', 'n/a')}")
     print(f"  Repaired:             {qc.get('repaired_count', 'n/a')}")
     print(f"  Excluded:             {qc.get('excluded_count', 'n/a')}")
+    print(f"  Generated:            {len(generated_ids)}")
     print(f"  Corpus sufficient:    {qc.get('is_sufficient', 'n/a')}")
 else:
     print(f"\n🔍 Benchmark QC: no artifact found")
@@ -224,6 +285,10 @@ if opt:
     print(f"  Starting accuracy:  {opt.get('starting_accuracy', 'n/a')}")
     print(f"  Final accuracy:     {final_accuracy if final_accuracy is not None else 'n/a'}")
     print(f"  Rounds executed:    {opt.get('rounds_executed', 'n/a')} of {max_rounds}")
+    if generated_ids:
+        print(f"  Human-authored only ({len(human_ids)} questions):")
+        print(f"    Baseline:         {human_baseline_accuracy if human_baseline_accuracy is not None else 'n/a'}")
+        print(f"    Final:            {human_final_accuracy if human_final_accuracy is not None else 'n/a'}")
     if changes:
         print(f"  Changes per round:")
         for rnd in changes:
@@ -282,6 +347,10 @@ final_status = {
     "final_accuracy": final_accuracy,
     "target_accuracy": target_accuracy,
     "target_met": target_met,
+    # None when QC generated no benchmarks: the overall accuracies are already human-authored.
+    "generated_benchmark_count": len(generated_ids),
+    "human_authored_baseline_accuracy": human_baseline_accuracy,
+    "human_authored_final_accuracy": human_final_accuracy,
     "audit_complete": audit_complete,
     "errors": errors,
     "artifacts_collected": list(artifacts.keys()),
