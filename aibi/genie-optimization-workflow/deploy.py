@@ -21,10 +21,6 @@
 
 # DBTITLE 1,Widgets
 # Run this cell first to create the widgets, fill them in, then Run all.
-# Workspace directory holding notebooks/ + prompts/ (default: your home + /gso-prototype)
-dbutils.widgets.text("notebook_root", "")
-# Directory holding the prompt .md files (default: <notebook_root>/prompts)
-dbutils.widgets.text("prompts_dir", "")
 # Target of the optimization, baked into the job as parameter defaults so "Run now"
 # works without extra input. Leave space_id/catalog/schema empty to create a job
 # whose default run is a dry run; change them later under Job parameters in the Jobs UI.
@@ -40,8 +36,6 @@ from pathlib import Path
 
 from databricks.sdk import WorkspaceClient
 
-notebook_root = dbutils.widgets.get("notebook_root").strip()
-prompts_dir = dbutils.widgets.get("prompts_dir").strip()
 job_defaults = {
     name: dbutils.widgets.get(name).strip()
     for name in ("space_id", "catalog", "schema", "warehouse_id")
@@ -51,10 +45,13 @@ w = WorkspaceClient()
 me = w.current_user.me()
 uid = str(me.id)
 
-if not notebook_root:
-    notebook_root = f"/Workspace/Users/{me.user_name}/gso-prototype"
-if not prompts_dir:
-    prompts_dir = f"{notebook_root}/prompts"
+# notebooks/ and prompts/ sit next to this notebook, so derive the root from its own
+# workspace path. notebookPath() omits the /Workspace prefix that file reads need.
+deploy_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+notebook_root = str(Path(deploy_path).parent)
+if not notebook_root.startswith("/Workspace/"):
+    notebook_root = f"/Workspace{notebook_root}"
+prompts_dir = f"{notebook_root}/prompts"
 
 print("=" * 60)
 print("[DEPLOY] GSO Prototype v2")

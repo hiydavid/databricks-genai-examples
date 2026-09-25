@@ -78,14 +78,14 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
 
    (or upload the `.py` files individually via the workspace UI as notebooks)
 
+   Any directory works, but keep `deploy`, `notebooks/`, and `prompts/` together: `deploy` finds the task notebooks and prompts relative to its own location.
+
 2. Deploy the automations and job: open the `deploy` notebook in the target workspace, run the first cell (**Widgets**) to create the widgets, fill them in, then click *Run all*. It authenticates with the notebook's own context — no token needed.
 
    Parameters (widgets at the top of the notebook):
 
    | Widget | Default | Description |
    |--------|---------|-------------|
-   | `notebook_root` | `<your home>/gso-prototype` | Workspace path holding `deploy`, `notebooks/`, and `prompts/` |
-   | `prompts_dir` | `<notebook_root>/prompts` | Workspace path holding the prompt `.md` files |
    | `space_id` | `""` | Target Genie Space, saved as the job's `space_id` default |
    | `catalog` / `schema` | `""` | Unity Catalog location for the artifacts table, saved as job defaults |
    | `warehouse_id` | `""` | SQL warehouse for validating benchmark SQL, saved as a job default |
