@@ -69,7 +69,13 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
 
 ### Steps
 
-1. Upload the notebooks to a workspace directory (as notebooks, not raw files). Include the `notebooks/` and `prompts/` folders — the prompt `.md` files become plain Workspace files that the deploy notebook reads directly:
+1. If you cloned the full `databricks-genai-examples` repo, change into this example's directory first (the upload step imports from the current directory):
+
+   ```bash
+   cd databricks-genai-examples/aibi/genie-optimization-workflow
+   ```
+
+2. Upload the notebooks to a workspace directory (as notebooks, not raw files). Include the `notebooks/` and `prompts/` folders — the prompt `.md` files become plain Workspace files that the deploy notebook reads directly:
 
    ```bash
    databricks workspace import-dir . /Workspace/Users/you@company.com/genie-agent-optimization-workflow
@@ -79,7 +85,7 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
 
    Any directory works, but keep `deploy`, `notebooks/`, and `prompts/` together: `deploy` finds the task notebooks and prompts relative to its own location.
 
-2. Deploy the automations and job: open the `deploy` notebook in the target workspace, run the first cell (**Widgets**) to create the widgets, fill them in, then click *Run all*. It authenticates with the notebook's own context — no token needed.
+3. Deploy the automations and job: open the `deploy` notebook in the target workspace, run the first cell (**Widgets**) to create the widgets, fill them in, then click *Run all*. It authenticates with the notebook's own context — no token needed.
 
    Parameters (widgets at the top of the notebook):
 
@@ -96,7 +102,7 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
 
 > **One-time only**: deploying always creates new automations and a new job — it does not update or reuse existing ones. Re-running the deploy notebook duplicates both; delete the old job and automations first if you need to redeploy.
 
-3. Run the job: click **Run now** on the job page, or `databricks jobs run-now <job_id>`.
+4. Run the job: click **Run now** on the job page, or `databricks jobs run-now <job_id>`.
 
    To point the job at a different space later, edit the defaults under **Job parameters** in the job's details panel (no redeploy needed). For a one-off run against another space, use **Run now with different parameters**, or override at run time:
 
