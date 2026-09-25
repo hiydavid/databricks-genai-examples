@@ -6,9 +6,9 @@
 #   "databricks-sdk>=0.102.0",
 # ]
 # ///
-# DBTITLE 1,Publish & Audit — GSO Prototype
+# DBTITLE 1,Publish & Audit — Genie Agent Optimization Workflow
 # MAGIC %md
-# MAGIC # Publish & Audit — GSO Prototype
+# MAGIC # Publish & Audit — Genie Agent Optimization Workflow
 # MAGIC
 # MAGIC Final task in the DAG. Reads all artifacts from the run, compiles a summary audit report, and writes the final run status to Delta.
 
@@ -55,7 +55,7 @@ print(f"  target_accuracy: {target_accuracy}")
 artifacts = {}
 parse_errors = {}
 artifacts_table = ".".join(
-    f"`{part.replace('`', '``')}`" for part in (catalog, schema, "gso_prototype_artifacts")
+    f"`{part.replace('`', '``')}`" for part in (catalog, schema, "genie_agent_optimization_workflow_artifacts")
 )
 print(f"\nLoading artifacts from {artifacts_table} for run_id={run_id} ...")
 

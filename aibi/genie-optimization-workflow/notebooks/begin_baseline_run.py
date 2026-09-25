@@ -6,9 +6,9 @@
 #   "databricks-sdk>=0.102.0",
 # ]
 # ///
-# DBTITLE 1,Begin Baseline Run — GSO Prototype
+# DBTITLE 1,Begin Baseline Run — Genie Agent Optimization Workflow
 # MAGIC %md
-# MAGIC # Begin Baseline Run — GSO Prototype
+# MAGIC # Begin Baseline Run — Genie Agent Optimization Workflow
 # MAGIC
 # MAGIC Starts a Genie benchmark eval run against the space, polls it to
 # MAGIC completion, and records the final status and accuracy counts in the
@@ -48,7 +48,7 @@ print(f"  schema:   {schema}")
 
 # DBTITLE 1,Read approved benchmark IDs from the benchmark_qc artifact
 artifacts_table = ".".join(
-    f"`{part.replace('`', '``')}`" for part in (catalog, schema, "gso_prototype_artifacts")
+    f"`{part.replace('`', '``')}`" for part in (catalog, schema, "genie_agent_optimization_workflow_artifacts")
 )
 approved_ids = None
 error = None

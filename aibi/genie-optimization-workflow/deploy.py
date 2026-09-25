@@ -6,15 +6,15 @@
 #   "databricks-sdk>=0.102.0",
 # ]
 # ///
-# DBTITLE 1,Deploy GSO Prototype v2
+# DBTITLE 1,Deploy Genie Agent Optimization Workflow
 # MAGIC %md
-# MAGIC # Deploy — GSO Prototype
+# MAGIC # Deploy — Genie Agent Optimization Workflow
 # MAGIC
-# MAGIC One-time deployment notebook. Creates the two Genie Code automations (from the prompt `.md` files in `prompts/`) and the 5-task job `gso-prototype-v2` in the current workspace.
+# MAGIC One-time deployment notebook. Creates the two Genie Code automations (from the prompt `.md` files in `prompts/`) and the 5-task job `genie-agent-optimization-workflow` in the current workspace.
 # MAGIC
 # MAGIC **Prerequisites**
 # MAGIC - The **Genie Code Job Task** beta must be enabled for your account/workspace in the [Databricks preview portal](https://previews.databricks.com). Without it, the `genie_task` entries in the job definition are not recognized — the job is still created, but the Genie Code tasks appear in the workflow UI as unconfigured tasks you must set up manually.
-# MAGIC - The task notebooks and `prompts/*.md` are already uploaded to the workspace (e.g. via `databricks workspace import-dir ./genie-optimization-workflow /Workspace/Users/you@company.com/gso-prototype`). Workspace `.md` files are plain Workspace files and can be read directly with `open()` on DBR 14.2+.
+# MAGIC - The task notebooks and `prompts/*.md` are already uploaded to the workspace (e.g. via `databricks workspace import-dir ./genie-optimization-workflow /Workspace/Users/you@company.com/genie-agent-optimization-workflow`). Workspace `.md` files are plain Workspace files and can be read directly with `open()` on DBR 14.2+.
 # MAGIC - Run this notebook in the target workspace. The SDK authenticates with the notebook's own context — no token needed.
 
 # COMMAND ----------
@@ -54,7 +54,7 @@ if not notebook_root.startswith("/Workspace/"):
 prompts_dir = f"{notebook_root}/prompts"
 
 print("=" * 60)
-print("[DEPLOY] GSO Prototype v2")
+print("[DEPLOY] Genie Agent Optimization Workflow")
 print("=" * 60)
 print(f"  Target workspace: {w.config.host}")
 print(f"  User ID:          {uid}")
@@ -91,9 +91,9 @@ def create_job(
     optimize_config_id: str,
     job_defaults: dict,
 ) -> dict:
-    """Create the 5-task GSO prototype job."""
+    """Create the 5-task Genie Agent Optimization Workflow job."""
     job_def = {
-        "name": "gso-prototype-v2",
+        "name": "genie-agent-optimization-workflow",
         "max_concurrent_runs": 1,
         "queue": {"enabled": True},
         "parameters": [

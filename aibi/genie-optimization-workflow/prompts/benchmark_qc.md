@@ -15,7 +15,7 @@ Review the space's benchmark questions — question clarity, gold SQL validity,
 question↔SQL alignment — using your own Genie benchmarking knowledge and
 tools, and repair them in place as needed.
 
-Then write one artifact row to `{{catalog}}.{{schema}}.gso_prototype_artifacts`
+Then write one artifact row to `{{catalog}}.{{schema}}.genie_agent_optimization_workflow_artifacts`
 with `run_id = '{{run_id}}'`, `artifact_type = 'benchmark_qc'`, and a JSON
 payload containing at least:
 `{total, valid_count, repaired_count, excluded_count, is_sufficient,
@@ -28,7 +28,7 @@ Write the JSON payload using parameter binding or a DataFrame write so quotes,
 backslashes, and newlines in repairs are preserved. Do not interpolate the
 payload or run ID into SQL string literals.
 Quote each identifier of the artifacts table with backticks
-(`` `{{catalog}}`.`{{schema}}`.`gso_prototype_artifacts` ``) so names with
+(`` `{{catalog}}`.`{{schema}}`.`genie_agent_optimization_workflow_artifacts` ``) so names with
 hyphens or other special characters work.
 
 If fewer than 15 valid benchmarks remain, set `is_sufficient = false`.

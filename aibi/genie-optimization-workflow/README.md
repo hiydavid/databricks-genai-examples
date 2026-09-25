@@ -18,7 +18,7 @@ optimize              (Genie Code)    → analyze failures, apply levers, re-eva
 publish_and_audit     (notebook)      → compile audit report, write final run summary
 ```
 
-Each task writes a row to `<catalog>.<schema>.gso_prototype_artifacts` keyed by `run_id`, which is how downstream tasks (including the Genie Code prompts) read the prior task's output.
+Each task writes a row to `<catalog>.<schema>.genie_agent_optimization_workflow_artifacts` keyed by `run_id`, which is how downstream tasks (including the Genie Code prompts) read the prior task's output.
 
 ### Tasks
 
@@ -73,7 +73,7 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
 
    ```bash
    databricks workspace import-dir ./genie-optimization-workflow \
-       /Workspace/Users/you@company.com/gso-prototype
+       /Workspace/Users/you@company.com/genie-agent-optimization-workflow
    ```
 
    (or upload the `.py` files individually via the workspace UI as notebooks)
@@ -92,7 +92,7 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
 
    Set `space_id`, `catalog`, `schema`, and `warehouse_id` here so the job runs against your space with a plain **Run now**. If `space_id`, `catalog`, or `schema` is empty, the job's default run is a dry run.
 
-   `deploy` creates two Genie Code automations (via the internal scheduled-insights API) and one job named `gso-prototype-v2`, wiring the automation `configuration_id`s into the job's `genie_task` entries.
+   `deploy` creates two Genie Code automations (via the internal scheduled-insights API) and one job named `genie-agent-optimization-workflow`, wiring the automation `configuration_id`s into the job's `genie_task` entries.
 
 > **One-time only**: deploying always creates new automations and a new job — it does not update or reuse existing ones. Re-running the deploy notebook duplicates both; delete the old job and automations first if you need to redeploy.
 
@@ -128,7 +128,7 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
 
 ## Artifacts table
 
-All tasks read/write `<catalog>.<schema>.gso_prototype_artifacts`:
+All tasks read/write `<catalog>.<schema>.genie_agent_optimization_workflow_artifacts`:
 
 `space_config_snapshot` (written by `intake_and_snapshot`, before optimization) and `space_config_post_opt` (written by `publish_and_audit`, after optimization) pair up as the before/after audit trail of the Genie Space. Both capture the full serialized space (`get_space` with `include_serialized_space=True`) — instructions, data sources, and benchmarks — so benchmark_qc repairs and optimize's space-level changes are diffable. UC-level changes the optimizer may apply (table/column comments) live in Unity Catalog metadata, not in `get_space` output, and are recorded only in the `optimization_result` artifact.
 

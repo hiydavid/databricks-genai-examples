@@ -8,7 +8,7 @@
 # ///
 # DBTITLE 1,Intake and Snapshot Prototype
 # MAGIC %md
-# MAGIC # Intake & Snapshot — GSO Prototype
+# MAGIC # Intake & Snapshot — Genie Agent Optimization Workflow
 # MAGIC
 # MAGIC Simplified prototype of the `intake_and_snapshot` task. Fetches Genie Space config via SDK, writes run manifest and config snapshot to a Delta artifacts table.
 
@@ -90,7 +90,7 @@ print(f"  triggered_by: {triggered_by or '(unknown)'} (trigger: {trigger_type or
 
 # DBTITLE 1,Write artifacts to Delta
 artifacts_table = ".".join(
-    f"`{part.replace('`', '``')}`" for part in (catalog, schema, "gso_prototype_artifacts")
+    f"`{part.replace('`', '``')}`" for part in (catalog, schema, "genie_agent_optimization_workflow_artifacts")
 )
 spark.sql(f"""
     CREATE TABLE IF NOT EXISTS {artifacts_table} (

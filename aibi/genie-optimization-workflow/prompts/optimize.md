@@ -9,7 +9,7 @@ you exhaust your rounds.
 
 - **Run ID**: `{{run_id}}`
 - **Genie Space ID**: `{{space_id}}`
-- **Artifacts table**: `{{catalog}}.{{schema}}.gso_prototype_artifacts`
+- **Artifacts table**: `{{catalog}}.{{schema}}.genie_agent_optimization_workflow_artifacts`
 - **Target accuracy**: `{{target_accuracy}}`
 - **Max rounds**: `{{max_rounds}}`
 - **Available levers**: `{{levers}}`
@@ -86,5 +86,5 @@ Use parameter binding for artifact reads and writes, or a DataFrame write,
 so quotes, backslashes, and newlines in JSON are preserved. Do not interpolate
 the payload or run ID into SQL string literals.
 Quote each identifier of the artifacts table with backticks
-(`` `{{catalog}}`.`{{schema}}`.`gso_prototype_artifacts` ``) so names with
+(`` `{{catalog}}`.`{{schema}}`.`genie_agent_optimization_workflow_artifacts` ``) so names with
 hyphens or other special characters work.
