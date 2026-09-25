@@ -1,7 +1,7 @@
 # Databricks notebook source
 # /// script
 # [tool.databricks.environment]
-# environment_version = "5"
+# environment_version = "6"
 # dependencies = [
 #   "databricks-sdk>=0.102.0",
 # ]
@@ -24,6 +24,7 @@ dbutils.widgets.text("catalog", "")
 dbutils.widgets.text("schema", "")
 dbutils.widgets.text("warehouse_id", "")
 dbutils.widgets.text("triggered_by", "")
+dbutils.widgets.text("job_run_id", "")
 
 run_id = dbutils.widgets.get("run_id").strip()
 space_id = dbutils.widgets.get("space_id").strip()
@@ -31,6 +32,7 @@ catalog = dbutils.widgets.get("catalog").strip()
 schema = dbutils.widgets.get("schema").strip()
 warehouse_id = dbutils.widgets.get("warehouse_id").strip()
 triggered_by = dbutils.widgets.get("triggered_by").strip()
+job_run_id = dbutils.widgets.get("job_run_id").strip()
 
 # Keep dry runs free of API calls and Delta reads/writes, including partial config.
 if not all((space_id, catalog, schema)):
@@ -70,6 +72,22 @@ print(f"  ✓ Serialized space captured: {len(space.serialized_space)} chars")
 
 # COMMAND ----------
 
+# DBTITLE 1,Resolve who triggered the run
+# Resolve at run time rather than baking a user into the job definition: the job's
+# run-as identity (current_user.me()) is not the person who clicked Run now.
+trigger_type = None
+if not triggered_by and job_run_id:
+    try:
+        job_run = w.jobs.get_run(run_id=int(job_run_id))
+        triggered_by = job_run.creator_user_name or ""
+        trigger_type = job_run.trigger.value if job_run.trigger else None
+    except Exception as e:
+        # Provenance is informational; don't fail the run over it.
+        print(f"  ! Could not look up job run {job_run_id}: {e}")
+print(f"  triggered_by: {triggered_by or '(unknown)'} (trigger: {trigger_type or 'n/a'})")
+
+# COMMAND ----------
+
 # DBTITLE 1,Write artifacts to Delta
 artifacts_table = ".".join(
     f"`{part.replace('`', '``')}`" for part in (catalog, schema, "gso_prototype_artifacts")
@@ -88,7 +106,8 @@ run_manifest = {
     "space_id": space_id,
     "catalog": catalog,
     "schema": schema,
-    "triggered_by": triggered_by,
+    "triggered_by": triggered_by or None,
+    "trigger_type": trigger_type,
 }
 
 # Bind JSON as a value: SQL string parsing must not consume its escape characters.

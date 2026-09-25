@@ -1,7 +1,7 @@
 # Databricks notebook source
 # /// script
 # [tool.databricks.environment]
-# environment_version = "5"
+# environment_version = "6"
 # dependencies = [
 #   "databricks-sdk>=0.102.0",
 # ]
@@ -25,13 +25,24 @@ from pathlib import Path
 from databricks.sdk import WorkspaceClient
 
 # -- Parameters --
-# Workspace directory holding the task notebooks + prompts/ (default: your home + /gso-prototype)
+# Workspace directory holding notebooks/ + prompts/ (default: your home + /gso-prototype)
 dbutils.widgets.text("notebook_root", "")
 # Directory holding the prompt .md files (default: <notebook_root>/prompts)
 dbutils.widgets.text("prompts_dir", "")
+# Target of the optimization, baked into the job as parameter defaults so "Run now"
+# works without extra input. Leave space_id/catalog/schema empty to create a job
+# whose default run is a dry run; change them later under Job parameters in the Jobs UI.
+dbutils.widgets.text("space_id", "")
+dbutils.widgets.text("catalog", "")
+dbutils.widgets.text("schema", "")
+dbutils.widgets.text("warehouse_id", "")
 
 notebook_root = dbutils.widgets.get("notebook_root").strip()
 prompts_dir = dbutils.widgets.get("prompts_dir").strip()
+job_defaults = {
+    name: dbutils.widgets.get(name).strip()
+    for name in ("space_id", "catalog", "schema", "warehouse_id")
+}
 
 w = WorkspaceClient()
 me = w.current_user.me()
@@ -49,6 +60,8 @@ print(f"  Target workspace: {w.config.host}")
 print(f"  User ID:          {uid}")
 print(f"  Notebook root:    {notebook_root}")
 print(f"  Prompts dir:      {prompts_dir}")
+for name, value in job_defaults.items():
+    print(f"  {name + ':':<18}{value or '(empty)'}")
 
 # COMMAND ----------
 
@@ -76,6 +89,7 @@ def create_job(
     notebook_root: str,
     benchmark_qc_config_id: str,
     optimize_config_id: str,
+    job_defaults: dict,
 ) -> dict:
     """Create the 5-task GSO prototype job."""
     job_def = {
@@ -84,23 +98,28 @@ def create_job(
         "queue": {"enabled": True},
         "parameters": [
             {"name": "run_id", "default": "{{job.run_id}}"},
-            {"name": "space_id", "default": ""},
-            {"name": "catalog", "default": ""},
-            {"name": "schema", "default": ""},
+            {"name": "space_id", "default": job_defaults["space_id"]},
+            {"name": "catalog", "default": job_defaults["catalog"]},
+            {"name": "schema", "default": job_defaults["schema"]},
             {"name": "levers", "default": "[1,2,3,4]"},
             {"name": "max_rounds", "default": "3"},
             {"name": "target_accuracy", "default": "0.90"},
             {"name": "benchmark_repair_max_tries", "default": "3"},
             {"name": "benchmark_policy", "default": "repair_allowed"},
+            # Empty: intake_and_snapshot records whoever started the run. Set it only when
+            # an external orchestrator should attribute the run to someone else.
             {"name": "triggered_by", "default": ""},
-            {"name": "warehouse_id", "default": ""},
+            {"name": "warehouse_id", "default": job_defaults["warehouse_id"]},
         ],
         "tasks": [
             {
                 "task_key": "intake_and_snapshot",
                 "notebook_task": {
-                    "notebook_path": f"{notebook_root}/intake_and_snapshot",
+                    "notebook_path": f"{notebook_root}/notebooks/intake_and_snapshot",
                     "source": "WORKSPACE",
+                    # Not a job parameter, so a run-time override can't change it; used
+                    # to look up who started the run.
+                    "base_parameters": {"job_run_id": "{{job.run_id}}"},
                 },
                 "timeout_seconds": 3600,
             },
@@ -125,7 +144,7 @@ def create_job(
                 "task_key": "begin_baseline_run",
                 "depends_on": [{"task_key": "benchmark_qc"}],
                 "notebook_task": {
-                    "notebook_path": f"{notebook_root}/begin_baseline_run",
+                    "notebook_path": f"{notebook_root}/notebooks/begin_baseline_run",
                     "source": "WORKSPACE",
                 },
                 "timeout_seconds": 3600,
@@ -157,7 +176,7 @@ def create_job(
                 # a run_summary (INCOMPLETE, with errors, when artifacts are missing).
                 "run_if": "ALL_DONE",
                 "notebook_task": {
-                    "notebook_path": f"{notebook_root}/publish_and_audit",
+                    "notebook_path": f"{notebook_root}/notebooks/publish_and_audit",
                     "source": "WORKSPACE",
                 },
                 "timeout_seconds": 3600,
@@ -193,7 +212,7 @@ optimize_config_id = create_automation(
 
 # DBTITLE 1,Step 2 — Create the job
 print("Step 2: Creating job...")
-resp = create_job(w, notebook_root, benchmark_qc_config_id, optimize_config_id)
+resp = create_job(w, notebook_root, benchmark_qc_config_id, optimize_config_id, job_defaults)
 job_id = resp.get("job_id")
 print(f"  \u2713 Created job: {job_id}")
 print(f"  URL: {w.config.host}/jobs/{job_id}")
@@ -209,4 +228,10 @@ print(f"  benchmark_qc automation: {benchmark_qc_config_id}")
 print(f"  optimize automation:     {optimize_config_id}")
 print()
 print("To run:")
-print(f"  databricks jobs run-now {job_id} --json '{{\"job_parameters\": {{\"space_id\": \"<your-space-id>\", \"catalog\": \"<catalog>\", \"schema\": \"<schema>\", \"warehouse_id\": \"<warehouse-id>\", \"triggered_by\": \"<your-email>\"}}}}'")
+if all(job_defaults[k] for k in ("space_id", "catalog", "schema")):
+    # Target is baked into the job defaults, so no parameters are needed.
+    print(f"  Click Run now on the job page, or: databricks jobs run-now {job_id}")
+else:
+    print("  space_id / catalog / schema are not all set, so a plain Run now is a dry run.")
+    print("  Set them under Job parameters in the Jobs UI, or pass them at run time:")
+    print(f"  databricks jobs run-now {job_id} --json '{{\"job_parameters\": {{\"space_id\": \"<your-space-id>\", \"catalog\": \"<catalog>\", \"schema\": \"<schema>\", \"warehouse_id\": \"<warehouse-id>\"}}}}'")

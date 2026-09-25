@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 
-ROOT = Path(__file__).resolve().parents[1]
+NOTEBOOK_DIR = Path(__file__).resolve().parents[1] / "notebooks"
 NOTEBOOKS = ("intake_and_snapshot.py", "begin_baseline_run.py", "publish_and_audit.py")
 PARAMS = {
     "run_id": "test'run\\id",
@@ -112,7 +112,11 @@ class WorkflowTests(unittest.TestCase):
         )
         self.genie.genie_create_eval_run.return_value = evaluation("RUNNING")
         self.genie.genie_get_eval_run.return_value = evaluation()
-        self.client = Mock(return_value=types.SimpleNamespace(genie=self.genie))
+        self.jobs = Mock()
+        self.jobs.get_run.return_value = types.SimpleNamespace(
+            creator_user_name="runner@example.com", trigger=types.SimpleNamespace(value="ONE_TIME"),
+        )
+        self.client = Mock(return_value=types.SimpleNamespace(genie=self.genie, jobs=self.jobs))
 
     def run_notebook(self, filename, **overrides):
         sdk = types.ModuleType("databricks.sdk")
@@ -128,10 +132,22 @@ class WorkflowTests(unittest.TestCase):
         with patch.dict(sys.modules, {"databricks": types.ModuleType("databricks"), "databricks.sdk": sdk}), \
                 patch("time.sleep"), contextlib.redirect_stdout(io.StringIO()):
             try:
-                runpy.run_path(str(ROOT / filename), init_globals={"dbutils": dbutils, "spark": self.store})
+                runpy.run_path(str(NOTEBOOK_DIR / filename), init_globals={"dbutils": dbutils, "spark": self.store})
             except NotebookExit as e:
                 return json.loads(str(e))
         self.fail("Notebook did not exit")
+
+    def test_intake_records_the_user_who_started_the_run(self):
+        self.run_notebook("intake_and_snapshot.py", triggered_by="", job_run_id="123")
+        self.jobs.get_run.assert_called_once_with(run_id=123)
+        manifest = self.store.latest("run_manifest")
+        self.assertEqual(manifest["triggered_by"], "runner@example.com")
+        self.assertEqual(manifest["trigger_type"], "ONE_TIME")
+
+    def test_intake_does_not_fail_when_run_lookup_fails(self):
+        self.jobs.get_run.side_effect = RuntimeError("simulated lookup failure")
+        self.run_notebook("intake_and_snapshot.py", triggered_by="", job_run_id="123")
+        self.assertIsNone(self.store.latest("run_manifest")["triggered_by"])
 
     def seed_complete_audit(self, final_accuracy=0.95):
         self.store.seed("run_manifest", {"run_id": PARAMS["run_id"], "space_id": PARAMS["space_id"]})
