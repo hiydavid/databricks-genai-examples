@@ -41,6 +41,23 @@ If accuracy already meets `{{target_accuracy}}`, print "Target already met —
 nothing to optimize", write the `optimization_result` artifact (below) with
 zero rounds, and stop.
 
+## Benchmark Integrity
+
+These rules apply to every optimization lever, including example SQL /
+certified questions:
+
+- Never copy or closely paraphrase benchmark questions, question–answer pairs,
+  gold SQL, or expected results into examples, space instructions, table/column
+  descriptions, or any other configuration Genie uses to answer questions.
+- Rephrasing a question, renaming SQL aliases, changing literals, or
+  parameterizing gold SQL does not make a copied benchmark answer acceptable.
+- Use benchmark failures to identify generalizable fixes supported by schema
+  metadata or independently established business definitions. Before applying
+  each change, explain that support and why the fix applies beyond the specific
+  benchmark question. Do not use gold SQL as the sole justification.
+- If a failure cannot be fixed without embedding benchmark answer material,
+  leave it unresolved and record the limitation in `remaining_failures`.
+
 ## The Optimization Loop
 
 Repeat up to `{{max_rounds}}` rounds. Each round has four phases:
