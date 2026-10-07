@@ -102,9 +102,9 @@ Save the Power BI report as a template (*File → Export → Power BI template*)
    | `warehouse_id` | `""` | SQL warehouse for Genie Code and the Genie Agent |
    | `pbit_filename` / `metric_view_name` / `agent_name` | `""` | Optional defaults for a first file; usually set per run |
 
-   All widgets are saved as job parameter defaults. `deploy` creates two Genie Code automations (via the internal scheduled-insights API) and one job named `genie-pbi-import-workflow`, wiring the automation `configuration_id`s into the job's `genie_task` entries.
+   All widgets are saved as job parameter defaults. `deploy` creates two Genie Code automations (via the internal scheduled-insights API) and creates or resets the exact-name job `genie-pbi-import-workflow`, wiring the new automation `configuration_id`s into the job's `genie_task` entries.
 
-> **One-time only**: deploying always creates new automations and a new job — it does not update or reuse existing ones. Re-running the deploy notebook duplicates both; delete the old job and automations first if you need to redeploy.
+> **Redeployment behavior**: the first deployment creates the job; later deployments reset the existing exact-name job in place, preserving its job ID and run history. Genie Code automations are still recreated on every deployment. If multiple exact-name jobs already exist from an older version of this example, deployment stops and lists their job IDs so you can delete or rename duplicates first.
 
 5. Run the job, one `.pbit` per run:
 

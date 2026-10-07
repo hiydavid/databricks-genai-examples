@@ -10,7 +10,7 @@
 # MAGIC %md
 # MAGIC # Deploy — Genie PBI Import Workflow
 # MAGIC
-# MAGIC One-time deployment notebook. Creates the two Genie Code automations (from the prompt `.md` files in `prompts/`) and the 6-task job `genie-pbi-import-workflow` in the current workspace.
+# MAGIC Deployment notebook. Creates the two Genie Code automations (from the prompt `.md` files in `prompts/`) and creates or resets the 6-task job `genie-pbi-import-workflow` in the current workspace.
 # MAGIC
 # MAGIC **Prerequisites**
 # MAGIC - The **Genie Code Job Task** beta must be enabled for your account/workspace in the [Databricks preview portal](https://previews.databricks.com). Without it, the `genie_task` entries in the job definition are not recognized — the job is still created, but the Genie Code tasks appear in the workflow UI as unconfigured tasks you must set up manually.
@@ -62,6 +62,8 @@ from pathlib import Path
 
 from databricks.sdk import WorkspaceClient
 
+JOB_NAME = "genie-pbi-import-workflow"
+
 job_defaults = {
     name: dbutils.widgets.get(name).strip()
     for name in ("pbit_volume_path", "metric_view_catalog", "metric_view_schema", "warehouse_id",
@@ -111,16 +113,32 @@ def create_automation(w: WorkspaceClient, uid: str, prompt: str, name: str) -> s
     return config_id
 
 
-def create_job(
+def find_existing_job_id(w: WorkspaceClient) -> int | None:
+    """Return the one exact-name job ID, or fail when the target is ambiguous."""
+    matches = [
+        job for job in w.jobs.list(name=JOB_NAME)
+        if job.settings and job.settings.name == JOB_NAME
+    ]
+    if len(matches) > 1:
+        job_ids = ", ".join(str(job.job_id) for job in matches)
+        raise RuntimeError(
+            f"Found multiple jobs named {JOB_NAME!r} (job IDs: {job_ids}). "
+            "Delete or rename duplicates, then rerun deployment."
+        )
+    return matches[0].job_id if matches else None
+
+
+def deploy_job(
     w: WorkspaceClient,
     notebook_root: str,
     import_config_id: str,
     agent_config_id: str,
     job_defaults: dict,
+    existing_job_id: int | None,
 ) -> dict:
-    """Create the 6-task Genie PBI Import Workflow job."""
+    """Create the workflow job, or reset the one exact-name match."""
     job_def = {
-        "name": "genie-pbi-import-workflow",
+        "name": JOB_NAME,
         "max_concurrent_runs": 1,
         "queue": {"enabled": True},
         "parameters": [
@@ -224,11 +242,29 @@ def create_job(
         ],
     }
 
-    return w.api_client.do("POST", "/api/2.1/jobs/create", body=job_def)
+    if existing_job_id is not None:
+        w.api_client.do(
+            "POST",
+            "/api/2.1/jobs/reset",
+            body={"job_id": existing_job_id, "new_settings": job_def},
+        )
+        return {"job_id": existing_job_id, "action": "reset"}
+
+    resp = w.api_client.do("POST", "/api/2.1/jobs/create", body=job_def)
+    return {"job_id": resp["job_id"], "action": "created"}
 
 # COMMAND ----------
 
-# DBTITLE 1,Step 1 — Create Genie Code automations
+# DBTITLE 1,Step 1 — Check for an existing job
+existing_job_id = find_existing_job_id(w)
+if existing_job_id is None:
+    print(f"Step 1: No existing {JOB_NAME!r} job found; a new job will be created.")
+else:
+    print(f"Step 1: Found {JOB_NAME!r} job {existing_job_id}; it will be reset in place.")
+
+# COMMAND ----------
+
+# DBTITLE 1,Step 2 — Create Genie Code automations
 # Read the prompt files from the workspace (uploaded together with the notebooks).
 import_prompt_path = Path(f"{prompts_dir}/import_metric_view.md")
 agent_prompt_path = Path(f"{prompts_dir}/create_genie_agent.md")
@@ -240,17 +276,20 @@ for p in (import_prompt_path, agent_prompt_path):
             "Upload the prompts/ directory to the workspace first (see the README)."
         )
 
-print("Step 1: Creating Genie Code automations...")
+print("Step 2: Creating Genie Code automations...")
 import_config_id = create_automation(w, uid, import_prompt_path.read_text(), "import_metric_view")
 agent_config_id = create_automation(w, uid, agent_prompt_path.read_text(), "create_genie_agent")
 
 # COMMAND ----------
 
-# DBTITLE 1,Step 2 — Create the job
-print("Step 2: Creating job...")
-resp = create_job(w, notebook_root, import_config_id, agent_config_id, job_defaults)
+# DBTITLE 1,Step 3 — Create or reset the job
+print("Step 3: Creating or resetting job...")
+resp = deploy_job(
+    w, notebook_root, import_config_id, agent_config_id, job_defaults, existing_job_id
+)
 job_id = resp.get("job_id")
-print(f"  ✓ Created job: {job_id}")
+job_action = resp["action"]
+print(f"  ✓ {job_action.capitalize()} job: {job_id}")
 print(f"  URL: {w.config.host}/jobs/{job_id}")
 
 # COMMAND ----------
@@ -260,6 +299,7 @@ print("=" * 60)
 print("Deployment complete!")
 print("=" * 60)
 print(f"  Job ID:                        {job_id}")
+print(f"  Job action:                    {job_action}")
 print(f"  import_metric_view automation: {import_config_id}")
 print(f"  create_genie_agent automation: {agent_config_id}")
 print()
