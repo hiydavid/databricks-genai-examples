@@ -129,7 +129,7 @@ def create_job(
             {
                 "task_key": "import_metric_view",
                 "depends_on": [{"task_key": "setup_and_preflight"}],
-                # /importBI on a large model can take a while; the spec's 10 minutes
+                # /importBI on a large model can take a while; a 10-minute timeout
                 # leaves no room for retries inside the agent.
                 "timeout_seconds": 3600,
                 "genie_task": {
