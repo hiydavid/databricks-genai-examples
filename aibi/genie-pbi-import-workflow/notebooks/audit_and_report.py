@@ -18,25 +18,25 @@
 import json
 
 dbutils.widgets.text("run_id", "")
-dbutils.widgets.text("catalog", "")
-dbutils.widgets.text("schema", "")
+dbutils.widgets.text("metric_view_catalog", "")
+dbutils.widgets.text("metric_view_schema", "")
 dbutils.widgets.text("pbit_filename", "")
 dbutils.widgets.text("metric_view_name", "")
 dbutils.widgets.text("create_agent", "true")
 
 run_id = dbutils.widgets.get("run_id").strip()
-catalog = dbutils.widgets.get("catalog").strip()
-schema = dbutils.widgets.get("schema").strip()
+metric_view_catalog = dbutils.widgets.get("metric_view_catalog").strip()
+metric_view_schema = dbutils.widgets.get("metric_view_schema").strip()
 pbit_filename = dbutils.widgets.get("pbit_filename").strip()
 metric_view_name = dbutils.widgets.get("metric_view_name").strip()
 create_agent = dbutils.widgets.get("create_agent").strip() == "true"
 
-if not all((catalog, schema, pbit_filename)):
+if not all((metric_view_catalog, metric_view_schema, pbit_filename)):
     dbutils.notebook.exit(json.dumps({"status": "DRY_RUN", "run_id": run_id}))
 if not run_id:
     raise ValueError("run_id is required for a configured run; use the job run ID")
 
-metric_view_fqn = f"{catalog}.{schema}.{metric_view_name}"
+metric_view_fqn = f"{metric_view_catalog}.{metric_view_schema}.{metric_view_name}"
 
 
 def normalize_name(name):
@@ -45,7 +45,8 @@ def normalize_name(name):
 
 
 artifacts_table = ".".join(
-    f"`{part.replace('`', '``')}`" for part in (catalog, schema, "genie_pbi_import_workflow_artifacts")
+    f"`{part.replace('`', '``')}`"
+    for part in (metric_view_catalog, metric_view_schema, "genie_pbi_import_workflow_artifacts")
 )
 
 print("=" * 60)

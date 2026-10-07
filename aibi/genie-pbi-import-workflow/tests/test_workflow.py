@@ -19,9 +19,9 @@ NOTEBOOK_DIR = Path(__file__).resolve().parents[1] / "notebooks"
 NOTEBOOKS = ("setup_and_preflight.py", "validate_metric_view.py", "audit_and_report.py")
 PARAMS = {
     "run_id": "test'run\\id",
-    "catalog": "test_catalog",
-    "schema": "test_schema",
-    "volume": "pbi_files",
+    "pbit_volume_path": "/Volumes/source_catalog/source_schema/pbi_files",
+    "metric_view_catalog": "test_catalog",
+    "metric_view_schema": "test_schema",
     "pbit_filename": "model.pbit",
     "metric_view_name": "mv_test",
     "create_agent": "true",
@@ -29,7 +29,7 @@ PARAMS = {
     "warehouse_id": "test-warehouse",
 }
 MV_FQN = "test_catalog.test_schema.mv_test"
-VOLUME_PATH = "/Volumes/test_catalog/test_schema/pbi_files/model.pbit"
+PBIT_PATH = "/Volumes/source_catalog/source_schema/pbi_files/model.pbit"
 
 # Power BI model with one table per source kind the preflight distinguishes.
 DATA_MODEL = {"model": {"tables": [
@@ -160,7 +160,7 @@ class WorkflowTests(unittest.TestCase):
 
         # Redirect the notebook's /Volumes path to the local fixture.
         real_exists, real_zipfile = os.path.exists, zipfile.ZipFile
-        local = lambda path: self.pbit if path == VOLUME_PATH else path
+        local = lambda path: self.pbit if path == PBIT_PATH else path
 
         dbutils = types.SimpleNamespace(
             widgets=Widgets({**PARAMS, **overrides}),
@@ -189,7 +189,7 @@ class WorkflowTests(unittest.TestCase):
                 if all(present):
                     continue
                 config = {key: PARAMS[key] if keep else ""
-                          for key, keep in zip(("catalog", "schema", "pbit_filename"), present)}
+                          for key, keep in zip(("metric_view_catalog", "metric_view_schema", "pbit_filename"), present)}
                 with self.subTest(filename=filename, config=config):
                     self.assertEqual(self.run_notebook(filename, **config)["status"], "DRY_RUN")
         self.assert_no_calls()
@@ -207,7 +207,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(result["measures_found"], 2)
         config = self.spark.latest("setup_config")
         self.assertEqual(config["run_id"], PARAMS["run_id"])
-        self.assertEqual(config["volume_path"], VOLUME_PATH)
+        self.assertEqual(config["pbit_volume_path"], PARAMS["pbit_volume_path"])
+        self.assertEqual(config["pbit_path"], PBIT_PATH)
         self.assertEqual(config["metric_view_fqn"], MV_FQN)
         self.assertEqual([m["name"] for m in config["pbi_measures"]], ["Total Sales", "Margin %"])
         details = {d["pbi_table"]: d for d in config["source_table_validation"]["details"]}
@@ -227,7 +228,9 @@ class WorkflowTests(unittest.TestCase):
     def test_setup_rejects_invalid_parameters_before_any_calls(self):
         cases = (
             ({"metric_view_name": ""}, "metric_view_name"),
-            ({"volume": ""}, "volume"),
+            ({"pbit_volume_path": ""}, "pbit_volume_path"),
+            ({"pbit_volume_path": "dbfs:/Volumes/c/s/v"}, "/Volumes/"),
+            ({"pbit_filename": "nested/model.pbit"}, "file name"),
             ({"pbit_filename": "model.pbix"}, ".pbit"),
             ({"create_agent": "yes"}, "create_agent"),
             ({"agent_name": ""}, "agent_name"),

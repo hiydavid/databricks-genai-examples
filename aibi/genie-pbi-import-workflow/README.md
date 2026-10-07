@@ -21,14 +21,14 @@ audit_and_report       (notebook)       → verify handoffs and the agent, write
                                           (run_if: ALL_DONE)
 ```
 
-Each task writes a row to `<catalog>.<schema>.genie_pbi_import_workflow_artifacts` keyed by `run_id`, which is how downstream tasks (including the Genie Code prompts) read the prior task's output.
+Each task writes a row to `<metric_view_catalog>.<metric_view_schema>.genie_pbi_import_workflow_artifacts` keyed by `run_id`, which is how downstream tasks (including the Genie Code prompts) read the prior task's output.
 
 ### Tasks
 
 | Task | Type | What it does |
 |------|------|--------------|
-| `setup_and_preflight` | Notebook | Validates the job parameters, creates the artifacts table, and reads `DataModelSchema` from the `.pbit` (a zip archive; the model is UTF-16LE JSON). Lists the Power BI tables and measures, and checks which source tables exist in Unity Catalog: it reads the catalog/schema/table navigation steps the Databricks Power BI connector writes into each table's M query, and falls back to `<catalog>.<schema>.<lowercased_table_name>` when the query doesn't name a UC table. Missing tables are a warning only. Writes `setup_config`. |
-| `import_metric_view` | Genie Code | Runs `/importBI` on the volume path and saves `<catalog>.<schema>.<metric_view_name>`, with `comment`, `display_name` (the Power BI name), and `format` on each field. Measures it cannot translate are left out and listed in `measures_not_translated`. Writes `import_result` with status `SUCCESS`, `PARTIAL`, or `FAILED`; fails the task on `FAILED`. |
+| `setup_and_preflight` | Notebook | Validates the job parameters, creates the artifacts table, and reads `DataModelSchema` from the `.pbit` (a zip archive; the model is UTF-16LE JSON). Lists the Power BI tables and measures, and checks which source tables exist in Unity Catalog: it reads the catalog/schema/table navigation steps the Databricks Power BI connector writes into each table's M query, and falls back to `<metric_view_catalog>.<metric_view_schema>.<lowercased_table_name>` when the query doesn't name a UC table. Missing tables are a warning only. Writes `setup_config`. |
+| `import_metric_view` | Genie Code | Runs `/importBI` on the PBIT path and saves `<metric_view_catalog>.<metric_view_schema>.<metric_view_name>`, with `comment`, `display_name` (the Power BI name), and `format` on each field. Measures it cannot translate are left out and listed in `measures_not_translated`. Writes `import_result` with status `SUCCESS`, `PARTIAL`, or `FAILED`; fails the task on `FAILED`. |
 | `validate_metric_view` | Notebook | Reads the object with `w.tables.get` and requires `table_type = METRIC_VIEW`. Parses the YAML definition and checks that the `source` and every (nested) join table exist. Runs `MEASURE()` on each measure separately, so one bad DAX translation is reported by name, plus one grouped query on the first dimension. Writes `validation`, then fails the task if any check failed. |
 | `should_create_agent` | Condition | Continues to `create_genie_agent` only when the `create_agent` job parameter is `true`. Validation failures never reach this task: they fail `validate_metric_view`. |
 | `create_genie_agent` | Genie Code | Creates a new Genie space named `agent_name` with the metric view as its only data source, general instructions from `agent_instructions` (or from the metric view's comments when empty), and 5–8 sample questions built from the defined measures and dimensions. Writes `agent_result` with the new `space_id`. Does not retry on failure. |
@@ -60,7 +60,8 @@ All `.py` files are Databricks notebook sources — upload them to the workspace
 
 - The **Genie Code Job Task** beta enabled for your account/workspace in the [Databricks preview portal](https://previews.databricks.com). Without it, the `genie_task` entries in the job definition are not recognized — the job is still created, but the Genie Code tasks appear in the workflow UI as unconfigured tasks you must set up manually.
 - **Partner-powered AI** enabled for both the account and the workspace (required by `/importBI`).
-- A Unity Catalog catalog and schema you can create tables, views, and metric views in, and a volume in that schema (default name `pbi_files`) holding the `.pbit` files.
+- A full Unity Catalog Volume directory path containing the `.pbit` files, such as `/Volumes/main/lending_demo/raw_data/powerbi_files`.
+- A destination catalog and schema where the workflow can create metric views and its artifacts table. This location can differ from the PBIT Volume and source-table locations.
 - The Power BI model's source tables in Unity Catalog, readable by the job's run-as identity.
 - A SQL warehouse ID (required when `create_agent` is `true`; the Genie Agent runs on it).
 - Databricks CLI installed and configured (used for uploading files and triggering runs — all SDK code runs inside the workspace, not locally).
@@ -89,15 +90,15 @@ Save the Power BI report as a template (*File → Export → Power BI template*)
 3. Upload a `.pbit` to the volume:
 
    ```bash
-   databricks fs cp ./<model>.pbit dbfs:/Volumes/<catalog>/<schema>/pbi_files/
+   databricks fs cp ./<model>.pbit dbfs:/Volumes/<volume-catalog>/<volume-schema>/<volume>/
    ```
 
 4. Deploy the automations and job: open the `deploy` notebook in the target workspace, run the first cell (**Widgets**), fill in the widgets, then click *Run all*. It authenticates with the notebook's own context — no token needed.
 
    | Widget | Default | Description |
    |--------|---------|-------------|
-   | `catalog` / `schema` | `""` | Unity Catalog location for the metric view and the artifacts table |
-   | `volume` | `pbi_files` | Volume in that schema holding the `.pbit` files |
+   | `pbit_volume_path` | `""` | Full UC Volume directory containing the `.pbit`, for example `/Volumes/main/lending_demo/raw_data/powerbi_files` |
+   | `metric_view_catalog` / `metric_view_schema` | `""` | Destination for the generated metric view and workflow artifacts table |
    | `warehouse_id` | `""` | SQL warehouse for Genie Code and the Genie Agent |
    | `pbit_filename` / `metric_view_name` / `agent_name` | `""` | Optional defaults for a first file; usually set per run |
 
@@ -110,6 +111,7 @@ Save the Power BI report as a template (*File → Export → Power BI template*)
    ```bash
    databricks jobs run-now <job_id> --json '{
      "job_parameters": {
+       "pbit_volume_path": "/Volumes/<volume-catalog>/<volume-schema>/<volume>",
        "pbit_filename": "<model>.pbit",
        "metric_view_name": "<metric_view>",
        "agent_name": "<Agent name>",
@@ -125,10 +127,10 @@ Save the Power BI report as a template (*File → Export → Power BI template*)
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `run_id` | `{{job.run_id}}` | Run identifier; auto-set to the job run ID each run |
-| `catalog` / `schema` | `deploy` widgets | Location of the volume, metric view, and artifacts table. Either empty → dry run |
-| `volume` | `deploy` widget (`pbi_files`) | Volume holding the `.pbit` files |
+| `pbit_volume_path` | `deploy` widget | Full UC Volume directory holding the `.pbit` files. Required for a configured run |
+| `metric_view_catalog` / `metric_view_schema` | `deploy` widgets | Destination for generated metric views and the artifacts table. Either empty → dry run |
 | `pbit_filename` | `deploy` widget | Which `.pbit` to import. Empty → dry run. Must end in `.pbit` |
-| `metric_view_name` | `deploy` widget | Name of the metric view to create (in `catalog.schema`). Required |
+| `metric_view_name` | `deploy` widget | Name of the metric view to create in `metric_view_catalog.metric_view_schema`. Required |
 | `create_agent` | `true` | `true` or `false`. Whether to create a Genie Agent after validation passes |
 | `agent_name` | `deploy` widget | Name of the Genie Agent. Required when `create_agent` is `true` |
 | `agent_instructions` | `""` | Business context for the agent's general instructions. Empty → derived from the metric view's comments |
@@ -144,7 +146,7 @@ Save the Power BI report as a template (*File → Export → Power BI template*)
 
 ## Artifacts table
 
-All tasks read/write `<catalog>.<schema>.genie_pbi_import_workflow_artifacts`:
+All tasks read/write `<metric_view_catalog>.<metric_view_schema>.genie_pbi_import_workflow_artifacts`:
 
 | Column | Description |
 |--------|-------------|
@@ -161,7 +163,7 @@ To see the outcome of a run:
 ```sql
 SELECT payload:status, payload:metric_view_fqn, payload:agent_space_id,
        payload:pbi_measures_unmatched, payload:errors
-FROM <catalog>.<schema>.genie_pbi_import_workflow_artifacts
+FROM <metric_view_catalog>.<metric_view_schema>.genie_pbi_import_workflow_artifacts
 WHERE run_id = '<run_id>' AND artifact_type = 'audit_summary'
 ORDER BY created_at DESC
 LIMIT 1
@@ -169,7 +171,7 @@ LIMIT 1
 
 ## Run outcomes
 
-- **Dry run:** if any of `catalog`, `schema`, or `pbit_filename` is empty, each task exits before API calls or Delta reads/writes.
+- **Dry run:** if any of `metric_view_catalog`, `metric_view_schema`, or `pbit_filename` is empty, each task exits before API calls or Delta reads/writes.
 - **Preflight failure:** invalid parameters, a missing file, or a `.pbit` without `DataModelSchema` fail `setup_and_preflight`. Nothing downstream runs except the audit, which records an `INCOMPLETE` summary.
 - **Import failure:** `import_result.status = 'FAILED'` fails the task; validation and agent creation do not run. `PARTIAL` continues: validation decides whether what was saved is usable, and the audit lists the Power BI measures that did not come through.
 - **Validation failure:** the `validation` artifact records every failed check (`errors`, per-measure `smoke_tests`), then the task fails. No Genie Agent is created on a broken metric view.

@@ -21,13 +21,33 @@
 # COMMAND ----------
 
 # DBTITLE 1,Widgets
+# MAGIC %md
+# MAGIC ## Deployment parameters
+# MAGIC
+# MAGIC These values become the job's default parameters. You can override the per-file values later with **Run now with different parameters**.
+# MAGIC
+# MAGIC | Widget | Expected value | Example | Notes |
+# MAGIC |---|---|---|---|
+# MAGIC | `pbit_volume_path` | Full path to the UC Volume directory containing the `.pbit` file | `/Volumes/main/lending_demo/raw_data/powerbi_files` | May end with `/`. This location is independent of the metric-view destination and source datasets. |
+# MAGIC | `metric_view_catalog` | Destination catalog for generated metric views | `analytics` | Must contain the destination schema. Leave empty, together with `metric_view_schema`, to make job runs default to dry-run mode. |
+# MAGIC | `metric_view_schema` | Destination schema for generated metric views | `power_bi` | Holds the generated metric view and workflow artifacts table. It does not need to contain the PBIT file or underlying source tables. |
+# MAGIC | `warehouse_id` | SQL warehouse ID | `abc123def4567890` | Copy the ID from the warehouse URL or warehouse details page. Required when the job creates a Genie Agent. |
+# MAGIC | `pbit_filename` | File name ending in `.pbit` | `sales_model.pbit` | Enter only the file name, not a path. Usually overridden for each run. Empty makes the default job run a dry run. |
+# MAGIC | `metric_view_name` | Name for the generated metric view | `sales_metrics` | Created as `<metric_view_catalog>.<metric_view_schema>.<metric_view_name>`. Use a valid Unity Catalog object name. Required for a non-dry run. |
+# MAGIC | `agent_name` | Display name for the generated Genie Agent | `Sales Analytics` | Required when agent creation is enabled. Usually overridden for each run. |
+# MAGIC
+# MAGIC The deployed job also has `create_agent` (default `true`) and `agent_instructions` (default empty) parameters. They are not deployment widgets; override them per run when you want to skip agent creation or supply business context.
+
+# COMMAND ----------
+
+# DBTITLE 1,Widget Inputs
 # Run this cell first to create the widgets, fill them in, then Run all.
 # Saved as job parameter defaults so "Run now" works without extra input. Leave
-# catalog/schema/pbit_filename empty to create a job whose default run is a dry run;
+# destination catalog/schema or pbit_filename empty to make the default run a dry run;
 # change them later under Job parameters in the Jobs UI.
-dbutils.widgets.text("catalog", "")
-dbutils.widgets.text("schema", "")
-dbutils.widgets.text("volume", "pbi_files")
+dbutils.widgets.text("pbit_volume_path", "")
+dbutils.widgets.text("metric_view_catalog", "")
+dbutils.widgets.text("metric_view_schema", "")
 dbutils.widgets.text("warehouse_id", "")
 # Per-file settings: usually overridden per run, one .pbit per run.
 dbutils.widgets.text("pbit_filename", "")
@@ -44,7 +64,7 @@ from databricks.sdk import WorkspaceClient
 
 job_defaults = {
     name: dbutils.widgets.get(name).strip()
-    for name in ("catalog", "schema", "volume", "warehouse_id",
+    for name in ("pbit_volume_path", "metric_view_catalog", "metric_view_schema", "warehouse_id",
                  "pbit_filename", "metric_view_name", "agent_name")
 }
 
@@ -105,9 +125,9 @@ def create_job(
         "queue": {"enabled": True},
         "parameters": [
             {"name": "run_id", "default": "{{job.run_id}}"},
-            {"name": "catalog", "default": job_defaults["catalog"]},
-            {"name": "schema", "default": job_defaults["schema"]},
-            {"name": "volume", "default": job_defaults["volume"]},
+            {"name": "pbit_volume_path", "default": job_defaults["pbit_volume_path"]},
+            {"name": "metric_view_catalog", "default": job_defaults["metric_view_catalog"]},
+            {"name": "metric_view_schema", "default": job_defaults["metric_view_schema"]},
             {"name": "pbit_filename", "default": job_defaults["pbit_filename"]},
             {"name": "metric_view_name", "default": job_defaults["metric_view_name"]},
             {"name": "create_agent", "default": "true"},
@@ -136,9 +156,9 @@ def create_job(
                     "configuration_id": import_config_id,
                     "parameters": {
                         "run_id": "{{job.parameters.run_id}}",
-                        "catalog": "{{job.parameters.catalog}}",
-                        "schema": "{{job.parameters.schema}}",
-                        "volume": "{{job.parameters.volume}}",
+                        "pbit_volume_path": "{{job.parameters.pbit_volume_path}}",
+                        "metric_view_catalog": "{{job.parameters.metric_view_catalog}}",
+                        "metric_view_schema": "{{job.parameters.metric_view_schema}}",
                         "pbit_filename": "{{job.parameters.pbit_filename}}",
                         "metric_view_name": "{{job.parameters.metric_view_name}}",
                         "warehouse_id": "{{job.parameters.warehouse_id}}",
@@ -173,8 +193,8 @@ def create_job(
                     "configuration_id": agent_config_id,
                     "parameters": {
                         "run_id": "{{job.parameters.run_id}}",
-                        "catalog": "{{job.parameters.catalog}}",
-                        "schema": "{{job.parameters.schema}}",
+                        "metric_view_catalog": "{{job.parameters.metric_view_catalog}}",
+                        "metric_view_schema": "{{job.parameters.metric_view_schema}}",
                         "pbit_filename": "{{job.parameters.pbit_filename}}",
                         "metric_view_name": "{{job.parameters.metric_view_name}}",
                         "agent_name": "{{job.parameters.agent_name}}",
@@ -245,7 +265,8 @@ print(f"  create_genie_agent automation: {agent_config_id}")
 print()
 print("To run:")
 # Preflight requires these for the default run (create_agent defaults to "true").
-required = ("catalog", "schema", "pbit_filename", "metric_view_name", "agent_name", "warehouse_id")
+required = ("pbit_volume_path", "metric_view_catalog", "metric_view_schema", "pbit_filename",
+            "metric_view_name", "agent_name", "warehouse_id")
 missing = [k for k in required if not job_defaults[k]]
 if not missing:
     print(f"  Click Run now on the job page, or: databricks jobs run-now {job_id}")

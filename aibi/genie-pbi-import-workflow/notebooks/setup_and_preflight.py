@@ -18,9 +18,9 @@
 import json
 
 dbutils.widgets.text("run_id", "")
-dbutils.widgets.text("catalog", "")
-dbutils.widgets.text("schema", "")
-dbutils.widgets.text("volume", "pbi_files")
+dbutils.widgets.text("pbit_volume_path", "")
+dbutils.widgets.text("metric_view_catalog", "")
+dbutils.widgets.text("metric_view_schema", "")
 dbutils.widgets.text("pbit_filename", "")
 dbutils.widgets.text("metric_view_name", "")
 dbutils.widgets.text("create_agent", "true")
@@ -28,9 +28,9 @@ dbutils.widgets.text("agent_name", "")
 dbutils.widgets.text("warehouse_id", "")
 
 run_id = dbutils.widgets.get("run_id").strip()
-catalog = dbutils.widgets.get("catalog").strip()
-schema = dbutils.widgets.get("schema").strip()
-volume = dbutils.widgets.get("volume").strip()
+pbit_volume_path = dbutils.widgets.get("pbit_volume_path").strip()
+metric_view_catalog = dbutils.widgets.get("metric_view_catalog").strip()
+metric_view_schema = dbutils.widgets.get("metric_view_schema").strip()
 pbit_filename = dbutils.widgets.get("pbit_filename").strip()
 metric_view_name = dbutils.widgets.get("metric_view_name").strip()
 create_agent = dbutils.widgets.get("create_agent").strip()
@@ -38,30 +38,34 @@ agent_name = dbutils.widgets.get("agent_name").strip()
 warehouse_id = dbutils.widgets.get("warehouse_id").strip()
 
 # Keep dry runs free of API calls and Delta reads/writes, including partial config.
-if not all((catalog, schema, pbit_filename)):
+if not all((metric_view_catalog, metric_view_schema, pbit_filename)):
     dbutils.notebook.exit(json.dumps({"status": "DRY_RUN", "run_id": run_id}))
 if not run_id:
     raise ValueError("run_id is required for a configured run; use the job run ID")
 # The Genie Code tasks read these from their prompts; reject bad values here, before
 # they can act on something they have to guess at.
-if not volume or not metric_view_name:
-    raise ValueError("volume and metric_view_name are required")
+if not pbit_volume_path or not metric_view_name:
+    raise ValueError("pbit_volume_path and metric_view_name are required")
+if not pbit_volume_path.startswith("/Volumes/"):
+    raise ValueError("pbit_volume_path must be a full Unity Catalog Volume path starting with /Volumes/")
 if not pbit_filename.lower().endswith(".pbit"):
     raise ValueError(f"pbit_filename must be a .pbit template file; got {pbit_filename!r}")
+if "/" in pbit_filename or "\\" in pbit_filename:
+    raise ValueError("pbit_filename must be a file name, not a path")
 if create_agent not in ("true", "false"):
     raise ValueError(f"create_agent must be 'true' or 'false'; got {create_agent!r}")
 if create_agent == "true" and not (agent_name and warehouse_id):
     raise ValueError("agent_name and warehouse_id are required when create_agent is 'true'")
 
-volume_path = f"/Volumes/{catalog}/{schema}/{volume}/{pbit_filename}"
+pbit_path = f"{pbit_volume_path.rstrip('/')}/{pbit_filename}"
 
 print("=" * 60)
 print("[TASK SETUP] Setup & Preflight")
 print("=" * 60)
 print(f"  run_id:           {run_id}")
-print(f"  catalog:          {catalog}")
-print(f"  schema:           {schema}")
-print(f"  pbit file:        {volume_path}")
+print(f"  MV catalog:       {metric_view_catalog}")
+print(f"  MV schema:        {metric_view_schema}")
+print(f"  pbit file:        {pbit_path}")
 print(f"  metric_view_name: {metric_view_name}")
 print(f"  create_agent:     {create_agent}")
 
@@ -70,7 +74,8 @@ print(f"  create_agent:     {create_agent}")
 # DBTITLE 1,Create the artifacts table
 # Created first so the audit task can still record a summary if a later check fails.
 artifacts_table = ".".join(
-    f"`{part.replace('`', '``')}`" for part in (catalog, schema, "genie_pbi_import_workflow_artifacts")
+    f"`{part.replace('`', '``')}`"
+    for part in (metric_view_catalog, metric_view_schema, "genie_pbi_import_workflow_artifacts")
 )
 spark.sql(f"""
     CREATE TABLE IF NOT EXISTS {artifacts_table} (
@@ -90,11 +95,11 @@ print(f"\n  ✓ Artifacts table ready: {artifacts_table}")
 import os
 import zipfile
 
-if not os.path.exists(volume_path):
-    raise FileNotFoundError(f"PBIT file not found: {volume_path}")
+if not os.path.exists(pbit_path):
+    raise FileNotFoundError(f"PBIT file not found: {pbit_path}")
 
 # A .pbit is a zip archive; DataModelSchema holds the semantic model as UTF-16LE JSON.
-with zipfile.ZipFile(volume_path) as z:
+with zipfile.ZipFile(pbit_path) as z:
     if "DataModelSchema" not in z.namelist():
         raise ValueError(f"{pbit_filename} has no DataModelSchema entry; is it a valid .pbit?")
     model = json.loads(z.read("DataModelSchema").decode("utf-16-le").lstrip("﻿")).get("model", {})
@@ -139,7 +144,8 @@ def source_reference(table):
             return f"{parts['Database']}.{parts['Schema']}.{leaf}", "m_navigation"
     # Fall back to a naming convention when the M query doesn't name a UC table
     # (native SQL queries, other connectors). This is a guess; treat misses as hints.
-    return f"{catalog}.{schema}.{table['name'].lower().replace(' ', '_')}", "name_convention"
+    return (f"{metric_view_catalog}.{metric_view_schema}."
+            f"{table['name'].lower().replace(' ', '_')}"), "name_convention"
 
 
 source_tables = []
@@ -166,12 +172,13 @@ for r in missing:
 # DBTITLE 1,Write the setup_config artifact
 setup_config = {
     "run_id": run_id,
-    "catalog": catalog,
-    "schema": schema,
+    "metric_view_catalog": metric_view_catalog,
+    "metric_view_schema": metric_view_schema,
     "pbit_filename": pbit_filename,
-    "volume_path": volume_path,
+    "pbit_volume_path": pbit_volume_path.rstrip("/"),
+    "pbit_path": pbit_path,
     "metric_view_name": metric_view_name,
-    "metric_view_fqn": f"{catalog}.{schema}.{metric_view_name}",
+    "metric_view_fqn": f"{metric_view_catalog}.{metric_view_schema}.{metric_view_name}",
     "create_agent": create_agent == "true",
     "pbi_tables": [t["name"] for t in pbi_tables],
     "pbi_measures": measures,

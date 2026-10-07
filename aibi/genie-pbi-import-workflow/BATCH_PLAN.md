@@ -35,7 +35,7 @@ Nesting `genie_task` directly inside the for_each is not planned. It would skip 
 
 ### 1. New `notebooks/discover_files.py`
 
-- List `/Volumes/<catalog>/<schema>/<volume>/*.pbit`.
+- List `<pbit_volume_path>/*.pbit`.
 - Build one object per file: `{pbit_filename, metric_view_name, agent_name, agent_instructions}` (see [Per-file naming](#2-per-file-naming)).
 - Fail on name collisions: two files that map to the same `metric_view_name` would overwrite each other, because the import replaces an existing metric view.
 - Create the artifacts table (see [change 4](#4-create-the-artifacts-table-once)).
@@ -70,7 +70,7 @@ The for_each task reads the list and maps fields into the child job's parameters
 }
 ```
 
-`catalog`, `schema`, `volume`, `warehouse_id`, and `create_agent` come from the child job's defaults, or the parent passes them through from its own job parameters.
+`pbit_volume_path`, `metric_view_catalog`, `metric_view_schema`, `warehouse_id`, and `create_agent` come from the child job's defaults, or the parent passes them through from its own job parameters.
 
 Before implementing, confirm against the Jobs API docs that `{{job.run_id}}` inside a `run_job_task` nested in a for_each resolves to the parent's run ID.
 
@@ -112,7 +112,7 @@ A plain re-run of the parent then means "retry whatever didn't finish". Repair s
 
 - Create the child job first. Raise its `max_concurrent_runs` and add the `batch_id` parameter.
 - Create the parent job `genie-pbi-import-batch`, wiring the child's `job_id` into `run_job_task`.
-- Parent job parameters: `catalog`, `schema`, `volume`, `warehouse_id`, `create_agent`, `concurrency` (if it can be parameterized; otherwise a deploy widget), `force`.
+- Parent job parameters: `pbit_volume_path`, `metric_view_catalog`, `metric_view_schema`, `warehouse_id`, `create_agent`, `concurrency` (if it can be parameterized; otherwise a deploy widget), `force`.
 - The existing one-time-only caveat (no update or reuse) applies to the parent job too.
 
 ### 8. Tests and README
